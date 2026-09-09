@@ -59,3 +59,8 @@ button:disabled { opacity: .45; cursor: default; }
 #vue { cursor: crosshair; }
 #vue.main { cursor: grab; }
 #vue.jeu { cursor: default; }
+
+select {
+  padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg-2); color: var(--texte); font-size: 12px;
+}

@@ -8,6 +8,8 @@ import {
 import { Palette, depuisHex } from '../noyau/palette.ts'
 import type { NoeudCorps, NoeudSprite } from '../scene/noeud.ts'
 import { Edition, type Outil } from './edition.ts'
+import { serialiserProjet, versTexte } from '../export/format.ts'
+import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 
 /**
  * L'editeur, premiere version : il montre une scene et il la fait tourner.
@@ -160,6 +162,48 @@ boutonArreter.addEventListener('click', () => {
   jeu.camera.y = 0
   jeu.dessiner()
   dessinerCollision()
+})
+
+/* ------------------------------------------------------------------ */
+/* L'export                                                            */
+/* ------------------------------------------------------------------ */
+
+const selectCible = document.getElementById('cible') as HTMLSelectElement
+for (const c of CIBLES) {
+  const o = document.createElement('option')
+  o.value = c.id
+  o.textContent = c.nom
+  o.title = c.note
+  selectCible.appendChild(o)
+}
+
+/**
+ * Telecharge un fichier. Deux appels plutot qu'une archive : produire un zip
+ * demanderait une dependance pour compresser deux fichiers texte, et le
+ * navigateur sait tres bien enregistrer deux fois.
+ */
+function telecharger(nom: string, contenu: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([contenu], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nom
+  a.click()
+  // Le revoquer tout de suite annulerait le telechargement dans certains
+  // navigateurs : on laisse passer un tour de boucle.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+document.getElementById('exporter')?.addEventListener('click', () => {
+  const cible = selectCible.value as Cible
+  const p = serialiserProjet(
+    'donjon', jeu.ecran.vue, palette,
+    [{ nom: 'salle', carte: donjon.carte }],
+    [{ nom: 'principale', racine: donjon.racine }],
+  )
+  telecharger('projet.json', versTexte(p), 'application/json')
+  const fichier = CIBLES.find((c) => c.id === cible)?.fichier ?? 'projet.txt'
+  telecharger(fichier, chargeur(cible, p), 'text/plain')
+  verdict.textContent = `exporte : projet.json + ${fichier}`
 })
 
 // Une premiere image des l'ouverture : un ecran noir ne dit pas si la scene
