@@ -343,6 +343,60 @@ console.log('\n--- la palette verrouillee ---')
     distance(rvb(0, 0, 0), rvb(1, 2, 3)) === 6)
 }
 
+console.log('\n--- le format de projet ---')
+
+{
+  const { serialiserCarte, relireCarte, serialiserNoeud, versTexte, VERSION_FORMAT } =
+    await import('../src/export/format.ts')
+  const { Carte } = await import('../src/tuiles/tilemap.ts')
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+
+  const c = new Carte(6, 4, 16)
+  const mur = c.ajouterCalque('mur', {
+    terrain: { tuileDepart: 0, jeu: 'blob47', dehorsEstPlein: true },
+  })
+  c.peindreTerrain(mur, 1, 1, true)
+  c.peindreTerrain(mur, 2, 1, true)
+  c.solides[c.index(1, 1)] = 1
+  c.solides[c.index(2, 1)] = 1
+
+  const s1 = serialiserCarte('salle', c)
+  const c2 = relireCarte(s1, (l, h, t) => new Carte(l, h, t))
+  const s2 = serialiserCarte('salle', c2)
+
+  check('une carte serialisee puis relue est identique',
+    JSON.stringify(s1) === JSON.stringify(s2), 'aller-retour sans perte')
+  check('la collision survit a l\'aller-retour',
+    c2.solide(1, 1) && c2.solide(2, 1) && !c2.solide(0, 0))
+  check('la presence du terrain aussi',
+    c2.calques[0].presence?.[c2.index(1, 1)] === 1)
+
+  // Le format est lisible : une ligne de texte par rangee, pas un pate.
+  check('les cases s\'ecrivent une rangee par ligne',
+    s1.calques[0].cases.length === 4 && s1.calques[0].cases[0].split(',').length === 6,
+    `${s1.calques[0].cases.length} lignes de ${s1.calques[0].cases[0].split(',').length}`)
+  check('la collision s\'ecrit en 0 et 1 colles',
+    /^[01]+$/.test(s1.solides[1]) && s1.solides[1].length === 6, s1.solides[1])
+
+  // La version est ecrite des le premier jour : l'ajouter plus tard obligerait
+  // a traiter « pas de version » comme un cas particulier, pour toujours.
+  const n = creerNoeud('sprite', 'heros')
+  const sn = serialiserNoeud(n)
+  check('un noeud garde ses proprietes propres a son type',
+    'ancreX' in sn.proprietes && 'source' in sn.proprietes,
+    Object.keys(sn.proprietes).join(' '))
+  check('et n\'y remet pas les champs communs',
+    !('x' in sn.proprietes) && !('enfants' in sn.proprietes))
+
+  const texte = versTexte({
+    version: VERSION_FORMAT, nom: 't', vue: { largeur: 320, hauteur: 180 },
+    palette: { nom: 'p', couleurs: ['#000000'] }, cartes: [s1],
+    scenes: [{ nom: 's', racine: sn }],
+  })
+  check('le projet sort en JSON indente, donc diffable',
+    texte.includes('\n  "version"') && texte.endsWith('\n'), `${texte.length} octets`)
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)
