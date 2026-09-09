@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PixelForge Engine</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27><rect width=%2716%27 height=%2716%27 fill=%27%2314161c%27/><rect x=%274%27 y=%274%27 width=%278%27 height=%278%27 fill=%27%237fd4a8%27/></svg>" />
+  <link rel="stylesheet" href="/src/editeur/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="barre">
+      <span class="marque">PixelForge <b>Engine</b></span>
+      <button id="jouer" class="primaire">Jouer</button>
+      <button id="arreter" class="ghost" disabled>Arrêter</button>
+      <span class="sep"></span>
+      <span class="info" id="info"></span>
+      <span class="pousse"></span>
+      <span class="info" id="verdict"></span>
+    </header>
+    <main class="scene">
+      <canvas id="vue"></canvas>
+    </main>
+    <footer class="pied">
+      <span id="aide">Flèches ou ZQSD pour se déplacer. La caméra ne bouge qu’au bord du cadre mort.</span>
+      <span class="pousse"></span>
+      <span id="mesure"></span>
+    </footer>
+  </div>
+  <script type="module" src="/src/editeur/main.ts"></script>
+</body>
+</html>
