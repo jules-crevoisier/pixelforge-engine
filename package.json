@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "banc:plateforme": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-plateforme.mjs",
     "banc:langages": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-langages.mjs",
     "banc": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc.mjs"
   },
