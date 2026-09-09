@@ -202,3 +202,38 @@ export class Lecteur {
     this.fini = false
   }
 }
+
+/**
+ * L'image d'un clip apres `ms` millisecondes, sans etat.
+ *
+ * ## Pourquoi cette fonction existe a cote du lecteur
+ *
+ * Le lecteur est un objet : il garde son rang, son reste, et il rend les
+ * evenements franchis. C'est ce qu'il faut dans une boucle de jeu. Mais c'est
+ * exactement ce qu'on ne veut pas porter dans six langages — un objet a etat
+ * se porte mal, se teste mal, et deux ports divergent au premier cas limite.
+ *
+ * `imageA` est la meme regle exprimee sans etat : un clip, un temps, une
+ * image. C'est ELLE qu'on genere dans les chargeurs, parce qu'une fonction
+ * pure se traduit sans ambiguite et se compare d'un langage a l'autre. Le banc
+ * exige d'ailleurs que le lecteur et `imageA` tombent d'accord, puis que les
+ * ports Python et Rust tombent d'accord avec eux — sinon « marche avec tous
+ * les langages » ne voudrait rien dire.
+ */
+export function imageA(clip: Clip, ms: number): number {
+  const ordre = ordreDeLecture(clip)
+  if (ordre.length === 0) return -1
+  const total = dureeDe(clip)
+  let t = ms < 0 ? 0 : ms
+  if (clip.boucle === 'unique') {
+    if (t >= total) return clip.images[ordre[ordre.length - 1]].index
+  } else {
+    t %= total
+  }
+  for (const rang of ordre) {
+    const d = Math.max(1, clip.images[rang].duree)
+    if (t < d) return clip.images[rang].index
+    t -= d
+  }
+  return clip.images[ordre[ordre.length - 1]].index
+}

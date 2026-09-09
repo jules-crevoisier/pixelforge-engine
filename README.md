@@ -63,6 +63,9 @@ seconde.
 - quatre projections — orthogonale, isométrique, isométrique décalée, hexagonale
 - contrôleur de plateforme de qualité Celeste, réglé en **hauteur et en temps**
   plutôt qu'en gravité et en impulsion
+- animations : durées en millisecondes, boucle, aller-retour, clip unique avec
+  enchaînement, et des **événements rendus** — le pied qui touche le sol, l'image
+  où le coup porte — qui survivent à une image de jeu longue
 - autotiling à 47 ou 16 tuiles, calculé et non recopié
 - cartes en calques, collision sur sa propre grille
 - boucle à pas fixe avec plafond de rattrapage
@@ -82,9 +85,9 @@ choix.
 
 | Cible | État |
 | --- | --- |
-| Python | **exécuté au banc** — charge un projet et retrouve chaque valeur |
-| Rust | **compilé au banc** par `rustc` |
-| TypeScript | **vérifié au banc** par `tsc --strict` |
+| Python | **exécuté au banc** — charge un projet, retrouve chaque valeur, et rend la même image d'animation que le moteur à 51 instants |
+| Rust | **compilé et exécuté au banc** — même table d'animation, valeur par valeur (serde retiré, la crate n'est pas installée ici) |
+| TypeScript | **compilé `--strict` et exécuté** — même chargement, même table |
 | C# (Unity) | généré, symboles vérifiés — aucun interprète installé ici |
 | GDScript (Godot) | généré, symboles vérifiés — aucun interprète installé ici |
 | Lua (LÖVE) | généré, symboles vérifiés — aucun interprète installé ici |
@@ -93,6 +96,15 @@ Le tableau dit ce qui est éprouvé et ce qui ne l'est pas. Un générateur de c
 dont on affirme que la sortie compile, c'est le genre de promesse qui se révèle
 fausse le jour où quelqu'un s'en sert.
 
+Et compiler n'est pas tourner. Ce que le banc compare maintenant, c'est la
+**réponse** : le moteur, le portage Python, le portage Rust et le portage
+TypeScript doivent rendre exactement la même image d'animation pour les mêmes
+millisecondes — boucle, aller-retour et clip unique compris, aux instants
+frontière où deux portages divergent. C'est ce test qui a révélé que le
+chargeur Rust cherchait un champ `tuile_depart` là où le format écrit
+`tuileDepart` : il compilait très bien, et aurait échoué à la première carte
+avec un terrain.
+
 ## Démarrer
 
 ```sh
@@ -100,8 +112,8 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 42 vérifications des trois mondes
-npm run banc:langages   # 38 vérifications des chargeurs
+npm run banc:mondes     # 60 vérifications des mondes et des animations
+npm run banc:langages   # 43 vérifications des chargeurs et de leur accord
 npm run build
 ```
 

@@ -31,6 +31,7 @@ const { chargeur, CIBLES } = await import('../src/export/chargeurs.ts')
 const { Carte } = await import('../src/tuiles/tilemap.ts')
 const { Palette, depuisHex } = await import('../src/noyau/palette.ts')
 const { creerNoeud } = await import('../src/scene/noeud.ts')
+const { clip, clipRegulier, imageA } = await import('../src/runtime/animation.ts')
 
 /* Un projet minuscule mais complet : un mur, une collision, un noeud. */
 const carte = new Carte(5, 3, 16)
@@ -48,10 +49,33 @@ heros.x = 40
 heros.y = 32
 racine.enfants.push(heros)
 
+/* Trois clips choisis pour couvrir les trois modes de bouclage, et des durees
+ * inegales : un clip a duree constante ne distingue pas un portage juste d'un
+ * portage qui divise au lieu de parcourir. */
+const CLIPS = [
+  clipRegulier('marche', [10, 11, 12, 13], 100, {
+    evenements: [{ image: 0, nom: 'pas' }, { image: 2, nom: 'pas' }],
+  }),
+  clip('respire', [
+    { index: 20, duree: 30 }, { index: 21, duree: 250 }, { index: 22, duree: 90 },
+  ], { boucle: 'aller-retour' }),
+  clip('attaque', [
+    { index: 30, duree: 40 }, { index: 31, duree: 60 },
+  ], { boucle: 'unique', suite: 'marche' }),
+]
+
+/* La table de reference : ce que le MOTEUR repond. Chaque portage doit rendre
+ * exactement ces valeurs, sinon « marche avec tous les langages » ne veut rien
+ * dire. Les instants sont choisis sur les frontieres — juste avant, pile, juste
+ * apres — parce que c'est la que deux portages divergent. */
+const INSTANTS = [0, 1, 29, 30, 31, 99, 100, 101, 279, 280, 370, 399, 400, 401, 700, 1234, 99999]
+const TABLE = CLIPS.flatMap((c) => INSTANTS.map((ms) => ({ clip: c.nom, ms, image: imageA(c, ms) })))
+
 const projet = serialiserProjet(
   'demo', { largeur: 320, hauteur: 180 },
   new Palette('donjon', ['#14101a', '#7a7466'].map(depuisHex)),
   [{ nom: 'salle', carte }], [{ nom: 'principale', racine }],
+  CLIPS,
 )
 const json = versTexte(projet)
 const dir = mkdtempSync(join(tmpdir(), 'pfe-lang-'))
@@ -84,6 +108,10 @@ sortie = {
     "heros": [p.scenes[0]["racine"].enfants[0].nom,
               p.scenes[0]["racine"].enfants[0].x,
               p.scenes[0]["racine"].enfants[0].y],
+    "clips": [a.nom for a in p.animations],
+    "suite_attaque": p.clip("attaque").suite,
+    "evenements_marche": p.clip("marche").evenements,
+    "images": [p.clip(e["clip"]).image_a(e["ms"]) for e in ${JSON.stringify(TABLE)}],
 }
 print(json.dumps(sortie))
 `)
@@ -105,33 +133,77 @@ print(json.dumps(sortie))
       v.solide_1_1 === true && v.solide_0_0 === false && v.solide_hors === true)
     check('Python retrouve le noeud et sa position',
       v.heros[0] === 'heros' && v.heros[1] === 40 && v.heros[2] === 32, v.heros.join(' '))
+    check('Python retrouve les clips, leur suite et leurs evenements',
+      v.clips.join(',') === CLIPS.map((c) => c.nom).join(',')
+      && v.suite_attaque === 'marche' && v.evenements_marche.length === 2,
+      `${v.clips.join(', ')} · suite « ${v.suite_attaque} »`)
+    const ecarts = TABLE.filter((e, i) => v.images[i] !== e.image)
+    check('Python rend EXACTEMENT la meme image que le moteur, instant par instant',
+      ecarts.length === 0,
+      ecarts.length
+        ? `${ecarts.length} ecarts sur ${TABLE.length}, ex. ${ecarts[0].clip} a ${ecarts[0].ms} ms`
+        : `${TABLE.length} instants, boucle, aller-retour et clip unique compris`)
   }
 } else {
   check('python3 est disponible', false, 'chargeur Python non eprouve')
 }
 
-/* Rust : on compile. Serde n'est pas installe, donc on retire les derives et
- * la fonction qui s'en sert — ce qui reste est la ou l'on se trompe vraiment,
- * c'est-a-dire la forme des structures et la logique des acces. */
+/* Rust : on compile, ET on execute la logique d'animation.
+ *
+ * Serde n'est pas installe ici, donc on retire les derives et la fonction qui
+ * s'en sert : le JSON ne peut pas etre lu. Mais la ou deux portages divergent,
+ * ce n'est pas la lecture du JSON — c'est la REGLE. On construit donc les
+ * clips directement en Rust et l'on compare la table, valeur par valeur, a
+ * celle du moteur. Compiler seulement aurait laisse passer un aller-retour qui
+ * repete ses extremites, ou un modulo pose au mauvais endroit. */
 if (dispo('rustc')) {
   const brut = chargeur('rust', projet)
   const sansSerde = brut
     .replace(/use serde::Deserialize;\n/g, '')
     .replace(/#\[derive\(Debug, Clone, Deserialize\)\]/g, '#[derive(Debug, Clone)]')
-    .replace(/\s*#\[serde\(rename = "type"\)\]/g, '')
+    .replace(/^[ \t]*#\[serde\([^\]]*\)\]\n/gm, '')
     .replace(/impl Projet \{[\s\S]*?\n\}\n/, '')
-  const f = join(dir, 'projet.rs')
-  writeFileSync(f, sansSerde)
-  const r = spawnSync('rustc', ['--edition', '2021', '--crate-type', 'lib',
-    '--out-dir', dir, f], { encoding: 'utf8' })
+
+  const enRust = (c) => `Clip {
+        nom: ${JSON.stringify(c.nom)}.to_string(),
+        boucle: ${JSON.stringify(c.boucle)}.to_string(),
+        suite: None,
+        images: vec![${c.images.map((i) => `ImageAnim { index: ${i.index}, duree: ${i.duree}, decalage_x: 0, decalage_y: 0 }`).join(', ')}],
+        evenements: vec![],
+    }`
+  const main = `
+fn clips() -> Vec<Clip> {
+    vec![${CLIPS.map(enRust).join(', ')}]
+}
+
+fn main() {
+    let cs = clips();
+    let table: Vec<(usize, i64)> = vec![${TABLE.map((e) => `(${CLIPS.findIndex((c) => c.nom === e.clip)}, ${e.ms})`).join(', ')}];
+    let sortie: Vec<String> = table.iter().map(|(i, ms)| cs[*i].image_a(*ms).to_string()).collect();
+    println!("{}", sortie.join(","));
+}
+`
+  const f = join(dir, 'projet_rs.rs')
+  writeFileSync(f, `${sansSerde}${main}`)
+  const r = spawnSync('rustc', ['--edition', '2021', '--out-dir', dir, f], { encoding: 'utf8' })
   check('le chargeur Rust compile', r.status === 0,
-    r.status === 0 ? 'structures et acces, serde retire faute de crate'
+    r.status === 0 ? 'structures, acces et regle d\'animation ; serde retire faute de crate'
       : (r.stderr || '').split('\n').filter((l) => l.startsWith('error')).slice(0, 2).join(' | '))
+  if (r.status === 0) {
+    const e = spawnSync(join(dir, 'projet_rs'), { encoding: 'utf8' })
+    const rendus = (e.stdout || '').trim().split(',').map(Number)
+    const ecarts = TABLE.filter((t, i) => rendus[i] !== t.image)
+    check('Rust rend EXACTEMENT la meme image que le moteur, instant par instant',
+      e.status === 0 && rendus.length === TABLE.length && ecarts.length === 0,
+      ecarts.length
+        ? `${ecarts.length} ecarts, ex. ${ecarts[0].clip} a ${ecarts[0].ms} ms`
+        : `${TABLE.length} instants`)
+  }
 } else {
   check('rustc est disponible', false, 'chargeur Rust non eprouve')
 }
 
-/* TypeScript : le compilateur du projet lui-meme. */
+/* TypeScript : le compilateur du projet lui-meme, puis l'execution. */
 {
   const f = join(dir, 'projet_charge.ts')
   writeFileSync(f, chargeur('typescript', projet))
@@ -140,14 +212,50 @@ if (dispo('rustc')) {
     '--module', 'ESNext', f], { encoding: 'utf8' })
   check('le chargeur TypeScript passe le compilateur en mode strict',
     r.status === 0, r.status === 0 ? '' : (r.stdout || '').split('\n')[0])
+
+  // Compiler n'est pas tourner. Le chargeur genere est un fichier a part, sans
+  // aucun lien avec le moteur : s'il repond la meme chose, c'est que la regle
+  // a bien traverse.
+  const essai = join(dir, 'essai_ts.mjs')
+  writeFileSync(essai, `
+import { readFileSync } from 'node:fs'
+const m = await import(${JSON.stringify(f)})
+const p = m.chargerProjet(readFileSync(${JSON.stringify(join(dir, 'projet.json'))}, 'utf8'))
+const table = ${JSON.stringify(TABLE)}
+const images = table.map((e) => m.imageA(m.clipNomme(p, e.clip), e.ms))
+console.log(JSON.stringify({
+  clips: p.animations.map((a) => a.nom),
+  images,
+  cases: m.deplierCases(p.cartes[0], p.cartes[0].calques[0])[1 * p.cartes[0].largeur + 1],
+}))
+`)
+  const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
+    { encoding: 'utf8' })
+  if (e.status !== 0) {
+    check('le chargeur TypeScript tourne', false, (e.stderr || '').trim().split('\n').pop())
+  } else {
+    const v = JSON.parse(e.stdout)
+    check('le chargeur TypeScript tourne et lit le projet exporte',
+      v.clips.join(',') === CLIPS.map((c) => c.nom).join(',')
+      && v.cases === mur.cases[carte.index(1, 1)],
+      `${v.clips.length} clips, tuile ${v.cases} en 1,1`)
+    const ecarts = TABLE.filter((t, i) => v.images[i] !== t.image)
+    check('TypeScript rend EXACTEMENT la meme image que le moteur, instant par instant',
+      ecarts.length === 0,
+      ecarts.length ? `${ecarts.length} ecarts, ex. ${ecarts[0].clip} a ${ecarts[0].ms} ms`
+        : `${TABLE.length} instants`)
+  }
 }
 
 console.log('\n--- ce qui n\'est PAS execute, faute d\'interprete ici ---')
 
 for (const [cible, marqueurs] of [
-  ['csharp', ['class Projet', 'public const int VIDE = -1', 'DeplierCases', 'namespace PixelForge']],
-  ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases']],
-  ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide']],
+  ['csharp', ['class Projet', 'public const int VIDE = -1', 'DeplierCases', 'namespace PixelForge',
+    'class Clip', 'public int ImageA(int ms)', 'OrdreDeLecture', 'aller-retour']],
+  ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
+    'static func image_a', 'static func ordre_de_lecture', 'aller-retour']],
+  ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
+    'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

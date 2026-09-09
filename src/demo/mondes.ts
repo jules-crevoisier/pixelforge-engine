@@ -49,6 +49,8 @@ export interface Monde {
   readonly depart: { x: number; y: number }
   /** Les couleurs des planches, pour la palette du projet. */
   readonly couleurs: string[]
+  /** Les clips d'animation, pour que l'export les emporte avec le reste. */
+  readonly animations: Clip[]
   /** Tuile posee par le pinceau quand le calque n'a pas de terrain. */
   readonly tuilePinceau: number
   /** Branche planches et scripts sur un jeu. */
@@ -144,7 +146,8 @@ function scriptDessus(
 export function mondeDonjon(): Monde {
   const d = construireDonjon()
   const projection = ORTHO_DESSUS(TUILE)
-  const lecteur = new Lecteur(clipsHeros())
+  const animations = clipsHeros()
+  const lecteur = new Lecteur(animations)
   let pas = 0
   return {
     id: 'donjon',
@@ -157,6 +160,7 @@ export function mondeDonjon(): Monde {
     heros: d.heros,
     depart: d.depart,
     couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS)],
+    animations,
     tuilePinceau: 0,
     installer(jeu) {
       jeu.cartes.set('salle', { carte: d.carte, atlas: atlasDepuisLettres(PLANCHE_DONJON, CLE_DONJON, TUILE, 8) })
@@ -280,7 +284,8 @@ export function mondeCaverne(): Monde {
 
   const controleur = new Plateformeur()
   const projection = ORTHO_COTE(TUILE)
-  const lecteur = new Lecteur(clipsHeros())
+  const animations = clipsHeros()
+  const lecteur = new Lecteur(animations)
   let dernier = controleur.diagnostic()
   let pas = 0
 
@@ -295,6 +300,7 @@ export function mondeCaverne(): Monde {
     heros,
     depart,
     couleurs: [...couleursDe(CLE_CAVERNE), ...couleursDe(CLE_HEROS)],
+    animations,
     tuilePinceau: TUILE_FOND,
     installer(jeu) {
       jeu.cartes.set('caverne', { carte, atlas: atlasDepuisLettres(PLANCHE_CAVERNE, CLE_CAVERNE, TUILE, 8) })
@@ -443,7 +449,8 @@ export function mondeCitadelle(): Monde {
   racine.enfants.push(heros)
 
   const projection = ISO(LARGEUR_ISO, HAUTEUR_DESSIN_ISO - HAUTEUR_ISO)
-  const lecteur = new Lecteur(clipsHeros())
+  const animations = clipsHeros()
+  const lecteur = new Lecteur(animations)
   let pas = 0
 
   return {
@@ -457,6 +464,7 @@ export function mondeCitadelle(): Monde {
     heros,
     depart,
     couleurs: [...couleursDe(CLE_ISO), ...couleursDe(CLE_HEROS)],
+    animations,
     tuilePinceau: ISO_MUR,
     installer(jeu) {
       jeu.cartes.set('citadelle', {

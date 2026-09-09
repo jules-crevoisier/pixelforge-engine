@@ -3,6 +3,7 @@ import { VIDE } from '../tuiles/tilemap.ts'
 import type { Noeud } from '../scene/noeud.ts'
 import type { Palette } from '../noyau/palette.ts'
 import { versHex } from '../noyau/palette.ts'
+import type { Clip } from '../runtime/animation.ts'
 
 /**
  * Le format de projet : ce que TOUS les langages liront.
@@ -28,8 +29,19 @@ import { versHex } from '../noyau/palette.ts'
  * illisible. On l'ecrit en nombres separes par des virgules, une ligne par
  * rangee de la carte. Le fichier est plus gros, il se relit, et un diff montre
  * la rangee qui a change au lieu d'un pate de caracteres.
+ *
+ * ## L'histoire des versions
+ *
+ * **2** — les animations. Elles auraient pu etre un champ optionnel, que les
+ * anciens chargeurs auraient ignore sans rien casser. On a quand meme monte la
+ * version : un chargeur ecrit dans un autre langage doit pouvoir DIRE qu'il ne
+ * comprend pas ce qu'on lui donne, et un champ silencieusement absent ne le
+ * lui permet pas. C'est la meme raison qui avait fait ecrire une version des
+ * le premier jour, quand il n'y avait rien a migrer.
+ *
+ * **1** — la premiere.
  */
-export const VERSION_FORMAT = 1
+export const VERSION_FORMAT = 2
 
 export interface ProjetSerialise {
   version: number
@@ -40,6 +52,41 @@ export interface ProjetSerialise {
   palette: { nom: string; couleurs: string[] }
   cartes: CarteSerialisee[]
   scenes: SceneSerialisee[]
+  /** Les clips d'animation du projet, partages par tous les sprites. */
+  animations: AnimationSerialisee[]
+}
+
+/**
+ * Un clip, tel qu'il traverse la frontiere des langages.
+ *
+ * Les durees sont en millisecondes — voir `runtime/animation.ts`. Les
+ * evenements designent le RANG de l'image dans le clip et non son index de
+ * planche : le meme dessin peut revenir deux fois dans un cycle, et poser
+ * l'evenement sur l'index le declencherait aux deux passages.
+ */
+export interface AnimationSerialisee {
+  nom: string
+  boucle: string
+  suite: string | null
+  images: { index: number; duree: number; decalageX: number; decalageY: number }[]
+  evenements: { image: number; nom: string }[]
+}
+
+export function serialiserAnimation(c: Clip): AnimationSerialisee {
+  return {
+    nom: c.nom,
+    boucle: c.boucle,
+    suite: c.suite,
+    images: c.images.map((i) => ({
+      index: i.index,
+      duree: i.duree,
+      // Rien d'implicite : un decalage absent serait un defaut cache dans le
+      // lecteur, et chaque port en choisirait un different.
+      decalageX: i.decalageX ?? 0,
+      decalageY: i.decalageY ?? 0,
+    })),
+    evenements: c.evenements.map((e) => ({ ...e })),
+  }
 }
 
 export interface CarteSerialisee {
@@ -122,6 +169,7 @@ export function serialiserCarte(nom: string, c: Carte): CarteSerialisee {
 export function serialiserProjet(
   nom: string, vue: { largeur: number; hauteur: number }, palette: Palette,
   cartes: { nom: string; carte: Carte }[], scenes: { nom: string; racine: Noeud }[],
+  animations: Clip[] = [],
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -130,6 +178,7 @@ export function serialiserProjet(
     palette: { nom: palette.nom, couleurs: palette.couleurs.map(versHex) },
     cartes: cartes.map((c) => serialiserCarte(c.nom, c.carte)),
     scenes: scenes.map((s) => ({ nom: s.nom, racine: serialiserNoeud(s.racine) })),
+    animations: animations.map(serialiserAnimation),
   }
 }
 

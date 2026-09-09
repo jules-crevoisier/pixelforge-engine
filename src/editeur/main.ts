@@ -221,6 +221,7 @@ document.getElementById('exporter')?.addEventListener('click', () => {
     monde.id, jeu.ecran.vue, palette,
     [{ nom: monde.id, carte: monde.carte }],
     [{ nom: 'principale', racine: monde.racine }],
+    monde.animations,
   )
   telecharger(`${monde.id}.json`, versTexte(p), 'application/json')
   const fichier = CIBLES.find((c) => c.id === cible)?.fichier ?? 'projet.txt'

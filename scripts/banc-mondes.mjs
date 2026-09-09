@@ -31,7 +31,7 @@ const { CLE_HEROS, PLANCHE_HEROS, TUILE } = await import('../src/demo/art.ts')
 const { mondeCaverne, mondeCitadelle, mondeDonjon, PLAN_CAVERNE, PLAN_CITADELLE, REGLAGES_DEFAUT } =
   await import('../src/demo/mondes.ts')
 const { Plateformeur } = await import('../src/runtime/plateforme.ts')
-const { Lecteur, clip, clipRegulier, ordreDeLecture, dureeDe } =
+const { Lecteur, clip, clipRegulier, ordreDeLecture, dureeDe, imageA } =
   await import('../src/runtime/animation.ts')
 
 console.log('\n--- le lecteur d\'animation ---')
@@ -118,6 +118,38 @@ console.log('\n--- le lecteur d\'animation ---')
     m.avancer(5000)
     check('sans suite, il tient sa derniere image',
       m.image === 30 && m.termine, `image ${m.image}, termine ${m.termine}`)
+  }
+
+  // Le lecteur a etat et la fonction pure doivent tomber d'accord, sinon le
+  // moteur et ses portages dans six langages divergent des la premiere image.
+  {
+    const cas = [
+      clipRegulier('boucle', [10, 11, 12, 13], 100),
+      clipRegulier('inegal', [4, 5, 6], 70, {}),
+      clip('inegal2', [{ index: 1, duree: 30 }, { index: 2, duree: 250 }, { index: 3, duree: 90 }]),
+      clipRegulier('va', [0, 1, 2, 3], 100, { boucle: 'aller-retour' }),
+      clip('seul', [{ index: 7, duree: 40 }, { index: 8, duree: 60 }], { boucle: 'unique' }),
+    ]
+    let ecarts = 0
+    let pire = ''
+    for (const c of cas) {
+      const l = new Lecteur([c])
+      l.jouer(c.nom)
+      let t = 0
+      // Le lecteur avance par petits pas, la fonction pure repond directement :
+      // c'est la comparaison qui a du sens, celle de deux chemins differents.
+      for (let i = 0; i < 400; i++) {
+        const attendu = imageA(c, t)
+        if (l.image !== attendu) {
+          ecarts++
+          pire ||= `${c.nom} a ${t} ms : lecteur ${l.image}, imageA ${attendu}`
+        }
+        l.avancer(7)
+        t += 7
+      }
+    }
+    check('le lecteur et la fonction pure rendent la meme image',
+      ecarts === 0, ecarts ? `${ecarts} ecarts, ex. ${pire}` : '2000 instants sur cinq clips')
   }
 
   // Un pas de temps enorme — un onglet revenu au premier plan — ne doit pas

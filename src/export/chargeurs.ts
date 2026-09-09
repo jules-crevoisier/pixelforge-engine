@@ -90,6 +90,29 @@ export interface Noeud {
   enfants: Noeud[]
 }
 
+export interface ImageAnim {
+  index: number
+  duree: number
+  decalageX: number
+  decalageY: number
+}
+
+export interface EvenementAnim {
+  /** Rang de l'image dans le clip, et non index de planche : un meme dessin
+   *  peut revenir deux fois dans un cycle. */
+  image: number
+  nom: string
+}
+
+export interface Clip {
+  nom: string
+  /** 'boucle', 'unique' ou 'aller-retour'. */
+  boucle: string
+  suite: string | null
+  images: ImageAnim[]
+  evenements: EvenementAnim[]
+}
+
 export interface Projet {
   version: number
   nom: string
@@ -97,6 +120,7 @@ export interface Projet {
   palette: { nom: string; couleurs: string[] }
   cartes: Carte[]
   scenes: { nom: string; racine: Noeud }[]
+  animations: Clip[]
 }
 
 /** Une case vide. Zero est une vraie tuile : ne pas les confondre. */
@@ -122,6 +146,55 @@ export function deplierSolides(c: Carte): Uint8Array {
     for (let x = 0; x < ligne.length; x++) out[y * c.largeur + x] = ligne[x] === '1' ? 1 : 0
   })
   return out
+}
+
+/**
+ * L'ordre de lecture d'un clip.
+ *
+ * L'aller-retour ne repete PAS ses extremites : quatre dessins donnent
+ * 1 2 3 4 3 2, six pas et non huit. Les repeter ferait tenir la premiere et la
+ * derniere pose deux fois plus longtemps que les autres.
+ */
+export function ordreDeLecture(c: Clip): number[] {
+  const n = c.images.length
+  const ordre = c.images.map((_, i) => i)
+  if (c.boucle !== 'aller-retour' || n <= 2) return ordre
+  for (let i = n - 2; i >= 1; i--) ordre.push(i)
+  return ordre
+}
+
+/** Duree d'un tour de clip, en millisecondes. */
+export function dureeDeClip(c: Clip): number {
+  return ordreDeLecture(c).reduce((s, i) => s + Math.max(1, c.images[i].duree), 0)
+}
+
+/**
+ * L'image de planche a dessiner apres ms millisecondes.
+ *
+ * Sans etat : c'est ce qui permet a ce portage de rendre exactement la meme
+ * image que le moteur, et au banc de le verifier d'un langage a l'autre.
+ */
+export function imageA(c: Clip, ms: number): number {
+  const ordre = ordreDeLecture(c)
+  if (ordre.length === 0) return VIDE
+  const dernier = c.images[ordre[ordre.length - 1]].index
+  const total = dureeDeClip(c)
+  let t = ms < 0 ? 0 : ms
+  if (c.boucle === 'unique') {
+    if (t >= total) return dernier
+  } else {
+    t %= total
+  }
+  for (const rang of ordre) {
+    const d = Math.max(1, c.images[rang].duree)
+    if (t < d) return c.images[rang].index
+    t -= d
+  }
+  return dernier
+}
+
+export function clipNomme(p: Projet, nom: string): Clip | null {
+  return p.animations.find((a) => a.nom === nom) ?? null
 }
 `
 }
@@ -220,6 +293,77 @@ namespace PixelForge
     }
 
     [Serializable]
+    public class ImageAnim
+    {
+        public int index;
+        /// <summary>Duree d'affichage, en millisecondes.</summary>
+        public int duree;
+        public int decalageX;
+        public int decalageY;
+    }
+
+    [Serializable]
+    public class EvenementAnim
+    {
+        /// <summary>Rang de l'image dans le clip, et non index de planche.</summary>
+        public int image;
+        public string nom;
+    }
+
+    [Serializable]
+    public class Clip
+    {
+        public string nom;
+        /// <summary>"boucle", "unique" ou "aller-retour".</summary>
+        public string boucle;
+        public string suite;
+        public List<ImageAnim> images;
+        public List<EvenementAnim> evenements;
+
+        /// <summary>L'aller-retour ne repete pas ses extremites : 0 1 2 3 2 1.</summary>
+        public List<int> OrdreDeLecture()
+        {
+            var ordre = new List<int>();
+            for (int i = 0; i < images.Count; i++) ordre.Add(i);
+            if (boucle != "aller-retour" || images.Count <= 2) return ordre;
+            for (int i = images.Count - 2; i >= 1; i--) ordre.Add(i);
+            return ordre;
+        }
+
+        public int Duree()
+        {
+            int total = 0;
+            foreach (var i in OrdreDeLecture()) total += Math.Max(1, images[i].duree);
+            return total;
+        }
+
+        /// <summary>L'image de planche apres ms millisecondes. Sans etat.</summary>
+        public int ImageA(int ms)
+        {
+            var ordre = OrdreDeLecture();
+            if (ordre.Count == 0) return Projet.VIDE;
+            int dernier = images[ordre[ordre.Count - 1]].index;
+            int total = Duree();
+            int t = Math.Max(0, ms);
+            if (boucle == "unique")
+            {
+                if (t >= total) return dernier;
+            }
+            else
+            {
+                t %= total;
+            }
+            foreach (var rang in ordre)
+            {
+                int d = Math.Max(1, images[rang].duree);
+                if (t < d) return images[rang].index;
+                t -= d;
+            }
+            return dernier;
+        }
+    }
+
+    [Serializable]
     public class Projet
     {
         public int version;
@@ -228,9 +372,17 @@ namespace PixelForge
         public Palette palette;
         public List<Carte> cartes;
         public List<Scene> scenes;
+        public List<Clip> animations;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
+
+        public Clip Clip(string nomClip)
+        {
+            if (animations == null) return null;
+            foreach (var a in animations) if (a.nom == nomClip) return a;
+            return null;
+        }
     }
 }
 `
@@ -249,6 +401,7 @@ var vue: Dictionary = {}
 var palette: Dictionary = {}
 var cartes: Array = []
 var scenes: Array = []
+var animations: Array = []
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -266,7 +419,15 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.palette = brut.get("palette", {})
 	p.cartes = brut.get("cartes", [])
 	p.scenes = brut.get("scenes", [])
+	p.animations = brut.get("animations", [])
 	return p
+
+## Le clip portant ce nom, ou un dictionnaire vide.
+func clip(nom_clip: String) -> Dictionary:
+	for a in animations:
+		if a.get("nom", "") == nom_clip:
+			return a
+	return {}
 
 ## Deplie un calque en PackedInt32Array, indexe par y * largeur + x.
 static func deplier_cases(carte: Dictionary, calque: Dictionary) -> PackedInt32Array:
@@ -294,6 +455,50 @@ static func est_solide(carte: Dictionary, cx: int, cy: int) -> bool:
 		return true
 	var ligne: String = lignes[cy]
 	return cx < ligne.length() and ligne[cx] == "1"
+
+## L'ordre de lecture d'un clip.
+## L'aller-retour ne repete PAS ses extremites : 0 1 2 3 2 1, six pas et non
+## huit. Les repeter ferait tenir les deux bouts deux fois plus longtemps.
+static func ordre_de_lecture(clip: Dictionary) -> Array:
+	var images: Array = clip.get("images", [])
+	var n := images.size()
+	var ordre := []
+	for i in range(n):
+		ordre.append(i)
+	if clip.get("boucle", "boucle") != "aller-retour" or n <= 2:
+		return ordre
+	for i in range(n - 2, 0, -1):
+		ordre.append(i)
+	return ordre
+
+## Duree d'un tour de clip, en millisecondes.
+static func duree_de_clip(clip: Dictionary) -> int:
+	var images: Array = clip.get("images", [])
+	var total := 0
+	for i in ordre_de_lecture(clip):
+		total += max(1, int(images[i].get("duree", 1)))
+	return total
+
+## L'image de planche apres ms millisecondes. Sans etat.
+static func image_a(clip: Dictionary, ms: int) -> int:
+	var images: Array = clip.get("images", [])
+	var ordre := ordre_de_lecture(clip)
+	if ordre.is_empty():
+		return VIDE
+	var dernier := int(images[ordre[ordre.size() - 1]].get("index", VIDE))
+	var total := duree_de_clip(clip)
+	var t: int = max(0, ms)
+	if clip.get("boucle", "boucle") == "unique":
+		if t >= total:
+			return dernier
+	else:
+		t = t % total
+	for rang in ordre:
+		var d: int = max(1, int(images[rang].get("duree", 1)))
+		if t < d:
+			return int(images[rang].get("index", VIDE))
+		t -= d
+	return dernier
 `
 }
 
@@ -303,7 +508,12 @@ function chargeurRust(): string {
 /// Une case vide. Zero est une vraie tuile : ne pas les confondre.
 pub const VIDE: i32 = -1;
 
+// Le renommage n'est pas une coquetterie : le format ecrit tuileDepart en
+// camel, et Rust nomme ses champs en serpent. Sans lui, serde cherche un champ
+// tuile_depart qui n'existe nulle part dans le fichier, et le chargement
+// echoue a la premiere carte qui porte un terrain.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Terrain {
     pub tuile_depart: i32,
     pub jeu: String,
@@ -392,6 +602,81 @@ pub struct Palette {
     pub couleurs: Vec<String>,
 }
 
+/// Une image d'un clip. La duree est en millisecondes.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageAnim {
+    pub index: i32,
+    pub duree: i64,
+    pub decalage_x: i32,
+    pub decalage_y: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EvenementAnim {
+    /// Rang de l'image dans le clip, et non index de planche.
+    pub image: usize,
+    pub nom: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Clip {
+    pub nom: String,
+    /// "boucle", "unique" ou "aller-retour".
+    pub boucle: String,
+    pub suite: Option<String>,
+    pub images: Vec<ImageAnim>,
+    pub evenements: Vec<EvenementAnim>,
+}
+
+impl Clip {
+    /// L'aller-retour ne repete pas ses extremites : 0 1 2 3 2 1.
+    pub fn ordre_de_lecture(&self) -> Vec<usize> {
+        let n = self.images.len();
+        let mut ordre: Vec<usize> = (0..n).collect();
+        if self.boucle != "aller-retour" || n <= 2 {
+            return ordre;
+        }
+        for i in (1..n - 1).rev() {
+            ordre.push(i);
+        }
+        ordre
+    }
+
+    pub fn duree(&self) -> i64 {
+        self.ordre_de_lecture()
+            .iter()
+            .map(|i| self.images[*i].duree.max(1))
+            .sum()
+    }
+
+    /// L'image de planche apres ms millisecondes. Sans etat.
+    pub fn image_a(&self, ms: i64) -> i32 {
+        let ordre = self.ordre_de_lecture();
+        if ordre.is_empty() {
+            return VIDE;
+        }
+        let dernier = self.images[ordre[ordre.len() - 1]].index;
+        let total = self.duree();
+        let mut t = ms.max(0);
+        if self.boucle == "unique" {
+            if t >= total {
+                return dernier;
+            }
+        } else {
+            t %= total;
+        }
+        for rang in ordre {
+            let d = self.images[rang].duree.max(1);
+            if t < d {
+                return self.images[rang].index;
+            }
+            t -= d;
+        }
+        dernier
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Projet {
     pub version: i32,
@@ -400,11 +685,16 @@ pub struct Projet {
     pub palette: Palette,
     pub cartes: Vec<Carte>,
     pub scenes: Vec<Scene>,
+    pub animations: Vec<Clip>,
 }
 
 impl Projet {
     pub fn charger(texte: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(texte)
+    }
+
+    pub fn clip(&self, nom: &str) -> Option<&Clip> {
+        self.animations.iter().find(|c| c.nom == nom)
     }
 }
 `
@@ -431,6 +721,7 @@ function Projet.depuis(donnees)
   self.palette = donnees.palette or { nom = "", couleurs = {} }
   self.cartes = donnees.cartes or {}
   self.scenes = donnees.scenes or {}
+  self.animations = donnees.animations or {}
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -461,6 +752,60 @@ function Projet.est_solide(carte, cx, cy)
   local ligne = (carte.solides or {})[cy + 1]
   if not ligne then return true end
   return ligne:sub(cx + 1, cx + 1) == "1"
+end
+
+-- Le clip portant ce nom, ou nil.
+function Projet:clip(nom)
+  for _, a in ipairs(self.animations or {}) do
+    if a.nom == nom then return a end
+  end
+  return nil
+end
+
+-- L'ordre de lecture. Les rangs sont des index de tableau Lua, donc a partir
+-- de 1 : c'est la seule difference avec les autres portages, et c'est celle
+-- qu'on oublie.
+-- L'aller-retour ne repete pas ses extremites : 1 2 3 4 3 2, six pas et non
+-- huit. Les repeter ferait tenir les deux bouts deux fois plus longtemps.
+function Projet.ordre_de_lecture(clip)
+  local images = clip.images or {}
+  local n = #images
+  local ordre = {}
+  for i = 1, n do ordre[#ordre + 1] = i end
+  if (clip.boucle or "boucle") ~= "aller-retour" or n <= 2 then return ordre end
+  for i = n - 1, 2, -1 do ordre[#ordre + 1] = i end
+  return ordre
+end
+
+-- Duree d'un tour de clip, en millisecondes.
+function Projet.duree_de_clip(clip)
+  local images = clip.images or {}
+  local total = 0
+  for _, i in ipairs(Projet.ordre_de_lecture(clip)) do
+    total = total + math.max(1, images[i].duree or 1)
+  end
+  return total
+end
+
+-- L'image de planche apres ms millisecondes. Sans etat.
+function Projet.image_a(clip, ms)
+  local images = clip.images or {}
+  local ordre = Projet.ordre_de_lecture(clip)
+  if #ordre == 0 then return Projet.VIDE end
+  local dernier = images[ordre[#ordre]].index
+  local total = Projet.duree_de_clip(clip)
+  local t = math.max(0, ms)
+  if (clip.boucle or "boucle") == "unique" then
+    if t >= total then return dernier end
+  else
+    t = t % total
+  end
+  for _, rang in ipairs(ordre) do
+    local d = math.max(1, images[rang].duree or 1)
+    if t < d then return images[rang].index end
+    t = t - d
+  end
+  return dernier
 end
 
 return Projet
@@ -547,6 +892,56 @@ def _noeud(d: dict[str, Any]) -> Noeud:
 
 
 @dataclass
+class ImageAnim:
+    index: int
+    duree: int
+    decalageX: int = 0
+    decalageY: int = 0
+
+
+@dataclass
+class Clip:
+    """Un clip d'animation. Les durees sont en millisecondes."""
+
+    nom: str
+    boucle: str = "boucle"
+    suite: str | None = None
+    images: list[ImageAnim] = field(default_factory=list)
+    evenements: list[dict[str, Any]] = field(default_factory=list)
+
+    def ordre_de_lecture(self) -> list[int]:
+        """L'aller-retour ne repete pas ses extremites : 0 1 2 3 2 1."""
+        n = len(self.images)
+        ordre = list(range(n))
+        if self.boucle != "aller-retour" or n <= 2:
+            return ordre
+        return ordre + list(range(n - 2, 0, -1))
+
+    def duree(self) -> int:
+        return sum(max(1, self.images[i].duree) for i in self.ordre_de_lecture())
+
+    def image_a(self, ms: int) -> int:
+        """L'image de planche apres ms millisecondes. Sans etat."""
+        ordre = self.ordre_de_lecture()
+        if not ordre:
+            return VIDE
+        dernier = self.images[ordre[-1]].index
+        total = self.duree()
+        t = max(0, ms)
+        if self.boucle == "unique":
+            if t >= total:
+                return dernier
+        else:
+            t %= total
+        for rang in ordre:
+            d = max(1, self.images[rang].duree)
+            if t < d:
+                return self.images[rang].index
+            t -= d
+        return dernier
+
+
+@dataclass
 class Projet:
     version: int
     nom: str
@@ -554,6 +949,13 @@ class Projet:
     palette: dict[str, Any]
     cartes: list[Carte] = field(default_factory=list)
     scenes: list[dict[str, Any]] = field(default_factory=list)
+    animations: list[Clip] = field(default_factory=list)
+
+    def clip(self, nom: str) -> Clip | None:
+        for a in self.animations:
+            if a.nom == nom:
+                return a
+        return None
 
     @staticmethod
     def charger(chemin: str) -> "Projet":
@@ -576,9 +978,17 @@ class Projet:
             for c in d.get("cartes", [])
         ]
         scenes = [{"nom": s["nom"], "racine": _noeud(s["racine"])} for s in d.get("scenes", [])]
+        animations = [
+            Clip(
+                nom=a["nom"], boucle=a["boucle"], suite=a.get("suite"),
+                images=[ImageAnim(**i) for i in a.get("images", [])],
+                evenements=a.get("evenements", []),
+            )
+            for a in d.get("animations", [])
+        ]
         return Projet(
             version=d["version"], nom=d["nom"], vue=d["vue"], palette=d["palette"],
-            cartes=cartes, scenes=scenes,
+            cartes=cartes, scenes=scenes, animations=animations,
         )
 `
 }
