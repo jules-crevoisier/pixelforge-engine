@@ -31,6 +31,140 @@ const { CLE_HEROS, PLANCHE_HEROS, TUILE } = await import('../src/demo/art.ts')
 const { mondeCaverne, mondeCitadelle, mondeDonjon, PLAN_CAVERNE, PLAN_CITADELLE, REGLAGES_DEFAUT } =
   await import('../src/demo/mondes.ts')
 const { Plateformeur } = await import('../src/runtime/plateforme.ts')
+const { Lecteur, clip, clipRegulier, ordreDeLecture, dureeDe } =
+  await import('../src/runtime/animation.ts')
+
+console.log('\n--- le lecteur d\'animation ---')
+
+{
+  const marche = clipRegulier('marche', [10, 11, 12, 13], 100, {
+    evenements: [{ image: 0, nom: 'pas' }, { image: 2, nom: 'pas' }],
+  })
+  const repos = clipRegulier('repos', [9], 1000)
+
+  // Le defaut le plus courant des premiers jeux faits a la main : le script
+  // tourne a chaque pas et redemande « marche », l'animation repart de son
+  // premier dessin soixante fois par seconde, et le personnage ne bouge jamais.
+  {
+    const l = new Lecteur([marche, repos])
+    const vus = new Set()
+    for (let i = 0; i < 60; i++) { l.jouer('marche'); l.avancer(1000 / 60); vus.add(l.image) }
+    check('redemander le clip en cours ne le recommence pas',
+      vus.size === 4, `${vus.size} dessins vus en une seconde — il en fallait 4`)
+
+    const naif = new Lecteur([marche, repos])
+    const vusNaif = new Set()
+    for (let i = 0; i < 60; i++) { naif.jouer('marche', true); naif.avancer(1000 / 60); vusNaif.add(naif.image) }
+    check('et le forcer, lui, fige bien l\'animation',
+      vusNaif.size === 1, `${vusNaif.size} dessin — c'est le defaut que la regle evite`)
+  }
+
+  // Une image de jeu longue ne doit pas AVALER les evenements traverses.
+  {
+    const l = new Lecteur([marche])
+    l.jouer('marche')
+    const gros = l.avancer(400)
+    let fin = 0
+    const petit = new Lecteur([marche])
+    petit.jouer('marche')
+    for (let i = 0; i < 400; i++) fin += petit.avancer(1).filter((e) => e === 'pas').length
+    check('un pas de temps long ne perd aucun evenement',
+      gros.filter((e) => e === 'pas').length === fin,
+      `${gros.filter((e) => e === 'pas').length} en un bond, ${fin} en quatre cents petits`)
+
+    // Le sens inverse, avec un vrai lecteur naif : il calcule le dessin ou il
+    // ATTERRIT et ne releve que celui-la. C'est la version qu'on ecrit
+    // spontanement, et celle qui avale le bruit de pas quand la machine rame.
+    const naif = (dtMs) => {
+      const n = marche.images.length
+      const duree = marche.images[0].duree
+      const avant = 0
+      const apres = Math.floor((avant + dtMs) / duree) % n
+      return marche.evenements.filter((e) => e.image === apres).map((e) => e.nom)
+    }
+    check('un lecteur qui saute au bon dessin, lui, en perd',
+      naif(400).length < fin,
+      `${naif(400).length} evenement au lieu de ${fin} sur un seul a-coup de 400 ms`)
+  }
+
+  // L'aller-retour ne repete pas ses extremites.
+  {
+    const va = clipRegulier('va', [0, 1, 2, 3], 100, { boucle: 'aller-retour' })
+    const ordre = ordreDeLecture(va)
+    check('l\'aller-retour ne repete pas ses extremites',
+      ordre.length === 6 && ordre.join(',') === '0,1,2,3,2,1',
+      `${ordre.join(',')} — les repeter ferait tenir les deux bouts deux fois plus longtemps`)
+    check('et sa duree suit', dureeDe(va) === 600, `${dureeDe(va)} ms`)
+    check('un clip a deux images n\'a rien a inverser',
+      ordreDeLecture(clipRegulier('deux', [0, 1], 100, { boucle: 'aller-retour' })).length === 2)
+  }
+
+  // Un clip unique s'arrete, previent, et enchaine s'il a une suite.
+  {
+    const attaque = clip('attaque', [{ index: 20, duree: 80 }, { index: 21, duree: 80 }],
+      { boucle: 'unique', suite: 'repos', evenements: [{ image: 1, nom: 'coup' }] })
+    const l = new Lecteur([attaque, repos])
+    l.jouer('attaque')
+    const e1 = l.avancer(80)
+    check('un clip unique declenche ses evenements en route', e1.includes('coup'), e1.join(','))
+    const e2 = l.avancer(80)
+    check('puis il annonce sa fin et enchaine sur sa suite',
+      e2.includes('fin') && l.nom === 'repos', `${e2.join(',')} puis ${l.nom}`)
+
+    // Sans suite, il tient sa derniere image au lieu de disparaitre.
+    const seul = clip('seul', [{ index: 30, duree: 50 }], { boucle: 'unique' })
+    const m = new Lecteur([seul])
+    m.jouer('seul')
+    m.avancer(5000)
+    check('sans suite, il tient sa derniere image',
+      m.image === 30 && m.termine, `image ${m.image}, termine ${m.termine}`)
+  }
+
+  // Un pas de temps enorme — un onglet revenu au premier plan — ne doit pas
+  // faire tourner la boucle des milliers de fois.
+  {
+    const l = new Lecteur([marche])
+    l.jouer('marche')
+    const debut = process.hrtime.bigint()
+    l.avancer(3600 * 1000)
+    const ms = Number(process.hrtime.bigint() - debut) / 1e6
+    check('une heure d\'un coup ne fait pas tourner la boucle une heure',
+      ms < 20, `${ms.toFixed(2)} ms — le garde-fou plafonne a deux tours de clip`)
+  }
+}
+
+console.log('\n--- le cycle de marche du heros ---')
+
+{
+  const { PLANCHE_HEROS, TEMPS_PAR_DIRECTION, TEMPS_MARCHE, TEMPS_REPOS, imageHeros,
+          DIR_BAS, DIR_DROITE, DIR_HAUT } = await import('../src/demo/art.ts')
+  check('la planche porte les quatre directions et leurs cinq temps',
+    PLANCHE_HEROS.length === 4 * TEMPS_PAR_DIRECTION, `${PLANCHE_HEROS.length} dessins`)
+
+  // Les quatre temps doivent etre DIFFERENTS. Un cycle dont deux images sont
+  // identiques saccade, et une planche mal indexee ne se voit pas autrement.
+  for (const [nom, dir] of [['bas', DIR_BAS], ['cote', DIR_DROITE], ['haut', DIR_HAUT]]) {
+    const temps = TEMPS_MARCHE.map((t) => PLANCHE_HEROS[imageHeros(dir, t)].join('\n'))
+    const distincts = new Set(temps).size
+    check(`${nom} : contact et passage ne se ressemblent pas`,
+      distincts >= 2 && temps[1] !== temps[3],
+      `${distincts} poses distinctes sur 4, et les deux passages levent bien un pied different`)
+  }
+
+  // Le repos n'est aucun des quatre temps.
+  const repos = PLANCHE_HEROS[imageHeros(DIR_BAS, TEMPS_REPOS)].join('\n')
+  check('le repos n\'est aucune des poses de marche',
+    TEMPS_MARCHE.every((t) => PLANCHE_HEROS[imageHeros(DIR_BAS, t)].join('\n') !== repos),
+    'un personnage arrete les jambes en ciseaux a l\'air d\'attendre qu\'on lui rende la main')
+
+  // Et le cycle garde les pieds au sol : aucune pose ne doit flotter de plus
+  // d'un pixel au-dessus de la ligne de contact.
+  const basDe = (d) => { for (let y = d.length - 1; y >= 0; y--) if (/[^.]/.test(d[y])) return y; return -1 }
+  const lignes = TEMPS_MARCHE.map((t) => basDe(PLANCHE_HEROS[imageHeros(DIR_DROITE, t)]))
+  check('aucune pose du cycle ne decolle du sol',
+    Math.max(...lignes) - Math.min(...lignes) <= 1,
+    `rangees basses ${lignes.join(', ')} — un pied leve d'un pixel, pas d'un saut`)
+}
 
 console.log('\n--- les planches : aucune lettre muette ---')
 

@@ -206,9 +206,134 @@ const HEROS_COTE = [
   '...oBBBo........',
 ]
 
-export const PLANCHE_HEROS: string[][] = [HEROS_BAS, HEROS_COTE, HEROS_HAUT, HEROS_COTE]
+/* ------------------------------------------------------------------ */
+/* Le cycle de marche, calcule depuis la pose de repos                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les quatre temps d'un pas, obtenus en travaillant les deux dernieres
+ * rangees de la pose de repos.
+ *
+ * ## Pourquoi le calculer plutot que le dessiner
+ *
+ * Un artiste dessinera les quatre poses, et il aura raison : un vrai cycle de
+ * marche demande un balancement des bras, une inclinaison du buste, un
+ * ecrasement a la reception. Ce qu'on veut prouver ici est autre chose — que
+ * le lecteur d'animation, les evenements et la planche se tiennent. Un cycle
+ * calcule le prouve MIEUX qu'un cycle dessine : si la planche se decale d'une
+ * case, la marche se disloque a l'ecran au lieu de passer inapercue derriere
+ * seize dessins qui se ressemblent.
+ *
+ * Le cycle est contact / passage / contact / passage, le squelette de tous les
+ * cycles de marche. Les deux passages ne sont pas identiques : c'est l'autre
+ * pied qui se leve, sans quoi le personnage sautille au lieu de marcher.
+ */
+type Grille = string[][]
+
+const enGrille = (d: string[]): Grille => d.map((l) => l.split(''))
+const enDessin = (g: Grille): string[] => g.map((l) => l.join(''))
+
+/** Les colonnes occupees par les jambes, sur les deux dernieres rangees. */
+function empriseJambes(g: Grille): { c0: number; c1: number } {
+  let c0 = g[0].length
+  let c1 = -1
+  for (const y of [g.length - 2, g.length - 1]) {
+    for (let x = 0; x < g[y].length; x++) {
+      if (g[y][x] === '.') continue
+      if (x < c0) c0 = x
+      if (x > c1) c1 = x
+    }
+  }
+  return { c0, c1 }
+}
+
+/** Ecarte les jambes d'un pixel de chaque cote : le temps du contact. */
+function ecarterJambes(g: Grille): Grille {
+  const { c0, c1 } = empriseJambes(g)
+  if (c1 < c0) return g
+  const milieu = Math.floor((c0 + c1) / 2)
+  const r = g.map((l) => [...l])
+  for (const y of [g.length - 2, g.length - 1]) {
+    for (let x = 0; x < g[y].length; x++) r[y][x] = '.'
+    for (let x = c0; x <= c1; x++) {
+      if (g[y][x] === '.') continue
+      const nx = x <= milieu ? x - 1 : x + 1
+      if (nx >= 0 && nx < g[y].length) r[y][nx] = g[y][x]
+    }
+  }
+  return r
+}
+
+/**
+ * Leve un pied d'un pixel : le temps du passage.
+ *
+ * Le pied ne disparait pas, il remonte — la botte prend la place de la
+ * cheville. Effacer la rangee du bas ferait boiter le personnage.
+ */
+function leverPied(g: Grille, cote: 'gauche' | 'droite'): Grille {
+  const { c0, c1 } = empriseJambes(g)
+  if (c1 < c0) return g
+  const milieu = Math.floor((c0 + c1) / 2)
+  const r = g.map((l) => [...l])
+  const bas = g.length - 1
+  for (let x = c0; x <= c1; x++) {
+    const aGauche = x <= milieu
+    if (aGauche !== (cote === 'gauche')) continue
+    r[bas - 1][x] = g[bas][x]
+    r[bas][x] = '.'
+  }
+  return r
+}
+
+/**
+ * Le repos, puis les quatre temps du cycle.
+ *
+ * Le repos est la pose d'origine, pieds joints et poses. Ce n'est aucun des
+ * quatre temps : le contact a les jambes en ciseaux et le passage a un pied en
+ * l'air. Prendre l'un des deux comme pose d'arret donnerait un personnage qui
+ * a toujours l'air de vouloir repartir.
+ */
+function cycleDeMarche(dessin: string[]): string[][] {
+  const base = enGrille(dessin)
+  return [
+    dessin,
+    enDessin(ecarterJambes(base)),
+    enDessin(leverPied(base, 'droite')),
+    enDessin(ecarterJambes(base)),
+    enDessin(leverPied(base, 'gauche')),
+  ]
+}
+
+/**
+ * La planche du heros : quatre directions, quatre temps chacune.
+ *
+ * L'index d'une image est `direction * 5 + temps`, et la planche a cinq
+ * colonnes — une direction par rangee. Ranger autrement marcherait aussi, mais
+ * une rangee par direction se lit d'un coup d'oeil quand on ouvre la planche,
+ * et une planche qu'on ne sait pas lire est une planche ou l'on met des mois a
+ * voir qu'une image est a l'envers.
+ */
+export const PLANCHE_HEROS: string[][] = [
+  ...cycleDeMarche(HEROS_BAS),
+  ...cycleDeMarche(HEROS_COTE),
+  ...cycleDeMarche(HEROS_HAUT),
+  ...cycleDeMarche(HEROS_COTE),
+]
+
+/** Le repos plus les quatre temps du cycle. */
+export const TEMPS_PAR_DIRECTION = 5
+/** Colonnes de la planche : une direction par rangee. */
+export const COLONNES_HEROS = TEMPS_PAR_DIRECTION
 
 export const DIR_BAS = 0
 export const DIR_DROITE = 1
 export const DIR_HAUT = 2
 export const DIR_GAUCHE = 3
+
+/** L'image de planche pour une direction et un temps du cycle. */
+export const imageHeros = (direction: number, temps = 0): number =>
+  direction * TEMPS_PAR_DIRECTION + temps
+
+export const TEMPS_REPOS = 0
+/** Les temps du cycle de marche, dans l'ordre : contact, passage, contact, passage. */
+export const TEMPS_MARCHE = [1, 2, 3, 4]
