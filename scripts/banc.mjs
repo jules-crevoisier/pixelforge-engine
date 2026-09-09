@@ -258,6 +258,91 @@ console.log('\n--- les entrees ---')
   check('une memoire nulle ignore le passe', !e.vientDePresser('action', -1))
 }
 
+console.log('\n--- la carte de tuiles ---')
+
+{
+  const { Carte, VIDE } = await import('../src/tuiles/tilemap.ts')
+  const c = new Carte(8, 6, 16)
+  const mur = c.ajouterCalque('mur', {
+    terrain: { tuileDepart: 0, jeu: 'blob47', dehorsEstPlein: false },
+  })
+
+  check('un calque neuf est entierement vide',
+    [...mur.cases].every((v) => v === VIDE), 'VIDE et non zero, qui est une vraie tuile')
+
+  c.peindreTerrain(mur, 3, 3, true)
+  check('poser du terrain pose une tuile', mur.cases[c.index(3, 3)] !== VIDE,
+    `tuile ${mur.cases[c.index(3, 3)]}`)
+
+  // Le voisinage se recalcule : c'est tout l'interet de l'autotiling.
+  c.peindreTerrain(mur, 4, 3, true)
+  const gauche = mur.cases[c.index(3, 3)]
+  const droite2 = mur.cases[c.index(4, 3)]
+  check('poser une tuile voisine change le dessin de la premiere',
+    gauche !== droite2 && gauche !== 0,
+    `${gauche} et ${droite2} — sans cela l'autotiling ne servirait a rien`)
+
+  // Le rayon : on ne recalcule QUE les neuf cases autour, pas la carte.
+  const loin = mur.cases[c.index(0, 0)]
+  check('une case eloignee n\'est pas touchee', loin === VIDE,
+    'recalculer toute la carte a chaque coup de pinceau la rendrait poisseuse')
+
+  // Retirer remet du vide, et met a jour les voisins.
+  c.peindreTerrain(mur, 4, 3, false)
+  check('retirer du terrain remet du vide', mur.cases[c.index(4, 3)] === VIDE)
+  check('et rend a la premiere son dessin d\'origine',
+    mur.cases[c.index(3, 3)] === 0, `tuile ${mur.cases[c.index(3, 3)]}`)
+
+  // La collision est SA propre grille : dessiner ne rend pas solide.
+  check('dessiner une tuile ne la rend pas solide par magie',
+    !c.solide(3, 3), 'un tapis se dessine sans bloquer')
+  c.solides[c.index(3, 3)] = 1
+  check('la collision se declare a part', c.solide(3, 3))
+  check('le dehors de la carte est solide', c.solide(-1, 0) && c.solide(8, 0))
+}
+
+console.log('\n--- la palette verrouillee ---')
+
+{
+  const { Palette, verifierPalette, rvb, distance, depuisHex, versHex } =
+    await import('../src/noyau/palette.ts')
+
+  check('un aller-retour hexadecimal ne perd rien',
+    versHex(depuisHex('#1a2b3c')) === '#1a2b3c')
+
+  const pal = new Palette('test', [rvb(0, 0, 0), rvb(255, 255, 255), rvb(90, 52, 24)])
+
+  // Une image conforme : la regle doit se taire.
+  const propre = new Uint8ClampedArray([
+    0, 0, 0, 255, 255, 255, 255, 255, 90, 52, 24, 255, 0, 0, 0, 0,
+  ])
+  const v1 = verifierPalette(propre, pal)
+  check('une image dans la palette ne declenche rien',
+    v1.conforme && v1.part === 0, `${v1.fautives.length} fautive(s)`)
+
+  // Le vide ne compte pas : sinon tout sprite avec du vide autour echouerait.
+  check('les pixels transparents sont ignores', v1.part === 0,
+    'sinon tout sprite detoure echouerait')
+
+  // Une image fautive : la regle doit parler, et nommer le coupable.
+  const sale = new Uint8ClampedArray([
+    0, 0, 0, 255, 91, 53, 25, 255, 91, 53, 25, 255, 200, 10, 10, 255,
+  ])
+  const v2 = verifierPalette(sale, pal)
+  check('une couleur hors palette est signalee', !v2.conforme, `${v2.fautives.length} fautives`)
+  check('avec son effectif, et la plus employee en tete',
+    v2.fautives[0].pixels === 2, `${v2.fautives[0].pixels} pixels`)
+  check('et la couleur de palette la plus proche, pour decider vite',
+    v2.fautives[0].proche === rvb(90, 52, 24) && v2.fautives[0].ecart === 3,
+    `ecart ${v2.fautives[0].ecart}`)
+  check('la part hors palette est comptee sur les pixels opaques',
+    Math.abs(v2.part - 0.75) < 1e-9, `${(v2.part * 100).toFixed(0)}%`)
+
+  // La mesure est celle de l'editeur de sprites : deux outils, un chiffre.
+  check('la distance est la somme des ecarts de canaux',
+    distance(rvb(0, 0, 0), rvb(1, 2, 3)) === 6)
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)
