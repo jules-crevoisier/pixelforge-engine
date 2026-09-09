@@ -397,6 +397,88 @@ console.log('\n--- le format de projet ---')
     texte.includes('\n  "version"') && texte.endsWith('\n'), `${texte.length} octets`)
 }
 
+console.log('\n--- les projections ---')
+
+{
+  const {
+    ORTHO_DESSUS, ORTHO_COTE, ISO, ISO_DECALEE, HEXA,
+    caseVersMonde, mondeVersCase, profondeur, contourDeCase, tailleMonde,
+  } = await import('../src/noyau/projection.ts')
+
+  const modes = [
+    ['orthogonale', ORTHO_DESSUS(16)],
+    ['isometrique', ISO(32, 16)],
+    ['iso-decalee', ISO_DECALEE(32, 16)],
+    ['hexagonale', HEXA(32, 28)],
+  ]
+
+  // L'aller-retour : c'est ce qui decide ce qui se passe quand on clique, et
+  // c'est ce qu'on rate le plus souvent en isometrique.
+  for (const [nom, p] of modes) {
+    let rates = 0
+    let pire = null
+    for (let cy = 0; cy < 12; cy++) {
+      for (let cx = 0; cx < 12; cx++) {
+        const m = caseVersMonde(p, cx, cy)
+        // On vise le CENTRE de la case, pas son coin : le coin d'un losange
+        // appartient a quatre cases a la fois, et l'y tester ne prouve rien.
+        const centre = p.mode === 'orthogonale' || p.mode === 'hexagonale'
+          ? { x: m.x + p.largeurTuile / 2, y: m.y + p.hauteurTuile / 2 }
+          : { x: m.x + p.largeurTuile / 2, y: m.y + p.hauteurTuile / 2 }
+        const r = mondeVersCase(p, centre.x, centre.y)
+        if (r.x !== cx || r.y !== cy) { rates++; pire ??= `${cx},${cy} -> ${r.x},${r.y}` }
+      }
+    }
+    check(`${nom} : cliquer au centre d'une case retrouve cette case`,
+      rates === 0, rates ? `${rates} ratees sur 144, ex. ${pire}` : '144 cases')
+  }
+
+  // Le rapport 2:1 n'est pas esthetique : c'est le seul qui tombe sur des
+  // pixels entiers.
+  const iso = ISO(33)
+  check('une largeur isometrique impaire est ramenee au pair',
+    iso.largeurTuile === 32 && iso.hauteurTuile === 16,
+    `${iso.largeurTuile}x${iso.hauteurTuile} — un centre entre deux pixels ferait baver toutes les diagonales`)
+
+  // Le tri en profondeur depend du REGARD, pas seulement de la grille.
+  const dessus = ORTHO_DESSUS(16)
+  const cote = ORTHO_COTE(16)
+  check('vu de dessus, ce qui est plus bas passe devant',
+    profondeur(dessus, 0, 50) > profondeur(dessus, 0, 10),
+    'sinon le heros se dessine derriere le tonneau qu\'il cache')
+  check('vu de cote, le `y` ne decide pas de la profondeur',
+    profondeur(cote, 0, 50) === profondeur(cote, 0, 10),
+    'deux objets a hauteurs differentes ne se recouvrent pas pour autant')
+  check('le calque tranche avant tout, dans les deux regards',
+    profondeur(dessus, 0, 0, 0, 1) > profondeur(dessus, 0, 999) &&
+    profondeur(cote, 0, 0, 0, 1) > profondeur(cote, 0, 999))
+  check('la hauteur passe devant : un objet sur une table cache la table',
+    profondeur(dessus, 0, 50, 8) < profondeur(dessus, 0, 50, 0))
+
+  // En isometrique, c'est la SOMME des deux axes qui eloigne de la camera.
+  const i = ISO(32, 16)
+  const p11 = caseVersMonde(i, 1, 1)
+  const p20 = caseVersMonde(i, 2, 0)
+  check('en isometrique, deux cases de meme somme sont a la meme profondeur',
+    profondeur(i, p11.x + 16, p11.y + 8) === profondeur(i, p20.x + 16, p20.y + 8),
+    'cx + cy = 2 des deux cotes')
+
+  // Le contour d'une case : un losange a quatre points, un hexagone a six.
+  check('le contour d\'une case isometrique est un losange',
+    contourDeCase(i, 0, 0).length === 4)
+  check('celui d\'une case hexagonale a six cotes',
+    contourDeCase(HEXA(32, 28), 0, 0).length === 6,
+    'un rectangle de selection trahit un editeur adapte au lieu d\'etre concu')
+
+  // La boite du monde : en isometrique elle n'est pas celle de la grille.
+  const to = tailleMonde(ORTHO_DESSUS(16), 10, 10)
+  const ti = tailleMonde(i, 10, 10)
+  check('la boite du monde orthogonal est celle de la grille',
+    to.l === 160 && to.h === 160, `${to.l}x${to.h}`)
+  check('celle du monde isometrique est un losange plus large que haut',
+    ti.l === 320 && ti.h === 176, `${ti.l}x${ti.h} — la formule orthogonale laisserait voir le vide`)
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)
