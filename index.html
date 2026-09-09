@@ -12,7 +12,15 @@
     <header class="barre">
       <span class="marque">PixelForge <b>Engine</b></span>
       <button id="jouer" class="primaire">Jouer</button>
-      <button id="arreter" class="ghost" disabled>Arrêter</button>
+      <button id="arreter" disabled>Arrêter</button>
+      <span class="sep"></span>
+      <div class="outils" id="outils" role="group" aria-label="Outils d’édition">
+        <button data-outil="terrain" class="actif">Mur</button>
+        <button data-outil="gomme">Gomme</button>
+        <button data-outil="collision">Collision</button>
+        <button data-outil="main">Main</button>
+      </div>
+      <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
       <span class="sep"></span>
       <span class="info" id="info"></span>
       <span class="pousse"></span>
@@ -22,7 +30,7 @@
       <canvas id="vue"></canvas>
     </main>
     <footer class="pied">
-      <span id="aide">Flèches ou ZQSD pour se déplacer. La caméra ne bouge qu’au bord du cadre mort.</span>
+      <span id="aide">Clic pour peindre, clic droit pour retirer, molette enfoncée pour déplacer la vue. « Jouer » pour essayer.</span>
       <span class="pousse"></span>
       <span id="mesure"></span>
     </footer>

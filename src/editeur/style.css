@@ -46,3 +46,16 @@ button:disabled { opacity: .45; cursor: default; }
   background: var(--bg-1); border-top: 1px solid var(--line);
   color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums;
 }
+
+.outils { display: flex; gap: 3px; }
+.outils button { padding: 4px 10px; border-radius: 5px; }
+.outils button.actif { background: var(--bg-0); border-color: var(--accent); color: var(--accent); }
+
+.bascule { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; cursor: pointer; }
+.bascule input { accent-color: var(--accent); }
+
+/* Le curseur dit ce que le clic va faire : c'est le seul retour dont on
+   dispose avant d'avoir clique. */
+#vue { cursor: crosshair; }
+#vue.main { cursor: grab; }
+#vue.jeu { cursor: default; }

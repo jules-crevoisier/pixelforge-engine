@@ -7,6 +7,7 @@ import {
 } from '../demo/art.ts'
 import { Palette, depuisHex } from '../noyau/palette.ts'
 import type { NoeudCorps, NoeudSprite } from '../scene/noeud.ts'
+import { Edition, type Outil } from './edition.ts'
 
 /**
  * L'editeur, premiere version : il montre une scene et il la fait tourner.
@@ -71,16 +72,94 @@ jeu.scripts.set('heros', (c, n) => {
   }
 })
 
+/* ------------------------------------------------------------------ */
+/* L'edition                                                           */
+/* ------------------------------------------------------------------ */
+
+const edition = new Edition(jeu, donjon.carte)
+const outils = document.getElementById('outils') as HTMLElement
+const voirCollision = document.getElementById('voirCollision') as HTMLInputElement
+
+const choisirOutil = (o: Outil): void => {
+  edition.etat.outil = o
+  for (const b of outils.querySelectorAll('button')) {
+    b.classList.toggle('actif', (b as HTMLElement).dataset.outil === o)
+  }
+  canevas.classList.toggle('main', o === 'main')
+}
+outils.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button')
+  if (b?.dataset.outil) choisirOutil(b.dataset.outil as Outil)
+})
+
+voirCollision.addEventListener('change', () => {
+  edition.etat.montrerCollision = voirCollision.checked
+  jeu.dessiner()
+  dessinerCollision()
+})
+
+// Le menu contextuel du navigateur volerait le clic droit, qui sert a retirer.
+canevas.addEventListener('contextmenu', (e) => e.preventDefault())
+
+canevas.addEventListener('pointerdown', (e) => {
+  if (jeu.tourne) return
+  canevas.setPointerCapture(e.pointerId)
+  edition.commencer(e.clientX, e.clientY, e.button)
+  majEtat()
+})
+canevas.addEventListener('pointermove', (e) => {
+  if (jeu.tourne) return
+  edition.bouger(e.clientX, e.clientY)
+  dessinerCollision()
+})
+canevas.addEventListener('pointerup', () => { edition.finir(); majEtat() })
+
+/**
+ * La grille de collision, par-dessus le decor.
+ *
+ * Elle se dessine dans le tampon du jeu puis on represente : c'est le seul
+ * moyen qu'elle suive exactement l'echelle entiere, au lieu d'etre posee en
+ * pixels d'ecran et de baver a la premiere fraction.
+ */
+function dessinerCollision(): void {
+  if (!edition.etat.montrerCollision || jeu.tourne) return
+  const ctx = jeu.ecran.ctx
+  const t = donjon.carte.tuile
+  ctx.fillStyle = 'rgba(255, 90, 90, 0.28)'
+  for (let cy = 0; cy < donjon.carte.hauteur; cy++) {
+    for (let cx = 0; cx < donjon.carte.largeur; cx++) {
+      if (!donjon.carte.solides[donjon.carte.index(cx, cy)]) continue
+      ctx.fillRect(cx * t - Math.round(jeu.camera.x), cy * t - Math.round(jeu.camera.y), t, t)
+    }
+  }
+  jeu.ecran.presenter()
+}
+
+function majEtat(): void {
+  const c = edition.compter()
+  verdict.textContent = `palette : ${palette.taille} couleurs · ${c.terrain} murs · ${c.solides} cases solides`
+}
+
 boutonJouer.addEventListener('click', () => {
   jeu.demarrer()
   boutonJouer.disabled = true
   boutonArreter.disabled = false
+  canevas.classList.add('jeu')
   canevas.focus()
 })
 boutonArreter.addEventListener('click', () => {
   jeu.arreter()
   boutonJouer.disabled = false
   boutonArreter.disabled = true
+  canevas.classList.remove('jeu')
+  // On repose le heros a son depart : essayer une salle puis la modifier avec
+  // le personnage coince dans un mur qu'on vient de peindre serait absurde.
+  donjon.heros.x = donjon.depart.x
+  donjon.heros.y = donjon.depart.y
+  jeu.camera.x = 0
+  jeu.camera.y = 0
+  jeu.dessiner()
+  dessinerCollision()
 })
 
 // Une premiere image des l'ouverture : un ecran noir ne dit pas si la scene
@@ -88,7 +167,7 @@ boutonArreter.addEventListener('click', () => {
 jeu.dessiner()
 
 info.textContent = `320×180 · ×${jeu.ecran.echelle} · ${donjon.carte.largeur}×${donjon.carte.hauteur} tuiles`
-verdict.textContent = `palette : ${palette.taille} couleurs`
+majEtat()
 
 let derniere = performance.now()
 let images = 0
@@ -107,7 +186,11 @@ const rafraichirMesure = (): void => {
 }
 requestAnimationFrame(rafraichirMesure)
 
-window.addEventListener('resize', () => { if (!jeu.tourne) jeu.dessiner() })
+window.addEventListener('resize', () => {
+  if (jeu.tourne) return
+  jeu.dessiner()
+  dessinerCollision()
+})
 
 // Pour les bancs : ils ont besoin d'une prise sur le jeu.
-;(window as unknown as { pfe: unknown }).pfe = { jeu, donjon, palette }
+;(window as unknown as { pfe: unknown }).pfe = { jeu, donjon, palette, edition }
