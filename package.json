@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "banc": "node scripts/banc.mjs"
+    "banc": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
