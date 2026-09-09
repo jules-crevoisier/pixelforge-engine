@@ -160,6 +160,146 @@ for (const [cible, marqueurs] of [
 check('chaque cible annoncee produit un chargeur non vide',
   CIBLES.every((c) => chargeur(c.id, projet).length > 400), `${CIBLES.length} cibles`)
 
+console.log('\n--- Tiled, dans les deux sens ---')
+
+{
+  const { versTiled, depuisTiled, estDuTiled } = await import('../src/export/tiled.ts')
+  const { VIDE } = await import('../src/tuiles/tilemap.ts')
+  const { ORTHO_DESSUS, ISO } = await import('../src/noyau/projection.ts')
+
+  const t = versTiled(carte, {
+    projection: ORTHO_DESSUS(16),
+    planche: { nom: 'donjon', image: 'donjon.png', colonnes: 8, nombre: 49 },
+  })
+
+  check('la sortie est reconnue comme du Tiled', estDuTiled(t))
+  check('elle porte la planche, ses dimensions et son image',
+    t.tilesets[0].image === 'donjon.png' && t.tilesets[0].columns === 8,
+    `${t.tilesets[0].name}, ${t.tilesets[0].tilecount} tuiles`)
+
+  // Le piege : Tiled compte a partir de UN, et reserve zero au vide.
+  const premierCalque = t.layers[0]
+  const posee = carte.calques[0].cases[carte.index(1, 1)]
+  check('le vide devient zero et la premiere tuile devient un',
+    premierCalque.data[0] === 0 && premierCalque.data[carte.index(1, 1)] === posee + 1,
+    `notre ${posee} sort en ${premierCalque.data[carte.index(1, 1)]}`)
+
+  // La collision part en calque d'objets : Tiled n'a pas de grille dediee.
+  const collision = t.layers.find((l) => l.type === 'objectgroup')
+  check('la collision sort en rectangles, lisibles par n\'importe quel moteur',
+    collision && collision.objects.length === 2,
+    `${collision?.objects.length ?? 0} rectangles pour 2 cases solides`)
+
+  // L'aller-retour complet.
+  const r = depuisTiled(t)
+  check('une carte exportee puis reimportee est identique',
+    r.carte.calques[0].cases.every((v, i) => v === carte.calques[0].cases[i]),
+    'tuile par tuile')
+  check('et sa collision aussi',
+    [...r.carte.solides].every((v, i) => v === carte.solides[i]))
+  check('sans avertissement sur un cas simple', r.avertissements.length === 0,
+    r.avertissements.join(' ; ') || 'aucun')
+
+  // Les bits de retournement de Tiled : sans masque, un index astronomique.
+  const trafique = JSON.parse(JSON.stringify(t))
+  trafique.layers[0].data[carte.index(1, 1)] |= 0x80000000
+  const r2 = depuisTiled(trafique)
+  check('une tuile retournee par Tiled est lue sans son bit de poids fort',
+    r2.carte.calques[0].cases[carte.index(1, 1)] === posee,
+    'sans le masque, elle ressortirait en index astronomique')
+
+  // Les avertissements servent a quelque chose : on les provoque.
+  const infinie = { ...t, infinite: true }
+  check('une carte infinie est signalee',
+    depuisTiled(infinie).avertissements.some((a) => a.includes('infinie')))
+  const deuxPlanches = { ...t, tilesets: [t.tilesets[0], { ...t.tilesets[0], firstgid: 100 }] }
+  check('plusieurs planches sont signalees',
+    depuisTiled(deuxPlanches).avertissements.some((a) => a.includes('planches')))
+  const sansCalque = { ...t, layers: t.layers.filter((l) => l.type !== 'tilelayer') }
+  check('une carte sans calque de tuiles est signalee',
+    depuisTiled(sansCalque).avertissements.some((a) => a.includes('aucun calque')))
+
+  // L'orientation fait l'aller-retour.
+  const iso = versTiled(carte, {
+    projection: ISO(32, 16),
+    planche: { nom: 'd', image: 'd.png', colonnes: 8, nombre: 49 },
+  })
+  check('une carte isometrique sort en `isometric` et revient isometrique',
+    iso.orientation === 'isometric' && depuisTiled(iso).mode === 'isometrique',
+    `${iso.orientation} — hauteur de tuile ${iso.tileheight}`)
+
+  check('le vide se relit VIDE, et non tuile zero',
+    r.carte.calques[0].cases[0] === VIDE, 'la confusion la plus couteuse du format')
+}
+
+console.log('\n--- LDtk, dans les deux sens ---')
+
+{
+  const { versLdtk, depuisLdtk, estDuLdtk } = await import('../src/export/ldtk.ts')
+  const { VIDE } = await import('../src/tuiles/tilemap.ts')
+
+  const l = versLdtk('salle_un', carte, { colonnes: 8, monde: { x: 256, y: 0 } })
+  check('la sortie est reconnue comme du LDtk', estDuLdtk(l))
+  check('le niveau porte sa place dans le monde',
+    l.levels[0].worldX === 256 && l.levels[0].pxWid === carte.largeur * carte.tuile,
+    `${l.levels[0].pxWid}x${l.levels[0].pxHei} en (${l.levels[0].worldX}, ${l.levels[0].worldY})`)
+
+  // La collision part en IntGrid : c'est la structure prevue pour, et celle
+  // dont LDtk se sert lui-meme pour ses regles automatiques.
+  const intGrid = l.levels[0].layerInstances.find((c) => c.__type === 'IntGrid')
+  check('la collision sort en IntGrid', !!intGrid && intGrid.intGridCsv.filter(Boolean).length === 2,
+    `${intGrid?.intGridCsv.filter(Boolean).length} cases a 1`)
+
+  // Les tuiles portent leur position dans la planche : sans elle, LDtk
+  // afficherait la premiere tuile partout.
+  const tuiles = l.levels[0].layerInstances.find((c) => c.__type === 'Tiles')
+  const posee = carte.calques[0].cases[carte.index(1, 1)]
+  const t11 = tuiles.gridTiles.find((t) => t.px[0] === carte.tuile && t.px[1] === carte.tuile)
+  check('chaque tuile porte sa position source dans la planche',
+    t11 && t11.src[0] === (posee % 8) * carte.tuile
+       && t11.src[1] === Math.floor(posee / 8) * carte.tuile,
+    `tuile ${posee} -> src ${t11?.src.join(',')}`)
+  check('et le vide n\'occupe aucune entree',
+    tuiles.gridTiles.length === carte.calques[0].cases.filter((v) => v !== VIDE).length,
+    `${tuiles.gridTiles.length} tuiles posees`)
+
+  // L'aller-retour.
+  const r = depuisLdtk(l)
+  check('un niveau exporte puis reimporte garde ses tuiles',
+    r.cartes[0].carte.calques[0].cases.every((v, i) => v === carte.calques[0].cases[i]),
+    'tuile par tuile')
+  check('et sa collision', [...r.cartes[0].carte.solides].every((v, i) => v === carte.solides[i]))
+  check('et sa place dans le monde',
+    r.cartes[0].monde.x === 256, `x=${r.cartes[0].monde.x}`)
+  check('sans avertissement sur un cas simple', r.avertissements.length === 0,
+    r.avertissements.join(' ; ') || 'aucun')
+
+  // Ce qu'on ne sait PAS faire doit etre dit, pas tu.
+  const avecEntites = JSON.parse(JSON.stringify(l))
+  avecEntites.levels[0].layerInstances.push({
+    __identifier: 'Entites', __type: 'Entities', __cWid: 5, __cHei: 3,
+    __gridSize: 16, entityInstances: [{}],
+  })
+  check('les entites non importees sont signalees',
+    depuisLdtk(avecEntites).avertissements.some((a) => a.includes('entites')))
+
+  const avecRetourne = JSON.parse(JSON.stringify(l))
+  avecRetourne.levels[0].layerInstances.find((c) => c.__type === 'Tiles').gridTiles[0].f = 1
+  check('une tuile retournee est signalee comme non conservee',
+    depuisLdtk(avecRetourne).avertissements.some((a) => a.includes('retournee')))
+
+  const plusieursValeurs = JSON.parse(JSON.stringify(l))
+  const ig = plusieursValeurs.levels[0].layerInstances.find((c) => c.__type === 'IntGrid')
+  ig.intGridCsv[0] = 2
+  ig.intGridCsv[1] = 3
+  check('plusieurs matieres de grille ramenees a « solide » sont signalees',
+    depuisLdtk(plusieursValeurs).avertissements.some((a) => a.includes('solide')))
+
+  check('un projet sans niveau est signale',
+    depuisLdtk({ jsonVersion: '1.5.3', defaultGridSize: 16, levels: [] })
+      .avertissements.some((a) => a.includes('aucun niveau')))
+}
+
 rmSync(dir, { recursive: true, force: true })
 void existsSync
 
