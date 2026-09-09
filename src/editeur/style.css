@@ -15,15 +15,20 @@ body {
 }
 .app { display: grid; grid-template-rows: 44px 1fr 30px; height: 100vh; height: 100dvh; }
 
+/* La barre defile plutot que de se replier : une commande qui passe a la
+   ligne dans une barre de 44 pixels de haut disparait sous le canevas, et l'on
+   ne sait meme pas qu'elle existe. */
 .barre {
   display: flex; align-items: center; gap: 10px; padding: 0 12px;
   background: var(--bg-1); border-bottom: 1px solid var(--line);
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin;
 }
+.barre > * { flex-shrink: 0; }
 .marque { font-weight: 600; letter-spacing: .2px; }
 .marque b { color: var(--accent); font-weight: 600; }
 .sep { width: 1px; height: 20px; background: var(--line); }
 .pousse { flex: 1; }
-.info { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.info { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 button {
   padding: 5px 13px; border-radius: 6px; border: 1px solid var(--line);
@@ -42,16 +47,20 @@ button:disabled { opacity: .45; cursor: default; }
 #vue { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
 .pied {
-  display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  display: flex; align-items: center; gap: 10px; padding: 0 12px; white-space: nowrap;
   background: var(--bg-1); border-top: 1px solid var(--line);
   color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums;
 }
+/* L'aide est la seule chose qui peut etre coupee : les mesures a droite
+   doivent rester lisibles en entier, c'est ce qu'on vient y lire. */
+.pied #aide { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pied .info { font-size: 11px; }
 
 .outils { display: flex; gap: 3px; }
 .outils button { padding: 4px 10px; border-radius: 5px; }
 .outils button.actif { background: var(--bg-0); border-color: var(--accent); color: var(--accent); }
 
-.bascule { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; cursor: pointer; }
+.bascule { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; cursor: pointer; white-space: nowrap; }
 .bascule input { accent-color: var(--accent); }
 
 /* Le curseur dit ce que le clic va faire : c'est le seul retour dont on

@@ -3,6 +3,9 @@ import { Entrees } from './entree.ts'
 import { Boucle } from './boucle.ts'
 import { deplacer } from './collision.ts'
 import { rendreScene, suivre, type Camera } from './rendu.ts'
+import {
+  type Projection, ORTHO_DESSUS, projeter, boiteMonde,
+} from '../noyau/projection.ts'
 import type { Atlas } from './atlas.ts'
 import type { Carte } from '../tuiles/tilemap.ts'
 import { rect } from '../noyau/pixel.ts'
@@ -38,6 +41,12 @@ export type Script = (c: ContexteJeu, noeud: Noeud) => void
 export interface OptionsJeu {
   vue?: Vue
   pasMs?: number
+  /**
+   * Comment le monde se montre. Le defaut est la vue de dessus orthogonale,
+   * qui est aussi la seule ou projection et monde se confondent — c'est le
+   * cas ou l'on ne veut pas payer un concept qu'on n'emploie pas.
+   */
+  projection?: Projection
 }
 
 export class Jeu {
@@ -47,6 +56,9 @@ export class Jeu {
   readonly mouvements = new Mouvements()
   racine: Noeud
   carte: Carte
+  projection: Projection
+  /** Marge morte de la camera, en pixels de l'ecran. */
+  margeCamera = { x: 32, y: 20 }
   cartes = new Map<string, { carte: Carte; atlas: Atlas }>()
   sprites = new Map<string, Atlas>()
   /** Scripts par nom de noeud. */
@@ -58,6 +70,7 @@ export class Jeu {
     this.ecran = new Ecran(sortie, opts.vue ?? { largeur: 320, hauteur: 180 })
     this.racine = racine
     this.carte = carte
+    this.projection = opts.projection ?? ORTHO_DESSUS(carte.tuile)
     this.boucle = new Boucle(
       () => this.avancer(),
       () => this.dessiner(),
@@ -66,6 +79,27 @@ export class Jeu {
   }
 
   suivreNoeud(nom: string | null): void { this.cibleCamera = nom }
+
+  /**
+   * Pose la camera sur sa cible d'un coup, sans marge morte.
+   *
+   * A l'ouverture, la camera est a l'origine et la marge morte ne la fera
+   * bouger qu'au premier pas de simulation : on ouvre donc l'editeur sur un
+   * coin de carte vide pendant que le heros est ailleurs. Un cadrage immediat
+   * n'est pas un detail d'agrement — c'est la difference entre voir son
+   * niveau et croire qu'il ne s'est pas charge.
+   */
+  cadrer(): void {
+    if (!this.cibleCamera) return
+    const c = trouverParNom(this.racine, this.cibleCamera)
+    if (!c) return
+    const p = projeter(this.projection, c.x, c.y, this.carte.tuile)
+    this.camera.x = p.x - this.ecran.vue.largeur / 2
+    this.camera.y = p.y - this.ecran.vue.hauteur / 2
+    const b = boiteMonde(this.projection, this.carte.largeur, this.carte.hauteur)
+    this.camera.x = Math.max(b.x, Math.min(this.camera.x, Math.max(b.x, b.x + b.l - this.ecran.vue.largeur)))
+    this.camera.y = Math.max(b.y, Math.min(this.camera.y, Math.max(b.y, b.y + b.h - this.ecran.vue.hauteur)))
+  }
 
   demarrer(): void {
     this.entrees.brancher()
@@ -90,14 +124,20 @@ export class Jeu {
     if (this.cibleCamera) {
       const c = trouverParNom(this.racine, this.cibleCamera)
       if (c) {
-        suivre(this.camera, c.x, c.y, this.ecran.vue, 32, 20,
-          { largeur: this.carte.largeur * this.carte.tuile, hauteur: this.carte.hauteur * this.carte.tuile })
+        // La camera vit dans le repere de l'ECRAN : elle cadre ce qu'on voit,
+        // pas ou l'on est. Suivre la cible en coordonnees orthogonales
+        // marcherait de dessus et deraperait en isometrique, ou avancer d'une
+        // case vers l'est deplace de deux fois plus en largeur qu'en hauteur.
+        const p = projeter(this.projection, c.x, c.y, this.carte.tuile)
+        suivre(this.camera, p.x, p.y, this.ecran.vue,
+          this.margeCamera.x, this.margeCamera.y,
+          boiteMonde(this.projection, this.carte.largeur, this.carte.hauteur))
       }
     }
   }
 
   dessiner(): void {
-    rendreScene(this.ecran, this.racine, this.camera, this.cartes, this.sprites)
+    rendreScene(this.ecran, this.racine, this.camera, this.cartes, this.sprites, this.projection)
     this.ecran.presenter()
   }
 

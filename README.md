@@ -5,7 +5,38 @@ Un éditeur de jeux 2D **fait pour le pixel art**, de bout en bout.
 Ce n'est pas un moteur généraliste avec un mode pixel art. C'est l'inverse : la
 grille de pixels est le contrat de base, et tout le reste s'y plie.
 
-![Le donjon de démonstration](docs/donjon.png)
+## Trois regards, un seul moteur
+
+|  |  |
+| --- | --- |
+| **Donjon** — orthogonale, vue de dessus | **Caverne** — orthogonale, vue de côté |
+| ![Le donjon](docs/donjon.png) | ![La caverne](docs/caverne.png) |
+
+![La citadelle isométrique](docs/citadelle.png)
+
+Les trois se choisissent dans la barre de l'éditeur et se jouent tout de suite.
+Ils partagent **tout** ce qui compte : la même grille carrée de seize pixels, le
+même moteur de collision, le même héros, le même contrat de pixel. Ce qui les
+sépare tient en trois déclarations — une projection, un script, une planche de
+dessins.
+
+C'est délibéré. Une carte isométrique n'est pas une autre géométrie : c'est la
+même grille carrée, regardée de biais. Faire vivre le gameplay dans le losange
+obligerait à réécrire les collisions, la poursuite, la distance — et à les
+réécrire une deuxième fois pour l'hexagone. Le monde reste donc carré, et la
+projection n'intervient qu'au **dessin** et au **clic**.
+
+Ce que ça achète, mode par mode :
+
+- **Vue de dessus** — la diagonale est normalisée, le tri se fait par `y`.
+- **Vue de côté** — le contrôleur de plateforme complet : coyote time, tampon de
+  saut, hauteur variable, correction de coin, apex flottant, glissade et saut
+  muraux, dash. Le puits du niveau se remonte en sautant d'une paroi à l'autre,
+  et le banc le **prouve** en le rejouant avec le vrai contrôleur.
+- **Isométrique** — les losanges 2:1 pavent le plan sans un pixel de fond
+  visible, le clic vise le bon losange jusqu'aux bords, et tuiles et personnages
+  sont mêlés dans un seul tri : un mur passe devant ou derrière le héros selon
+  sa case, et la réponse change à chaque pas.
 
 ## Ce que ça veut dire, concrètement
 
@@ -24,16 +55,22 @@ grille de pixels est le contrat de base, et tout le reste s'y plie.
 
 ## Ce qui marche aujourd'hui
 
-Un donjon jouable : on peint le décor, on appuie sur **Jouer**, on marche, on
-bute contre les murs, la caméra suit sans trembler. 60 images par seconde.
+Trois mondes jouables : on peint le décor, on appuie sur **Jouer**, on marche,
+on saute, on bute contre les murs, la caméra suit sans trembler. 60 images par
+seconde.
 
 - contrat de pixel : accumulateur, arrondi symétrique, échelle entière
+- quatre projections — orthogonale, isométrique, isométrique décalée, hexagonale
+- contrôleur de plateforme de qualité Celeste, réglé en **hauteur et en temps**
+  plutôt qu'en gravité et en impulsion
 - autotiling à 47 ou 16 tuiles, calculé et non recopié
 - cartes en calques, collision sur sa propre grille
 - boucle à pas fixe avec plafond de rattrapage
 - collisions axe par axe, pixel par pixel — pas de traversée de mur
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
-- édition : pinceau de terrain, gomme, collision, déplacement de la vue
+- édition : pinceau de terrain, gomme, collision, déplacement de la vue — et le
+  pinceau vise le bon losange en isométrique, pas la case d'à côté
+- Tiled et LDtk, dans les deux sens
 - export du projet et de son chargeur
 
 ## « Marche avec tous les langages »
@@ -61,8 +98,10 @@ fausse le jour où quelqu'un s'en sert.
 ```sh
 npm install
 npm run dev      # l'éditeur
-npm run banc     # 68 vérifications du moteur
-npm run banc:langages   # 12 vérifications des chargeurs
+npm run banc            # 82 vérifications du moteur
+npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
+npm run banc:mondes     # 42 vérifications des trois mondes
+npm run banc:langages   # 38 vérifications des chargeurs
 npm run build
 ```
 
@@ -75,7 +114,21 @@ taire, et sur un cas fabriqué où elle doit parler. Un banc qui ne sait pas
 Le banc a déjà pris ce dépôt en défaut plusieurs fois — un double de test qui
 n'appliquait pas le plafond de la vraie boucle et rendait 500 pas au lieu de 5 ;
 47 tuiles de mur qui pointaient toutes sur le même dessin, si bien que les murs
-ne se rejoignaient jamais à l'écran.
+ne se rejoignaient jamais à l'écran ; `caseVersMonde` qui rendait le sommet du
+losange quand son inverse attendait le coin de la boîte, et faisait rater les
+144 cases sur 144 d'un aller-retour isométrique.
+
+Ce que le banc des mondes vérifie, et qu'aucun typage ne peut poser comme
+question :
+
+- les dalles isométriques **pavent** le plan — on les rastérise et l'on compte
+  les pixels de fond visibles entre elles ; une dalle plus étroite d'un pixel
+  par rangée est présentée en contre-exemple et doit échouer ;
+- aucune case visible n'est **écartée** du parcours de rendu, à cinq positions
+  de caméra et dans les quatre projections ;
+- les niveaux sont **franchissables** : pas « ont l'air », mais le vrai
+  contrôleur, sur la vraie carte, arrive de l'autre côté de chaque fosse et
+  remonte le puits ; et sans saut mural, il n'y arrive pas.
 
 Le dépôt est **entièrement en texte**, dessins compris : une lettre par couleur,
 le point pour le vide. Un diff dit ce qui a bougé dans un sprite.

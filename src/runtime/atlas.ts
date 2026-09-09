@@ -16,16 +16,23 @@ import { type Palette, versHex } from '../noyau/palette.ts'
  */
 export interface Atlas {
   canevas: HTMLCanvasElement | OffscreenCanvas
-  /** Taille d'une case de la planche. */
-  tuile: number
+  /** Largeur d'une case de la planche. */
+  largeur: number
+  /**
+   * Hauteur d'une case. Elle differe de la largeur des qu'on sort de
+   * l'orthogonale : une dalle isometrique fait 32x16, et un bloc 32x32 dont
+   * seize pixels debordent au-dessus de sa case. Une planche forcee au carre
+   * obligerait a decouper ces dessins en deux, ou a les rogner.
+   */
+  hauteur: number
   /** Nombre de cases par rangee. */
   colonnes: number
 }
 
 export function rectDeTuile(a: Atlas, index: number): { sx: number; sy: number } {
   return {
-    sx: (index % a.colonnes) * a.tuile,
-    sy: Math.floor(index / a.colonnes) * a.tuile,
+    sx: (index % a.colonnes) * a.largeur,
+    sy: Math.floor(index / a.colonnes) * a.hauteur,
   }
 }
 
@@ -38,19 +45,20 @@ export function rectDeTuile(a: Atlas, index: number): { sx: number; sy: number }
  * demonstration existe.
  */
 export function atlasDepuisLettres(
-  dessins: string[][], cle: Record<string, string>, tuile: number, colonnes = 8,
+  dessins: string[][], cle: Record<string, string>, largeur: number, colonnes = 8,
+  hauteur = largeur,
 ): Atlas {
   const lignes = Math.ceil(dessins.length / colonnes)
   const c = document.createElement('canvas')
-  c.width = colonnes * tuile
-  c.height = Math.max(1, lignes) * tuile
+  c.width = colonnes * largeur
+  c.height = Math.max(1, lignes) * hauteur
   const ctx = c.getContext('2d')
   if (!ctx) throw new Error('canevas 2D indisponible')
   ctx.imageSmoothingEnabled = false
 
   dessins.forEach((dessin, i) => {
-    const ox = (i % colonnes) * tuile
-    const oy = Math.floor(i / colonnes) * tuile
+    const ox = (i % colonnes) * largeur
+    const oy = Math.floor(i / colonnes) * hauteur
     for (let y = 0; y < dessin.length; y++) {
       const ligne = dessin[y]
       for (let x = 0; x < ligne.length; x++) {
@@ -62,7 +70,7 @@ export function atlasDepuisLettres(
     }
   })
 
-  return { canevas: c, tuile, colonnes }
+  return { canevas: c, largeur, hauteur, colonnes }
 }
 
 /**

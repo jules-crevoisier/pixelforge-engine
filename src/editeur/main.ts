@@ -1,18 +1,13 @@
 import { Jeu } from '../runtime/jeu.ts'
-import { atlasDepuisLettres, couleursDe } from '../runtime/atlas.ts'
-import { construireDonjon } from '../demo/donjon.ts'
-import {
-  TUILE, CLE_DONJON, CLE_HEROS, PLANCHE_DONJON, PLANCHE_HEROS,
-  DIR_BAS, DIR_HAUT, DIR_DROITE, DIR_GAUCHE,
-} from '../demo/art.ts'
 import { Palette, depuisHex } from '../noyau/palette.ts'
-import type { NoeudCorps, NoeudSprite } from '../scene/noeud.ts'
+import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil } from './edition.ts'
 import { serialiserProjet, versTexte } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
+import { MONDES, type Monde } from '../demo/mondes.ts'
 
 /**
- * L'editeur, premiere version : il montre une scene et il la fait tourner.
+ * L'editeur.
  *
  * L'ordre des travaux est deliberé. Un editeur qui sait poser des tuiles mais
  * dont on ne peut pas essayer le resultat ne dit rien de ce que le jeu vaut ;
@@ -20,6 +15,11 @@ import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
  * contrat de pixel tient, si les collisions accrochent, si la camera tremble.
  * On commence donc par « Jouer », et les outils d'edition viennent se brancher
  * sur une chose qui vit.
+ *
+ * Depuis, trois mondes s'y chargent au lieu d'un : vue de dessus, vue de cote
+ * avec gravite, isometrique. Ils partagent tout — la grille, les collisions,
+ * le heros, le contrat de pixel — et ne different que par une projection et un
+ * script. C'est la seule facon de verifier qu'un mode marche : le lancer.
  */
 const canevas = document.getElementById('vue') as HTMLCanvasElement
 const boutonJouer = document.getElementById('jouer') as HTMLButtonElement
@@ -27,62 +27,68 @@ const boutonArreter = document.getElementById('arreter') as HTMLButtonElement
 const info = document.getElementById('info') as HTMLElement
 const verdict = document.getElementById('verdict') as HTMLElement
 const mesure = document.getElementById('mesure') as HTMLElement
+const aide = document.getElementById('aide') as HTMLElement
+const selectMonde = document.getElementById('monde') as HTMLSelectElement
+const outils = document.getElementById('outils') as HTMLElement
+const voirCollision = document.getElementById('voirCollision') as HTMLInputElement
 
-const donjon = construireDonjon()
-const jeu = new Jeu(canevas, donjon.racine, donjon.carte, { vue: { largeur: 320, hauteur: 180 } })
+for (const m of MONDES) {
+  const o = document.createElement('option')
+  o.value = m.id
+  o.textContent = m.nom
+  selectMonde.appendChild(o)
+}
 
-jeu.cartes.set('salle', {
-  carte: donjon.carte,
-  atlas: atlasDepuisLettres(PLANCHE_DONJON, CLE_DONJON, TUILE, 8),
-})
-jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, 4))
-jeu.suivreNoeud('heros')
-
-/** La palette du projet : elle se deduit des dessins, pour n'exister qu'une fois. */
-const palette = new Palette('donjon',
-  [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS)].map(depuisHex))
+let monde: Monde
+let jeu: Jeu
+let palette: Palette
+let edition: Edition
 
 /**
- * Le script du heros.
+ * Charge un monde.
  *
- * C'est exactement la forme qu'aura un script ecrit dans l'editeur : il recoit
- * le contexte et son noeud, et il n'a acces a rien d'autre. Il ne touche
- * jamais `x` directement — `bouger` passe par l'accumulateur, qui garde la
- * fraction et rend un pas entier.
+ * Le jeu est reconstruit et non reconfigure. On pourrait garder l'instance et
+ * lui echanger sa scene, sa carte, sa projection et ses scripts ; il resterait
+ * l'etat qu'on aurait oublie de remettre — un accumulateur a mi-pixel, une
+ * camera hors bornes, un script de l'ancien monde toujours abonne. Reconstruire
+ * coute quelques millisecondes une fois par changement de mode, et supprime
+ * toute une classe de bogues qui ne se voient qu'au deuxieme changement.
  */
-const VITESSE = 70
+function charger(id: string): void {
+  const entree = MONDES.find((m) => m.id === id) ?? MONDES[0]
+  if (jeu?.tourne) arreter()
+  monde = entree.construire()
+  jeu = new Jeu(canevas, monde.racine, monde.carte, {
+    vue: monde.vue,
+    projection: monde.projection,
+  })
+  monde.installer(jeu)
+  palette = new Palette(monde.id, monde.couleurs.map(depuisHex))
 
-jeu.scripts.set('heros', (c, n) => {
-  const sprite = n as NoeudSprite
-  const corps = n.enfants.find((e) => e.type === 'corps') as NoeudCorps | undefined
-  if (!corps) return
+  const outilPrecedent = edition?.etat.outil ?? 'terrain'
+  edition = new Edition(jeu, monde.carte)
+  edition.etat.montrerCollision = voirCollision.checked
+  edition.changerCarte(monde.carte, monde.tuilePinceau)
+  choisirOutil(outilPrecedent)
 
-  const a = c.entrees.axe()
-  // La diagonale est normalisee : sans cela on avance 1,41 fois plus vite en
-  // biais, ce qui est le defaut le plus repandu des jeux vus de dessus.
-  const norme = a.x && a.y ? Math.SQRT1_2 : 1
-  c.bouger(corps, a.x * VITESSE * norme * c.dt, a.y * VITESSE * norme * c.dt)
+  jeu.cadrer()
+  jeu.dessiner()
+  dessinerCollision()
 
-  if (a.x || a.y) {
-    // La direction verticale l'emporte : de dos ou de face se lit mieux qu'un
-    // profil, et en diagonale on veut voir le visage.
-    if (a.y > 0) sprite.image = DIR_BAS
-    else if (a.y < 0) sprite.image = DIR_HAUT
-    else sprite.image = a.x > 0 ? DIR_DROITE : DIR_GAUCHE
-    sprite.miroir = sprite.image === DIR_GAUCHE
-    if (sprite.image === DIR_GAUCHE) sprite.image = DIR_DROITE
-  }
-})
+  aide.textContent = monde.aide
+  info.textContent = `${monde.vue.largeur}×${monde.vue.hauteur} · ${monde.carte.largeur}×${monde.carte.hauteur} · ${monde.projection.mode}, ${monde.projection.regard}`
+  majEtat()
+  majMesure()
+  ;(window as unknown as { pfe: unknown }).pfe = { jeu, monde, palette, edition }
+}
+
+selectMonde.addEventListener('change', () => charger(selectMonde.value))
 
 /* ------------------------------------------------------------------ */
 /* L'edition                                                           */
 /* ------------------------------------------------------------------ */
 
-const edition = new Edition(jeu, donjon.carte)
-const outils = document.getElementById('outils') as HTMLElement
-const voirCollision = document.getElementById('voirCollision') as HTMLInputElement
-
-const choisirOutil = (o: Outil): void => {
+function choisirOutil(o: Outil): void {
   edition.etat.outil = o
   for (const b of outils.querySelectorAll('button')) {
     b.classList.toggle('actif', (b as HTMLElement).dataset.outil === o)
@@ -107,6 +113,7 @@ canevas.addEventListener('pointerdown', (e) => {
   if (jeu.tourne) return
   canevas.setPointerCapture(e.pointerId)
   edition.commencer(e.clientX, e.clientY, e.button)
+  dessinerCollision()
   majEtat()
 })
 canevas.addEventListener('pointermove', (e) => {
@@ -122,16 +129,27 @@ canevas.addEventListener('pointerup', () => { edition.finir(); majEtat() })
  * Elle se dessine dans le tampon du jeu puis on represente : c'est le seul
  * moyen qu'elle suive exactement l'echelle entiere, au lieu d'etre posee en
  * pixels d'ecran et de baver a la premiere fraction.
+ *
+ * Et elle suit le CONTOUR de la case, pas un rectangle : un rectangle rouge
+ * sur une carte isometrique designerait quatre cases a la fois et n'en
+ * designerait aucune. C'est la marque des editeurs ou l'isometrique a ete
+ * ajoute apres coup.
  */
 function dessinerCollision(): void {
   if (!edition.etat.montrerCollision || jeu.tourne) return
   const ctx = jeu.ecran.ctx
-  const t = donjon.carte.tuile
+  const ox = -Math.round(jeu.camera.x)
+  const oy = -Math.round(jeu.camera.y)
   ctx.fillStyle = 'rgba(255, 90, 90, 0.28)'
-  for (let cy = 0; cy < donjon.carte.hauteur; cy++) {
-    for (let cx = 0; cx < donjon.carte.largeur; cx++) {
-      if (!donjon.carte.solides[donjon.carte.index(cx, cy)]) continue
-      ctx.fillRect(cx * t - Math.round(jeu.camera.x), cy * t - Math.round(jeu.camera.y), t, t)
+  for (let cy = 0; cy < monde.carte.hauteur; cy++) {
+    for (let cx = 0; cx < monde.carte.largeur; cx++) {
+      if (!monde.carte.solides[monde.carte.index(cx, cy)]) continue
+      const pts = contourDeCase(monde.projection, cx, cy)
+      ctx.beginPath()
+      ctx.moveTo(pts[0].x + ox, pts[0].y + oy)
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x + ox, pts[i].y + oy)
+      ctx.closePath()
+      ctx.fill()
     }
   }
   jeu.ecran.presenter()
@@ -139,8 +157,12 @@ function dessinerCollision(): void {
 
 function majEtat(): void {
   const c = edition.compter()
-  verdict.textContent = `palette : ${palette.taille} couleurs · ${c.terrain} murs · ${c.solides} cases solides`
+  verdict.textContent = `palette : ${palette.taille} couleurs · ${c.terrain} posées · ${c.solides} cases solides`
 }
+
+/* ------------------------------------------------------------------ */
+/* Jouer, arreter                                                      */
+/* ------------------------------------------------------------------ */
 
 boutonJouer.addEventListener('click', () => {
   jeu.demarrer()
@@ -149,20 +171,20 @@ boutonJouer.addEventListener('click', () => {
   canevas.classList.add('jeu')
   canevas.focus()
 })
-boutonArreter.addEventListener('click', () => {
+
+function arreter(): void {
   jeu.arreter()
   boutonJouer.disabled = false
   boutonArreter.disabled = true
   canevas.classList.remove('jeu')
   // On repose le heros a son depart : essayer une salle puis la modifier avec
   // le personnage coince dans un mur qu'on vient de peindre serait absurde.
-  donjon.heros.x = donjon.depart.x
-  donjon.heros.y = donjon.depart.y
-  jeu.camera.x = 0
-  jeu.camera.y = 0
+  monde.reinitialiser()
+  jeu.cadrer()
   jeu.dessiner()
   dessinerCollision()
-})
+}
+boutonArreter.addEventListener('click', arreter)
 
 /* ------------------------------------------------------------------ */
 /* L'export                                                            */
@@ -196,38 +218,42 @@ function telecharger(nom: string, contenu: string, type: string): void {
 document.getElementById('exporter')?.addEventListener('click', () => {
   const cible = selectCible.value as Cible
   const p = serialiserProjet(
-    'donjon', jeu.ecran.vue, palette,
-    [{ nom: 'salle', carte: donjon.carte }],
-    [{ nom: 'principale', racine: donjon.racine }],
+    monde.id, jeu.ecran.vue, palette,
+    [{ nom: monde.id, carte: monde.carte }],
+    [{ nom: 'principale', racine: monde.racine }],
   )
-  telecharger('projet.json', versTexte(p), 'application/json')
+  telecharger(`${monde.id}.json`, versTexte(p), 'application/json')
   const fichier = CIBLES.find((c) => c.id === cible)?.fichier ?? 'projet.txt'
   telecharger(fichier, chargeur(cible, p), 'text/plain')
-  verdict.textContent = `exporte : projet.json + ${fichier}`
+  verdict.textContent = `exporté : ${monde.id}.json + ${fichier}`
 })
 
-// Une premiere image des l'ouverture : un ecran noir ne dit pas si la scene
-// est chargee ou si quelque chose a echoue.
-jeu.dessiner()
-
-info.textContent = `320×180 · ×${jeu.ecran.echelle} · ${donjon.carte.largeur}×${donjon.carte.hauteur} tuiles`
-majEtat()
+/* ------------------------------------------------------------------ */
+/* La mesure, et le premier chargement                                 */
+/* ------------------------------------------------------------------ */
 
 let derniere = performance.now()
 let images = 0
+let fps = 0
+function majMesure(): void {
+  mesure.textContent = jeu.tourne
+    ? `${fps} img/s · pas ${jeu.pas} · ×${jeu.ecran.echelle} · ${monde.etat()}`
+    : `arrêté · ×${jeu.ecran.echelle} · ${monde.etat()}`
+}
 const rafraichirMesure = (): void => {
   images++
   const t = performance.now()
   if (t - derniere >= 500) {
-    const fps = Math.round((images * 1000) / (t - derniere))
-    mesure.textContent = jeu.tourne
-      ? `${fps} img/s · pas ${jeu.pas} · échelle ×${jeu.ecran.echelle}`
-      : `arrêté · échelle ×${jeu.ecran.echelle}`
+    fps = Math.round((images * 1000) / (t - derniere))
     derniere = t
     images = 0
   }
+  majMesure()
   requestAnimationFrame(rafraichirMesure)
 }
+// Le chargement vient APRES les compteurs : il les lit pour remplir la barre
+// d'etat, et une variable declaree plus bas serait encore dans sa zone morte.
+charger(MONDES[0].id)
 requestAnimationFrame(rafraichirMesure)
 
 window.addEventListener('resize', () => {
@@ -235,6 +261,3 @@ window.addEventListener('resize', () => {
   jeu.dessiner()
   dessinerCollision()
 })
-
-// Pour les bancs : ils ont besoin d'une prise sur le jeu.
-;(window as unknown as { pfe: unknown }).pfe = { jeu, donjon, palette, edition }

@@ -1,6 +1,7 @@
 import type { Jeu } from '../runtime/jeu.ts'
 import type { Carte, Calque } from '../tuiles/tilemap.ts'
 import { VIDE } from '../tuiles/tilemap.ts'
+import { mondeVersCase } from '../noyau/projection.ts'
 
 /**
  * Le mode edition : peindre le decor pendant que la scene est arretee.
@@ -28,10 +29,21 @@ export interface EtatEdition {
   calque: Calque | null
   /** Affiche la grille de collision par-dessus le decor. */
   montrerCollision: boolean
+  /**
+   * Tuile posee quand le calque n'obeit pas a un terrain.
+   *
+   * L'autotiling ne s'applique qu'aux decors qui ont un voisinage a consulter.
+   * Un bloc isometrique n'en a pas : il est le meme quels que soient ses
+   * voisins, et vouloir lui en donner un reviendrait a dessiner quarante-sept
+   * variantes identiques.
+   */
+  tuileFixe: number
 }
 
 export class Edition {
-  readonly etat: EtatEdition = { outil: 'terrain', calque: null, montrerCollision: false }
+  readonly etat: EtatEdition = {
+    outil: 'terrain', calque: null, montrerCollision: false, tuileFixe: 0,
+  }
   private jeu: Jeu
   private carte: Carte
   private peint = false
@@ -43,17 +55,33 @@ export class Edition {
   constructor(jeu: Jeu, carte: Carte) {
     this.jeu = jeu
     this.carte = carte
-    this.etat.calque = carte.calques.find((c) => c.terrain) ?? null
+    this.etat.calque = calqueEditable(carte)
   }
 
-  /** Case du monde sous un point de la page, ou null hors de la vue. */
+  /**
+   * Case du monde sous un point de la page, ou null hors de la vue.
+   *
+   * Le chemin passe par la projection et non par une division : sur une carte
+   * isometrique, diviser par la taille de tuile pointe la case du dessous des
+   * qu'on s'ecarte du centre d'un losange — et l'on s'en ecarte justement
+   * quand on vise une case voisine. C'est le defaut qui trahit un editeur
+   * orthogonal repeint en losanges.
+   */
   caseSous(pageX: number, pageY: number): { cx: number; cy: number } | null {
     const p = this.jeu.ecran.versJeu(pageX, pageY)
     if (!p) return null
-    const cx = Math.floor((p.x + this.jeu.camera.x) / this.carte.tuile)
-    const cy = Math.floor((p.y + this.jeu.camera.y) / this.carte.tuile)
-    if (!this.carte.dedans(cx, cy)) return null
-    return { cx, cy }
+    const c = mondeVersCase(this.jeu.projection,
+      p.x + Math.round(this.jeu.camera.x), p.y + Math.round(this.jeu.camera.y))
+    if (!this.carte.dedans(c.x, c.y)) return null
+    return { cx: c.x, cy: c.y }
+  }
+
+  /** Change la carte editee : l'editeur passe d'un monde a l'autre. */
+  changerCarte(carte: Carte, tuileFixe = 0): void {
+    this.carte = carte
+    this.etat.calque = calqueEditable(carte)
+    this.etat.tuileFixe = tuileFixe
+    this.finir()
   }
 
   commencer(pageX: number, pageY: number, bouton: number): void {
@@ -114,6 +142,8 @@ export class Edition {
     if (!calque) return
     const pose = this.etat.outil === 'gomme' ? false : this.pose
     this.carte.peindreTerrain(calque, cx, cy, pose)
+    // Sans terrain, la tuile ne se deduit de rien : on pose celle du monde.
+    if (!calque.terrain) calque.cases[i] = pose ? this.etat.tuileFixe : VIDE
     // La collision suit le terrain : un mur peint qui ne bloque pas ne se
     // decouvre qu'en jouant, parfois bien plus tard.
     this.carte.solides[i] = pose ? 1 : 0
@@ -132,4 +162,17 @@ export class Edition {
     }
     return { terrain, solides }
   }
+}
+
+/**
+ * Le calque que le pinceau modifie.
+ *
+ * Le calque de terrain, s'il y en a un — c'est celui qu'on veut peindre neuf
+ * fois sur dix. Sinon le dernier, qui est le plus haut : peindre sous le decor
+ * deja pose donnerait l'impression que le pinceau ne fait rien.
+ */
+function calqueEditable(carte: Carte): Calque | null {
+  return carte.calques.find((c) => c.terrain)
+    ?? carte.calques[carte.calques.length - 1]
+    ?? null
 }

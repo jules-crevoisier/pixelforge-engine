@@ -40,6 +40,13 @@ export class Entrees {
       haut: ['ArrowUp', 'KeyW', 'KeyZ'],
       bas: ['ArrowDown', 'KeyS'],
       action: ['Space', 'KeyE', 'Enter'],
+      // Le saut partage la barre d'espace avec « action » et la fleche haut
+      // avec « haut » : dans un jeu vu de dessus il n'y a pas de saut, dans un
+      // jeu de plateforme il n'y a pas de haut, et personne n'a jamais eu a
+      // choisir. Deux actions peuvent tenir sur la meme touche — c'est
+      // justement ce qu'un plan de touches sert a exprimer.
+      saut: ['Space', 'KeyC', 'ArrowUp', 'KeyW'],
+      dash: ['ShiftLeft', 'ShiftRight', 'KeyX'],
       annuler: ['Escape'],
     })
   }

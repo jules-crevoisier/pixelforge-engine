@@ -236,3 +236,146 @@ export function tailleMonde(p: Projection, largeur: number, hauteur: number): { 
 
 /** L'arrondi symetrique, reexporte : le rendu isometrique en a besoin. */
 export { arrondiPair }
+
+/**
+ * Un point CONTINU du monde orthogonal -> sa position a l'ecran.
+ *
+ * ## Pourquoi les entites vivent en coordonnees orthogonales
+ *
+ * Une carte isometrique n'est pas une autre geometrie : c'est la meme grille
+ * carree, regardee de biais. Faire vivre le gameplay dans le losange
+ * obligerait a reecrire les collisions, la poursuite, la distance — et a les
+ * reecrire une deuxieme fois pour l'hexagone. On garde donc UNE seule verite,
+ * la grille carree, et la projection n'intervient qu'au dessin et au clic.
+ *
+ * C'est ce qui permet au meme heros, au meme controleur et au meme moteur de
+ * collision de servir en vue de dessus, en vue de cote et en isometrique sans
+ * une ligne de difference.
+ *
+ * `tuileSource` est la taille de la case dans ce monde orthogonal ; le
+ * resultat est en pixels de l'ecran de jeu.
+ */
+export function projeter(p: Projection, x: number, y: number, tuileSource: number): Point {
+  const cx = x / tuileSource
+  const cy = y / tuileSource
+  switch (p.mode) {
+    case 'orthogonale':
+      return { x: cx * p.largeurTuile, y: cy * p.hauteurTuile }
+    case 'isometrique':
+      return { x: (cx - cy) * (p.largeurTuile / 2), y: (cx + cy) * (p.hauteurTuile / 2) }
+    case 'iso-decalee':
+      // Les rangees decalees n'ont de sens qu'aux entiers : entre deux
+      // rangees, le decalage saute d'une demi-largeur. On projette donc le
+      // point comme s'il etait isometrique, ce qui est la meme geometrie a la
+      // rangee pres — et l'on ne s'en sert que pour placer une entite, jamais
+      // pour poser une tuile.
+      return { x: (cx - cy) * (p.largeurTuile / 2), y: (cx + cy) * (p.hauteurTuile / 2) }
+    case 'hexagonale':
+      return { x: cx * Math.floor(p.largeurTuile * 0.75), y: cy * p.hauteurTuile }
+  }
+}
+
+/** L'inverse exact de `projeter`, pour retrouver ou l'on a clique. */
+export function deprojeter(p: Projection, ex: number, ey: number, tuileSource: number): Point {
+  switch (p.mode) {
+    case 'orthogonale':
+      return { x: (ex / p.largeurTuile) * tuileSource, y: (ey / p.hauteurTuile) * tuileSource }
+    case 'isometrique':
+    case 'iso-decalee': {
+      const a = ex / (p.largeurTuile / 2)
+      const b = ey / (p.hauteurTuile / 2)
+      return { x: ((a + b) / 2) * tuileSource, y: ((b - a) / 2) * tuileSource }
+    }
+    case 'hexagonale':
+      return { x: (ex / Math.floor(p.largeurTuile * 0.75)) * tuileSource, y: (ey / p.hauteurTuile) * tuileSource }
+  }
+}
+
+/**
+ * Les cases susceptibles d'etre visibles dans un cadre de l'ecran.
+ *
+ * ## Pourquoi ce n'est pas une simple division
+ *
+ * En orthogonale, le rectangle de l'ecran est un rectangle de cases : deux
+ * divisions suffisent. En isometrique il devient un LOSANGE de cases, dont la
+ * boite englobante se calcule en deprojetant les QUATRE coins de l'ecran — un
+ * seul coin donnerait une bande qui laisse le decor apparaitre par morceaux
+ * quand on longe une diagonale.
+ *
+ * On rend une boite, pas la forme exacte : quelques cases de trop coutent
+ * moins qu'un test par case, et la marge absorbe la hauteur des blocs qui
+ * depassent au-dessus de leur propre case.
+ */
+export function casesVisibles(
+  p: Projection, camX: number, camY: number,
+  vue: { largeur: number; hauteur: number },
+  carte: { largeur: number; hauteur: number },
+  marge = 2,
+): { x0: number; y0: number; x1: number; y1: number } {
+  const coins = [
+    [camX, camY], [camX + vue.largeur, camY],
+    [camX, camY + vue.hauteur], [camX + vue.largeur, camY + vue.hauteur],
+  ]
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const [ex, ey] of coins) {
+    const c = mondeVersCase(p, ex, ey)
+    if (c.x < x0) x0 = c.x
+    if (c.y < y0) y0 = c.y
+    if (c.x > x1) x1 = c.x
+    if (c.y > y1) y1 = c.y
+  }
+  // La marge du haut est plus large : un bloc dessine au-dessus de sa case
+  // deborde vers le haut, donc une case hors cadre par le bas de l'ecran peut
+  // encore montrer son sommet.
+  const hautSupplement = p.hauteurTuile > 0 ? Math.ceil(p.hauteurBloc / p.hauteurTuile) : 0
+  return {
+    x0: Math.max(0, x0 - marge),
+    y0: Math.max(0, y0 - marge),
+    x1: Math.min(carte.largeur - 1, x1 + marge + hautSupplement),
+    y1: Math.min(carte.hauteur - 1, y1 + marge + hautSupplement),
+  }
+}
+
+/**
+ * Clef de tri pour une entite reperee dans le monde ORTHOGONAL.
+ *
+ * `profondeur` travaille dans le repere de l'ecran, ce qui convient au moteur
+ * de rendu qui recoit deja des pixels projetes. Les entites, elles, vivent en
+ * coordonnees orthogonales — voir `projeter` — et les reprojeter juste pour
+ * les trier ferait passer une division et un arrondi de plus par sprite et par
+ * image. La regle est la meme, exprimee dans le bon repere :
+ *
+ * - de COTE, seul le calque tranche ;
+ * - de DESSUS en orthogonale, ce qui est plus BAS est plus pres, donc `y` ;
+ * - en isometrique, les deux axes s'eloignent de la camera, donc `x + y`.
+ */
+export function profondeurMonde(
+  p: Projection, x: number, y: number, z = 0, couche = 0,
+): number {
+  if (p.regard === 'cote') return couche * 1e6 + z
+  if (p.mode === 'isometrique' || p.mode === 'iso-decalee') return couche * 1e6 + (x + y) - z
+  return couche * 1e6 + y - z
+}
+
+/**
+ * La boite du monde a l'ecran : son coin, et sa taille.
+ *
+ * `tailleMonde` donne l'etendue, ce qui suffit tant que le monde commence a
+ * l'origine. Une carte isometrique, elle, commence a GAUCHE de l'origine : la
+ * case (0, hauteur-1) est le point le plus a gauche de tout le losange. Borner
+ * la camera a partir de zero laisserait voir le vide sur tout le flanc gauche
+ * et interdirait d'atteindre le flanc droit.
+ */
+export function boiteMonde(
+  p: Projection, largeur: number, hauteur: number,
+): { x: number; y: number; l: number; h: number } {
+  const t = tailleMonde(p, largeur, hauteur)
+  switch (p.mode) {
+    case 'isometrique':
+      return { x: -hauteur * (p.largeurTuile / 2), y: -p.hauteurBloc, l: t.l, h: t.h }
+    case 'iso-decalee':
+      return { x: 0, y: -p.hauteurBloc, l: t.l, h: t.h }
+    default:
+      return { x: 0, y: 0, l: t.l, h: t.h }
+  }
+}

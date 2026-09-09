@@ -11,6 +11,7 @@
   <div class="app">
     <header class="barre">
       <span class="marque">PixelForge <b>Engine</b></span>
+      <select id="monde" title="Le monde chargé, et donc la projection"></select>
       <button id="jouer" class="primaire">Jouer</button>
       <button id="arreter" disabled>Arrêter</button>
       <span class="sep"></span>
@@ -21,19 +22,20 @@
         <button data-outil="main">Main</button>
       </div>
       <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
-      <span class="sep"></span>
-      <span class="info" id="info"></span>
       <span class="pousse"></span>
-      <span class="info" id="verdict"></span>
-      <select id="cible" title="Langage du chargeur genere"></select>
+      <select id="cible" title="Langage du chargeur généré"></select>
       <button id="exporter">Exporter</button>
     </header>
     <main class="scene">
       <canvas id="vue"></canvas>
     </main>
     <footer class="pied">
-      <span id="aide">Clic pour peindre, clic droit pour retirer, molette enfoncée pour déplacer la vue. « Jouer » pour essayer.</span>
+      <span id="aide"></span>
       <span class="pousse"></span>
+      <span class="info" id="verdict"></span>
+      <span class="sep"></span>
+      <span class="info" id="info"></span>
+      <span class="sep"></span>
       <span id="mesure"></span>
     </footer>
   </div>
