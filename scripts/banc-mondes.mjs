@@ -1058,6 +1058,94 @@ console.log('\n--- l\'etage engendre ---')
   }
 }
 
+console.log('\n--- un projet enregistre puis relu ---')
+
+{
+  const { serialiserProjet, versTexte, relireNoeud, VERSION_FORMAT } =
+    await import('../src/export/format.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { Palette, depuisHex } = await import('../src/noyau/palette.ts')
+  const { mondeCitadelle, mondeDonjon } = await import('../src/demo/mondes.ts')
+
+  for (const construire of [mondeDonjon, mondeCitadelle]) {
+    const m = construire()
+    // Un script ecrit dans l'atelier : c'est du texte, il doit traverser.
+    m.heros.script = 'n.x += 1'
+    const projet = serialiserProjet(
+      m.id, m.vue, new Palette(m.id, m.couleurs.map(depuisHex)),
+      [{ nom: m.id, carte: m.carte }], [{ nom: 'principale', racine: m.racine }],
+      m.animations, m.planches, m.projection,
+    )
+    const relu = mondeDepuisProjet(JSON.parse(versTexte(projet)), 'essai.json')
+
+    check(`${m.id} : la carte relue est identique, tuile par tuile`,
+      relu.carte.largeur === m.carte.largeur && relu.carte.hauteur === m.carte.hauteur
+      && relu.carte.calques.length === m.carte.calques.length
+      && relu.carte.calques.every((q, i) =>
+        q.cases.every((v, j) => v === m.carte.calques[i].cases[j])),
+      `${relu.carte.largeur}x${relu.carte.hauteur}, ${relu.carte.calques.length} calques`)
+
+    check(`${m.id} : la collision aussi`,
+      [...relu.carte.solides].every((v, i) => v === m.carte.solides[i]))
+
+    check(`${m.id} : la projection revient telle quelle`,
+      relu.projection.mode === m.projection.mode
+      && relu.projection.regard === m.projection.regard
+      && relu.projection.largeurTuile === m.projection.largeurTuile
+      && relu.projection.hauteurTuile === m.projection.hauteurTuile
+      && relu.projection.hauteurBloc === m.projection.hauteurBloc,
+      `${relu.projection.mode}, vue de ${relu.projection.regard} — `
+      + 'sans elle un projet isometrique se rouvre orthogonal, la carte juste et tout de travers')
+
+    const pixels = (pl) => pl.dessins.reduce((n, d) => n + d.join('').replace(/\./g, '').length, 0)
+    check(`${m.id} : les planches reviennent, au pixel pres`,
+      relu.planches.length === m.planches.length
+      && relu.planches.every((t, i) => t.nom === m.planches[i].nom
+        && t.largeurCase === m.planches[i].largeurCase
+        && t.hauteurCase === m.planches[i].hauteurCase
+        && pixels(t) === pixels(m.planches[i])),
+      `${relu.planches.map((t) => `${t.nom} ${pixels(t)} px`).join(', ')}`)
+
+    check(`${m.id} : les clips reviennent avec leurs evenements`,
+      relu.animations.length === m.animations.length
+      && relu.animations.every((a, i) => a.nom === m.animations[i].nom
+        && a.boucle === m.animations[i].boucle
+        && a.images.length === m.animations[i].images.length
+        && a.evenements.length === m.animations[i].evenements.length),
+      `${relu.animations.length} clips`)
+
+    const chercher = (n, nom) => {
+      if (n.nom === nom) return n
+      for (const e of n.enfants) { const r = chercher(e, nom); if (r) return r }
+      return null
+    }
+    const herosRelu = chercher(relu.racine, 'heros')
+    const corpsRelu = herosRelu && chercher(herosRelu, 'corps')
+    check(`${m.id} : la scene revient avec ses proprietes et son script`,
+      herosRelu && herosRelu.x === m.heros.x && herosRelu.y === m.heros.y
+      && herosRelu.ancreY === m.heros.ancreY && herosRelu.source === m.heros.source
+      && herosRelu.script === 'n.x += 1'
+      && corpsRelu && corpsRelu.boiteL > 0,
+      'ancre, source, boite de collision et script')
+  }
+
+  // Une propriete inconnue du lecteur ne doit pas disparaitre en silence :
+  // perdre des donnees sans rien dire est pire que refuser de les lire.
+  {
+    const s = {
+      id: 'x', nom: 'chose', type: 'sprite', x: 3, y: 4, visible: true, script: null,
+      proprietes: { source: 'a', quelqueChoseDeNeuf: 42 }, enfants: [],
+    }
+    const n = relireNoeud(s)
+    check('une propriete que le lecteur ne connait pas est conservee',
+      n.quelqueChoseDeNeuf === 42 && n.source === 'a',
+      'une liste blanche par type perdrait tout champ ajoute depuis')
+  }
+
+  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 3,
+    'un chargeur d\'un autre langage doit pouvoir DIRE qu\'il ne comprend pas')
+}
+
 console.log('\n--- les quatre mondes se construisent tous ---')
 
 {

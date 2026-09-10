@@ -157,6 +157,7 @@ seconde.
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
 - édition : pinceau de terrain, gomme, collision, déplacement de la vue — et le
   pinceau vise le bon losange en isométrique, pas la case d'à côté
+- projet enregistré et relu dans un dossier local, planches et projection comprises
 - scripting embarqué : écrire le comportement d'un nœud dans l'éditeur, à chaud
 - combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
 - créatures avec intention — la gelée bondit par à-coups, la chauve-souris fonce
@@ -164,6 +165,28 @@ seconde.
 - caméra verrouillée sur la salle, avec glissement à vitesse constante
 - Tiled et LDtk, dans les deux sens
 - export du projet et de son chargeur
+
+## Le projet, sur votre disque
+
+**Dossier…** choisit le dossier de travail, **Enregistrer** (ou Ctrl+S) y écrit
+`projet.json`, **Ouvrir…** le relit. Là où `showDirectoryPicker` n'existe pas,
+l'éditeur bascule sur le téléchargement et le champ de fichier — et il le dit :
+un bouton qui ne fait rien sans expliquer pourquoi est pire qu'un bouton absent.
+
+Le fichier **se suffit à lui-même**. Il porte les cartes, la collision, la
+scène, la palette, les clips d'animation, la projection, et les **planches de
+dessins** — en lettres, une couleur par caractère, le point pour le vide. Une
+planche en PNG encodé serait plus compacte et opaque dans un dépôt : un diff
+dirait « l'image a changé », et rien de plus. En lettres, il montre le pixel qui
+a bougé.
+
+Un projet relu se **joue**, il ne s'affiche pas seulement : les scripts écrits
+dans l'atelier sont recompilés depuis leur source. Ce qui ne revient pas, et
+qu'on préfère dire : les comportements des mondes de démonstration sont écrits
+en TypeScript et vivent dans le code du moteur, pas dans le fichier. Un étage
+relu redevient une salle qu'on parcourt sans créatures. Un fichier de projet ne
+peut pas contenir du code compilé, et prétendre le contraire ferait croire à une
+fidélité qui n'existe pas.
 
 ## « Marche avec tous les langages »
 
@@ -174,9 +197,9 @@ choix.
 
 | Cible | État |
 | --- | --- |
-| Python | **exécuté au banc** — charge un projet, retrouve chaque valeur, et rend la même image d'animation que le moteur à 51 instants |
-| Rust | **compilé et exécuté au banc** — même table d'animation, valeur par valeur (serde retiré, la crate n'est pas installée ici) |
-| TypeScript | **compilé `--strict` et exécuté** — même chargement, même table |
+| Python | **exécuté au banc** — charge un projet, retrouve chaque valeur, rend la même image d'animation à 51 instants, le même pixel de planche 24 fois et la même case isométrique 25 fois |
+| Rust | **compilé et exécuté au banc** — mêmes tables, valeur par valeur (serde retiré, la crate n'est pas installée ici) |
+| TypeScript | **compilé `--strict` et exécuté** — même chargement, mêmes tables |
 | C# (Unity) | généré, symboles vérifiés — aucun interprète installé ici |
 | GDScript (Godot) | généré, symboles vérifiés — aucun interprète installé ici |
 | Lua (LÖVE) | généré, symboles vérifiés — aucun interprète installé ici |
@@ -185,11 +208,12 @@ Le tableau dit ce qui est éprouvé et ce qui ne l'est pas. Un générateur de c
 dont on affirme que la sortie compile, c'est le genre de promesse qui se révèle
 fausse le jour où quelqu'un s'en sert.
 
-Et compiler n'est pas tourner. Ce que le banc compare maintenant, c'est la
-**réponse** : le moteur, le portage Python, le portage Rust et le portage
-TypeScript doivent rendre exactement la même image d'animation pour les mêmes
-millisecondes — boucle, aller-retour et clip unique compris, aux instants
-frontière où deux portages divergent. C'est ce test qui a révélé que le
+Et compiler n'est pas tourner. Ce que le banc compare, c'est la **réponse** : le
+moteur, le portage Python, le portage Rust et le portage TypeScript doivent
+rendre exactement la même image d'animation pour les mêmes millisecondes, la
+même couleur pour le même pixel de planche, et la même position à l'écran pour
+la même case isométrique. Aux instants frontière, et sur la demi-largeur du
+losange — c'est-à-dire là où deux portages divergent. C'est ce test qui a révélé que le
 chargeur Rust cherchait un champ `tuile_depart` là où le format écrit
 `tuileDepart` : il compilait très bien, et aurait échoué à la première carte
 avec un terrain.
@@ -201,8 +225,8 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 101 vérifications des mondes, animations, combat, étages et scripts
-npm run banc:langages   # 43 vérifications des chargeurs et de leur accord
+npm run banc:mondes     # 115 vérifications : mondes, animations, combat, étages, scripts, projets
+npm run banc:langages   # 49 vérifications des chargeurs et de leur accord
 npm run build
 ```
 

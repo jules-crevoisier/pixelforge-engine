@@ -1,0 +1,112 @@
+import { Carte } from '../tuiles/tilemap.ts'
+import { relireCarte, relireNoeud, type ProjetSerialise } from '../export/format.ts'
+import { atlasDepuisLettres } from '../runtime/atlas.ts'
+import type { Noeud, NoeudSprite } from '../scene/noeud.ts'
+import type { Clip } from '../runtime/animation.ts'
+import type { Projection } from '../noyau/projection.ts'
+import { compiler } from '../script/atelier.ts'
+import type { Monde } from '../demo/mondes.ts'
+
+/**
+ * Un monde reconstruit depuis un fichier de projet.
+ *
+ * C'est ce qui donne son sens a l'enregistrement : un projet relu doit se
+ * JOUER, pas seulement s'afficher. Les cartes reviennent, les planches
+ * reviennent, la scene revient, la projection revient, et les scripts ecrits
+ * dans l'atelier sont recompiles depuis leur source.
+ *
+ * ## Ce qui ne revient pas, et pourquoi on le dit
+ *
+ * Les comportements ecrits en TypeScript dans les mondes de demonstration ne
+ * sont pas dans le fichier — ils sont dans le code du moteur. Un etage
+ * engendre relu redevient donc une salle qu'on parcourt sans creatures. Ce
+ * n'est pas un oubli : un fichier de projet ne peut pas contenir du code
+ * compile, et pretendre le contraire ferait croire a une fidelite qui n'existe
+ * pas. Ce qui est ecrit dans l'atelier, lui, revient — parce que c'est du
+ * texte, et que le format le transporte.
+ */
+export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde {
+  const cartes = p.cartes.map((c) => ({
+    nom: c.nom,
+    carte: relireCarte(c, (l, h, t) => new Carte(l, h, t)),
+  }))
+  const premiere = cartes[0]?.carte ?? new Carte(20, 15, p.projection.hauteurTuile || 16)
+  const racine = p.scenes[0] ? relireNoeud(p.scenes[0].racine) : ({
+    id: 'r', nom: 'scene', type: 'noeud', x: 0, y: 0, visible: true,
+    enfants: [], script: null, etat: {},
+  } as Noeud)
+
+  const sprites: NoeudSprite[] = []
+  const recenser = (n: Noeud): void => {
+    if (n.type === 'sprite') sprites.push(n as NoeudSprite)
+    for (const e of n.enfants) recenser(e)
+  }
+  recenser(racine)
+  const heros = sprites[0] ?? null
+
+  const animations: Clip[] = p.animations.map((a) => ({
+    nom: a.nom,
+    images: a.images.map((i) => ({ ...i })),
+    boucle: a.boucle as Clip['boucle'],
+    evenements: a.evenements.map((e) => ({ ...e })),
+    suite: a.suite,
+  }))
+
+  const depart = heros ? { x: heros.x, y: heros.y } : { x: 0, y: 0 }
+  const projection = { ...p.projection } as Projection
+  let notes = ''
+
+  return {
+    id: `projet:${nomFichier}`,
+    nom: `${p.nom} — ${nomFichier}`,
+    aide: `Projet relu depuis « ${nomFichier} ». Les scripts écrits dans l’atelier ont été recompilés ;`
+      + ' les comportements des mondes de démonstration, eux, vivent dans le code du moteur et ne sont pas dans le fichier.',
+    vue: { largeur: p.vue.largeur, hauteur: p.vue.hauteur },
+    projection,
+    carte: premiere,
+    racine,
+    heros: heros ?? ({} as NoeudSprite),
+    depart,
+    couleurs: p.palette.couleurs,
+    animations,
+    planches: p.planches,
+    tuilePinceau: 0,
+    installer(jeu) {
+      for (const t of p.planches) {
+        const atlas = atlasDepuisLettres(t.dessins, t.cle, t.largeurCase, t.colonnes, t.hauteurCase)
+        // Une planche sert aux tuiles ET aux sprites : c'est le meme dessin.
+        jeu.sprites.set(t.nom, atlas)
+        for (const c of cartes) {
+          if (!jeu.cartes.has(c.nom)) jeu.cartes.set(c.nom, { carte: c.carte, atlas })
+        }
+      }
+      // La carte prend la planche du meme nom si elle existe, sinon la
+      // premiere : sans planche, une carte se dessinerait toute noire et l'on
+      // croirait le fichier vide.
+      for (const c of cartes) {
+        const propre = jeu.sprites.get(c.nom)
+        if (propre) jeu.cartes.set(c.nom, { carte: c.carte, atlas: propre })
+      }
+
+      const fautes: string[] = []
+      const brancher = (n: Noeud): void => {
+        if (n.script) {
+          const c = compiler(n.script)
+          if (c.ok && c.script) jeu.scripts.set(n.nom, c.script)
+          else fautes.push(`${n.nom} : ${c.erreur ?? 'refusé'}`)
+        }
+        for (const e of n.enfants) brancher(e)
+      }
+      brancher(racine)
+      notes = fautes.length ? ` · ${fautes.length} script(s) refusé(s)` : ''
+      if (heros) jeu.suivreNoeud(heros.nom)
+    },
+    reinitialiser() {
+      if (!heros) return
+      heros.x = depart.x
+      heros.y = depart.y
+    },
+    etat: () => `projet relu · ${cartes.length} carte(s) · ${p.planches.length} planche(s)`
+      + ` · ${p.animations.length} clip(s)${notes}`,
+  }
+}

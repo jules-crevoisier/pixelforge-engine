@@ -19,6 +19,7 @@ import {
   ISO_SOL, ISO_HERBE, ISO_EAU, ISO_MUR, ISO_CAISSE, ISO_SORTIE,
 } from './art-iso.ts'
 import { construireDonjon } from './donjon.ts'
+import { decrirePlanche, type PlancheSerialisee } from '../export/format.ts'
 import { engendrerPlan, Hasard, type SallePlan } from '../niveau/plan.ts'
 import { Aventure } from './aventure.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
@@ -56,6 +57,14 @@ export interface Monde {
   readonly couleurs: string[]
   /** Les clips d'animation, pour que l'export les emporte avec le reste. */
   readonly animations: Clip[]
+  /**
+   * Les planches de dessins.
+   *
+   * Elles partent dans le fichier de projet avec tout le reste. Un projet qui
+   * decrit une carte sans dire a quoi ses tuiles ressemblent n'est lisible que
+   * par le programme qui l'a ecrit — donc l'enregistrer ne sert a rien.
+   */
+  readonly planches: PlancheSerialisee[]
   /** Tuile posee par le pinceau quand le calque n'a pas de terrain. */
   readonly tuilePinceau: number
   /** Branche planches et scripts sur un jeu. */
@@ -174,6 +183,10 @@ export function mondeDonjon(): Monde {
     depart: d.depart,
     couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS)],
     animations,
+    planches: [
+      decrirePlanche('donjon', PLANCHE_DONJON, CLE_DONJON, 8, TUILE),
+      decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+    ],
     tuilePinceau: 0,
     installer(jeu) {
       jeu.cartes.set('salle', { carte: d.carte, atlas: atlasDepuisLettres(PLANCHE_DONJON, CLE_DONJON, TUILE, 8) })
@@ -314,6 +327,10 @@ export function mondeCaverne(): Monde {
     depart,
     couleurs: [...couleursDe(CLE_CAVERNE), ...couleursDe(CLE_HEROS)],
     animations,
+    planches: [
+      decrirePlanche('caverne', PLANCHE_CAVERNE, CLE_CAVERNE, 8, TUILE),
+      decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+    ],
     tuilePinceau: TUILE_FOND,
     installer(jeu) {
       jeu.cartes.set('caverne', { carte, atlas: atlasDepuisLettres(PLANCHE_CAVERNE, CLE_CAVERNE, TUILE, 8) })
@@ -478,6 +495,10 @@ export function mondeCitadelle(): Monde {
     depart,
     couleurs: [...couleursDe(CLE_ISO), ...couleursDe(CLE_HEROS)],
     animations,
+    planches: [
+      decrirePlanche('citadelle', PLANCHE_ISO, CLE_ISO, 6, LARGEUR_ISO, HAUTEUR_DESSIN_ISO),
+      decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+    ],
     tuilePinceau: ISO_MUR,
     installer(jeu) {
       jeu.cartes.set('citadelle', {
@@ -607,8 +628,13 @@ export function mondeEtage(graine = 1): Monde {
     racine,
     heros,
     depart: etage.depart,
-    couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS)],
+    couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS), ...couleursDe(CLE_CREATURES)],
     animations,
+    planches: [
+      decrirePlanche('donjon', PLANCHE_DONJON, CLE_DONJON, 8, TUILE),
+      decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+      decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
+    ],
     tuilePinceau: 0,
     installer(jeu) {
       jeu.cartes.set('etage', {

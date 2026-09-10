@@ -4,6 +4,8 @@ import type { Noeud } from '../scene/noeud.ts'
 import type { Palette } from '../noyau/palette.ts'
 import { versHex } from '../noyau/palette.ts'
 import type { Clip } from '../runtime/animation.ts'
+import type { Projection } from '../noyau/projection.ts'
+import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
 
 /**
  * Le format de projet : ce que TOUS les langages liront.
@@ -32,6 +34,17 @@ import type { Clip } from '../runtime/animation.ts'
  *
  * ## L'histoire des versions
  *
+ * **3** — les planches de dessins, et la projection. Sans les planches, un
+ * fichier decrivait une carte sans dire a quoi ses tuiles ressemblent ; sans la
+ * projection, un projet isometrique se rouvrait orthogonal — la carte etait
+ * juste, et tout etait dessine de travers.
+ *
+ * **3, suite** — les planches de dessins. Sans elles, un fichier de projet decrivait
+ * une carte de tuiles sans dire a quoi ces tuiles ressemblent : il n'etait
+ * lisible que par le programme qui l'avait ecrit, et qui gardait les dessins
+ * dans son propre code. Un projet doit se suffire a lui-meme, sinon
+ * l'enregistrer ne sert a rien.
+ *
  * **2** — les animations. Elles auraient pu etre un champ optionnel, que les
  * anciens chargeurs auraient ignore sans rien casser. On a quand meme monte la
  * version : un chargeur ecrit dans un autre langage doit pouvoir DIRE qu'il ne
@@ -41,7 +54,7 @@ import type { Clip } from '../runtime/animation.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 2
+export const VERSION_FORMAT = 3
 
 export interface ProjetSerialise {
   version: number
@@ -54,6 +67,42 @@ export interface ProjetSerialise {
   scenes: SceneSerialisee[]
   /** Les clips d'animation du projet, partages par tous les sprites. */
   animations: AnimationSerialisee[]
+  /** Les planches de dessins : ce a quoi ressemblent les tuiles et les sprites. */
+  planches: PlancheSerialisee[]
+  /** Comment le monde se montre : orthogonal, isometrique, hexagonal. */
+  projection: Projection
+}
+
+/**
+ * Une planche de dessins, en texte.
+ *
+ * ## Pourquoi des lettres et non une image
+ *
+ * Une planche pourrait s'ecrire en PNG encode en base64 : plus compact, et
+ * lisible par n'importe quel outil. Elle serait aussi opaque dans un depot —
+ * un diff dirait « l'image a change », et rien de plus.
+ *
+ * En lettres, une couleur par caractere et le point pour le vide, un diff
+ * montre le pixel qui a bouge. Sur un projet ou plusieurs personnes touchent
+ * aux memes sprites, c'est la difference entre relire un changement et le
+ * croire sur parole. Le prix est un fichier plus gros ; il se compresse tres
+ * bien, et un depot compresse ses objets.
+ *
+ * La cle est portee par la planche et non par le projet : deux planches
+ * peuvent employer la meme lettre pour deux couleurs differentes, et les
+ * forcer a s'accorder obligerait a repeindre l'une des deux a chaque ajout.
+ */
+export interface PlancheSerialisee {
+  nom: string
+  /** Taille d'une case de la planche, en pixels. */
+  largeurCase: number
+  hauteurCase: number
+  /** Cases par rangee. */
+  colonnes: number
+  /** Lettre -> couleur hexadecimale. Le point est toujours le vide. */
+  cle: Record<string, string>
+  /** Un dessin par case, une chaine par rangee de pixels. */
+  dessins: string[][]
 }
 
 /**
@@ -170,6 +219,10 @@ export function serialiserProjet(
   nom: string, vue: { largeur: number; hauteur: number }, palette: Palette,
   cartes: { nom: string; carte: Carte }[], scenes: { nom: string; racine: Noeud }[],
   animations: Clip[] = [],
+  planches: PlancheSerialisee[] = [],
+  projection: Projection = {
+    mode: 'orthogonale', regard: 'dessus', largeurTuile: 16, hauteurTuile: 16, hauteurBloc: 0,
+  },
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -179,7 +232,17 @@ export function serialiserProjet(
     cartes: cartes.map((c) => serialiserCarte(c.nom, c.carte)),
     scenes: scenes.map((s) => ({ nom: s.nom, racine: serialiserNoeud(s.racine) })),
     animations: animations.map(serialiserAnimation),
+    planches: planches.map((p) => ({ ...p, cle: { ...p.cle }, dessins: p.dessins.map((d) => [...d]) })),
+    projection: { ...projection },
   }
+}
+
+/** Construit la description d'une planche depuis des dessins en lettres. */
+export function decrirePlanche(
+  nom: string, dessins: string[][], cle: Record<string, string>,
+  colonnes: number, largeurCase: number, hauteurCase = largeurCase,
+): PlancheSerialisee {
+  return { nom, largeurCase, hauteurCase, colonnes, cle: { ...cle }, dessins }
 }
 
 /** Le projet en JSON indente : c'est un fichier qu'on relit et qu'on diffe. */
@@ -219,6 +282,26 @@ export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number,
     depuisLigne(ligne, '').forEach((v, x) => { c.solides[c.index(x, y)] = v })
   })
   return c
+}
+
+/**
+ * Reconstruit un noeud depuis sa forme serialisee.
+ *
+ * Les champs propres au type sont recopies tels quels : le format les a ecrits
+ * sans les interpreter, on les relit sans les interpreter. Une liste blanche
+ * par type serait plus stricte — et il faudrait la tenir a jour a chaque
+ * nouveau champ, sous peine de perdre silencieusement des donnees a la
+ * relecture. Perdre en silence est le pire des deux defauts.
+ */
+export function relireNoeud(s: NoeudSerialise): Noeud {
+  const n = creerNoeud(s.type as TypeNoeud, s.nom)
+  n.x = s.x
+  n.y = s.y
+  n.visible = s.visible
+  n.script = s.script
+  Object.assign(n, s.proprietes)
+  n.enfants = (s.enfants ?? []).map(relireNoeud)
+  return n
 }
 
 /** Vrai si le calque n'a que du vide : utile pour un rapport d'import. */

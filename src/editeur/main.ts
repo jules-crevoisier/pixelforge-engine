@@ -2,10 +2,12 @@ import { Jeu } from '../runtime/jeu.ts'
 import { Palette, depuisHex } from '../noyau/palette.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil } from './edition.ts'
-import { serialiserProjet, versTexte } from '../export/format.ts'
+import { serialiserProjet, versTexte, VERSION_FORMAT } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { MONDES, type Monde } from '../demo/mondes.ts'
 import { Atelier } from './atelier-panneau.ts'
+import { mondeDepuisProjet } from './monde-projet.ts'
+import * as dossier from '../io/dossier.ts'
 
 /**
  * L'editeur.
@@ -80,9 +82,16 @@ const atelier = new Atelier(
  * toute une classe de bogues qui ne se voient qu'au deuxieme changement.
  */
 function charger(id: string): void {
-  const entree = MONDES.find((m) => m.id === id) ?? MONDES[0]
+  const relu = projetsRelus.get(id)
+  installer(relu ? relu() : (MONDES.find((m) => m.id === id) ?? MONDES[0]).construire())
+}
+
+/** Les projets relus depuis un fichier, ajoutes a la liste des mondes. */
+const projetsRelus = new Map<string, () => Monde>()
+
+function installer(nouveau: Monde): void {
   if (jeu?.tourne) arreter()
-  monde = entree.construire()
+  monde = nouveau
   jeu = new Jeu(canevas, monde.racine, monde.carte, {
     vue: monde.vue,
     projection: monde.projection,
@@ -107,6 +116,137 @@ function charger(id: string): void {
   majMesure()
   ;(window as unknown as { pfe: unknown }).pfe = { jeu, monde, palette, edition }
 }
+
+/* ------------------------------------------------------------------ */
+/* Le dossier de travail, l'enregistrement et la relecture             */
+/* ------------------------------------------------------------------ */
+
+const boutonDossier = document.getElementById('dossier') as HTMLButtonElement
+let travail: dossier.PoigneeDossier | null = null
+
+function direDossier(): void {
+  boutonDossier.textContent = travail ? `📁 ${travail.name}` : 'Dossier…'
+  boutonDossier.title = travail
+    ? `Dossier de travail : ${travail.name}. Cliquer pour en choisir un autre.`
+    : (dossier.disponible()
+      ? 'Choisir le dossier de travail du projet'
+      : 'Ce navigateur ne sait pas ouvrir un dossier : l’enregistrement passera par un téléchargement.')
+}
+
+boutonDossier.addEventListener('click', async () => {
+  if (!dossier.disponible()) {
+    verdict.textContent = 'Ce navigateur ne donne pas accès à un dossier. '
+      + 'Enregistrer téléchargera le fichier, Ouvrir demandera à le choisir.'
+    return
+  }
+  const d = await dossier.choisirDossier()
+  if (!d) return
+  travail = d
+  await dossier.memoriser(d)
+  direDossier()
+  verdict.textContent = `Dossier de travail : ${d.name}`
+})
+
+/** Le projet courant, tel qu'il partira dans le fichier. */
+function projetCourant() {
+  return serialiserProjet(
+    monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id,
+    jeu.ecran.vue, palette,
+    [{ nom: monde.id.startsWith('projet:') ? 'carte' : monde.id, carte: monde.carte }],
+    [{ nom: 'principale', racine: monde.racine }],
+    monde.animations,
+    monde.planches,
+    monde.projection,
+  )
+}
+
+async function enregistrer(): Promise<void> {
+  const p = projetCourant()
+  const nom = `${p.nom}.json`
+  const texte = versTexte(p)
+  if (travail) {
+    try {
+      await dossier.ecrire(travail, nom, texte)
+      verdict.textContent = `Enregistré : ${travail.name}/${nom} (${Math.round(texte.length / 1024)} Ko)`
+      return
+    } catch (e) {
+      verdict.textContent = e instanceof Error ? e.message : String(e)
+      return
+    }
+  }
+  dossier.telecharger(nom, texte)
+  verdict.textContent = `Téléchargé : ${nom}. Choisissez un dossier pour enregistrer sur place.`
+}
+
+function relire(texte: string, nomFichier: string): void {
+  let brut: unknown
+  try {
+    brut = JSON.parse(texte)
+  } catch (e) {
+    verdict.textContent = `« ${nomFichier} » n’est pas du JSON valide : ${e instanceof Error ? e.message : e}`
+    return
+  }
+  const p = brut as ReturnType<typeof projetCourant>
+  if (!p || typeof p.version !== 'number' || !Array.isArray(p.cartes)) {
+    verdict.textContent = `« ${nomFichier} » n’a pas la forme d’un projet PixelForge.`
+    return
+  }
+  // On lit une version plus recente sans faire semblant de la comprendre.
+  const avertissement = p.version > VERSION_FORMAT
+    ? ` (fichier en version ${p.version}, lecteur en version ${VERSION_FORMAT} : `
+      + 'ce qu’il porte en plus est ignoré)'
+    : ''
+  const id = `projet:${nomFichier}`
+  projetsRelus.set(id, () => mondeDepuisProjet(p, nomFichier))
+  if (!Array.from(selectMonde.options).some((o) => o.value === id)) {
+    const o = document.createElement('option')
+    o.value = id
+    o.textContent = `📄 ${nomFichier}`
+    selectMonde.appendChild(o)
+  }
+  selectMonde.value = id
+  charger(id)
+  verdict.textContent = `Relu : ${nomFichier}${avertissement}`
+}
+
+document.getElementById('enregistrer')?.addEventListener('click', () => { void enregistrer() })
+
+document.getElementById('ouvrir')?.addEventListener('click', async () => {
+  if (travail) {
+    const fichiers = await dossier.lister(travail, '.json')
+    if (fichiers.length === 0) {
+      verdict.textContent = `Aucun projet dans « ${travail.name} ».`
+      return
+    }
+    // Un seul fichier : on l'ouvre. Plusieurs : on demande, sans inventer un
+    // dialogue de plus — la liste tient dans une invite.
+    const nom = fichiers.length === 1
+      ? fichiers[0]
+      : window.prompt(`Quel projet ouvrir ?\n${fichiers.join('\n')}`, fichiers[0])
+    if (!nom) return
+    const texte = await dossier.lire(travail, nom)
+    if (texte === null) { verdict.textContent = `« ${nom} » est illisible.`; return }
+    relire(texte, nom)
+    return
+  }
+  const f = await dossier.demanderFichier('.json')
+  if (f) relire(f.texte, f.nom)
+})
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    void enregistrer()
+  }
+})
+
+// Le dossier choisi la derniere fois. On ne rouvre RIEN tout seul : rouvrir un
+// projet a l'ouverture ferait perdre le monde de demonstration a quelqu'un qui
+// venait juste regarder.
+void (async () => {
+  travail = await dossier.rappeler()
+  direDossier()
+})()
 
 selectMonde.addEventListener('change', () => charger(selectMonde.value))
 
@@ -243,13 +383,8 @@ function telecharger(nom: string, contenu: string, type: string): void {
 
 document.getElementById('exporter')?.addEventListener('click', () => {
   const cible = selectCible.value as Cible
-  const p = serialiserProjet(
-    monde.id, jeu.ecran.vue, palette,
-    [{ nom: monde.id, carte: monde.carte }],
-    [{ nom: 'principale', racine: monde.racine }],
-    monde.animations,
-  )
-  telecharger(`${monde.id}.json`, versTexte(p), 'application/json')
+  const p = projetCourant()
+  telecharger(`${p.nom}.json`, versTexte(p), 'application/json')
   const fichier = CIBLES.find((c) => c.id === cible)?.fichier ?? 'projet.txt'
   telecharger(fichier, chargeur(cible, p), 'text/plain')
   verdict.textContent = `exporté : ${monde.id}.json + ${fichier}`

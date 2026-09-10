@@ -32,6 +32,8 @@ const { Carte } = await import('../src/tuiles/tilemap.ts')
 const { Palette, depuisHex } = await import('../src/noyau/palette.ts')
 const { creerNoeud } = await import('../src/scene/noeud.ts')
 const { clip, clipRegulier, imageA } = await import('../src/runtime/animation.ts')
+const { decrirePlanche } = await import('../src/export/format.ts')
+const { ISO, caseVersMonde } = await import('../src/noyau/projection.ts')
 
 /* Un projet minuscule mais complet : un mur, une collision, un noeud. */
 const carte = new Carte(5, 3, 16)
@@ -71,12 +73,47 @@ const CLIPS = [
 const INSTANTS = [0, 1, 29, 30, 31, 99, 100, 101, 279, 280, 370, 399, 400, 401, 700, 1234, 99999]
 const TABLE = CLIPS.flatMap((c) => INSTANTS.map((ms) => ({ clip: c.nom, ms, image: imageA(c, ms) })))
 
+/* Une planche minuscule, mais avec ce qui piege : du vide, une lettre en bas a
+ * droite, et une case non carree. */
+const PLANCHE = decrirePlanche('essai', [
+  ['ab.', '.ba', 'a.b', '..b'],
+  ['...', '...', '...', '..a'],
+], { a: '#ff0000', b: '#00ff00' }, 2, 3, 4)
+
 const projet = serialiserProjet(
   'demo', { largeur: 320, hauteur: 180 },
   new Palette('donjon', ['#14101a', '#7a7466'].map(depuisHex)),
   [{ nom: 'salle', carte }], [{ nom: 'principale', racine }],
   CLIPS,
+  [PLANCHE],
+  // Une projection isometrique : c'est celle ou les portages divergent, et
+  // celle qu'une projection orthogonale ne distinguerait pas d'une erreur.
+  ISO(32, 16),
 )
+
+/* La table de reference des cases : ou chaque case se pose a l'ecran. */
+const CASES = []
+for (let cy = 0; cy < 5; cy++) {
+  for (let cx = 0; cx < 5; cx++) {
+    const m = caseVersMonde(ISO(32, 16), cx, cy)
+    CASES.push({ cx, cy, x: m.x, y: m.y })
+  }
+}
+const CASES_POS = CASES.map(({ cx, cy }) => ({ cx, cy }))
+
+/* La table de reference des pixels : ce que chaque portage doit retrouver.
+ * `PIXELS_POS` ne porte que les coordonnees : on l'insere dans du Python et du
+ * Rust, ou `null` ne s'ecrit pas comme en JavaScript. */
+const PIXELS = []
+for (let i = 0; i < PLANCHE.dessins.length; i++) {
+  for (let y = 0; y < PLANCHE.hauteurCase; y++) {
+    for (let x = 0; x < PLANCHE.largeurCase; x++) {
+      const c = PLANCHE.dessins[i][y][x]
+      PIXELS.push({ i, x, y, couleur: c === '.' ? null : PLANCHE.cle[c] })
+    }
+  }
+}
+const PIXELS_POS = PIXELS.map(({ i, x, y }) => ({ i, x, y }))
 const json = versTexte(projet)
 const dir = mkdtempSync(join(tmpdir(), 'pfe-lang-'))
 writeFileSync(join(dir, 'projet.json'), json)
@@ -112,6 +149,11 @@ sortie = {
     "suite_attaque": p.clip("attaque").suite,
     "evenements_marche": p.clip("marche").evenements,
     "images": [p.clip(e["clip"]).image_a(e["ms"]) for e in ${JSON.stringify(TABLE)}],
+    "planches": [t.nom for t in p.planches],
+    "case": [p.planche("essai").largeurCase, p.planche("essai").hauteurCase],
+    "pixels": [p.planche("essai").pixel(e["i"], e["x"], e["y"]) for e in ${JSON.stringify(PIXELS_POS)}],
+    "projection": p.projection.mode,
+    "cases": [list(p.projection.case_vers_monde(e["cx"], e["cy"])) for e in ${JSON.stringify(CASES_POS)}],
 }
 print(json.dumps(sortie))
 `)
@@ -137,6 +179,19 @@ print(json.dumps(sortie))
       v.clips.join(',') === CLIPS.map((c) => c.nom).join(',')
       && v.suite_attaque === 'marche' && v.evenements_marche.length === 2,
       `${v.clips.join(', ')} · suite « ${v.suite_attaque} »`)
+    const ecartsPixels = PIXELS.filter((e, i) => (v.pixels[i] ?? null) !== e.couleur)
+    check('Python retrouve la planche, ses cases non carrees et chacun de ses pixels',
+      v.planches.join(',') === 'essai' && v.case[0] === 3 && v.case[1] === 4
+      && ecartsPixels.length === 0,
+      ecartsPixels.length
+        ? `${ecartsPixels.length} pixels faux sur ${PIXELS.length}`
+        : `${PIXELS.length} pixels, vide compris`)
+    const ecartsCases = CASES.filter((e, i) => v.cases[i][0] !== e.x || v.cases[i][1] !== e.y)
+    check('Python place chaque case isometrique la ou le moteur la place',
+      v.projection === 'isometrique' && ecartsCases.length === 0,
+      ecartsCases.length
+        ? `${ecartsCases.length} cases decalees, ex. ${ecartsCases[0].cx},${ecartsCases[0].cy}`
+        : `${CASES.length} cases — la demi-largeur du losange comprise`)
     const ecarts = TABLE.filter((e, i) => v.images[i] !== e.image)
     check('Python rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -171,7 +226,30 @@ if (dispo('rustc')) {
         images: vec![${c.images.map((i) => `ImageAnim { index: ${i.index}, duree: ${i.duree}, decalage_x: 0, decalage_y: 0 }`).join(', ')}],
         evenements: vec![],
     }`
+  const enRustPlanche = (t) => `Planche {
+        nom: ${JSON.stringify(t.nom)}.to_string(),
+        largeur_case: ${t.largeurCase},
+        hauteur_case: ${t.hauteurCase},
+        colonnes: ${t.colonnes},
+        cle: [${Object.entries(t.cle).map(([k, v]) => `(${JSON.stringify(k)}.to_string(), ${JSON.stringify(v)}.to_string())`).join(', ')}]
+            .into_iter().collect(),
+        dessins: vec![${t.dessins.map((d) => `vec![${d.map((l) => `${JSON.stringify(l)}.to_string()`).join(', ')}]`).join(', ')}],
+    }`
   const main = `
+fn projection() -> Projection {
+    Projection {
+        mode: "isometrique".to_string(),
+        regard: "dessus".to_string(),
+        largeur_tuile: 32,
+        hauteur_tuile: 16,
+        hauteur_bloc: 16,
+    }
+}
+
+fn planche() -> Planche {
+    ${enRustPlanche(PLANCHE)}
+}
+
 fn clips() -> Vec<Clip> {
     vec![${CLIPS.map(enRust).join(', ')}]
 }
@@ -181,6 +259,22 @@ fn main() {
     let table: Vec<(usize, i64)> = vec![${TABLE.map((e) => `(${CLIPS.findIndex((c) => c.nom === e.clip)}, ${e.ms})`).join(', ')}];
     let sortie: Vec<String> = table.iter().map(|(i, ms)| cs[*i].image_a(*ms).to_string()).collect();
     println!("{}", sortie.join(","));
+
+    let t = planche();
+    let pixels: Vec<(usize, usize, usize)> = vec![${PIXELS_POS.map((e) => `(${e.i}, ${e.x}, ${e.y})`).join(', ')}];
+    let couleurs: Vec<String> = pixels
+        .iter()
+        .map(|(i, x, y)| t.pixel(*i, *x, *y).cloned().unwrap_or_else(|| "-".to_string()))
+        .collect();
+    println!("{}", couleurs.join(","));
+
+    let proj = projection();
+    let cases: Vec<(i32, i32)> = vec![${CASES_POS.map((e) => `(${e.cx}, ${e.cy})`).join(', ')}];
+    let places: Vec<String> = cases
+        .iter()
+        .map(|(cx, cy)| { let (x, y) = proj.case_vers_monde(*cx, *cy); format!("{}:{}", x, y) })
+        .collect();
+    println!("{}", places.join(","));
 }
 `
   const f = join(dir, 'projet_rs.rs')
@@ -191,13 +285,28 @@ fn main() {
       : (r.stderr || '').split('\n').filter((l) => l.startsWith('error')).slice(0, 2).join(' | '))
   if (r.status === 0) {
     const e = spawnSync(join(dir, 'projet_rs'), { encoding: 'utf8' })
-    const rendus = (e.stdout || '').trim().split(',').map(Number)
+    const lignes = (e.stdout || '').trim().split('\n')
+    const rendus = (lignes[0] || '').split(',').map(Number)
     const ecarts = TABLE.filter((t, i) => rendus[i] !== t.image)
     check('Rust rend EXACTEMENT la meme image que le moteur, instant par instant',
       e.status === 0 && rendus.length === TABLE.length && ecarts.length === 0,
       ecarts.length
         ? `${ecarts.length} ecarts, ex. ${ecarts[0].clip} a ${ecarts[0].ms} ms`
         : `${TABLE.length} instants`)
+    const couleurs = (lignes[1] || '').split(',')
+    const ecartsPixels = PIXELS.filter((q, i) => (couleurs[i] === '-' ? null : couleurs[i]) !== q.couleur)
+    check('Rust retrouve chacun des pixels de la planche',
+      ecartsPixels.length === 0,
+      ecartsPixels.length
+        ? `${ecartsPixels.length} faux sur ${PIXELS.length}, ex. dessin ${ecartsPixels[0].i} en ${ecartsPixels[0].x},${ecartsPixels[0].y}`
+        : `${PIXELS.length} pixels, vide compris`)
+    const places = (lignes[2] || '').split(',')
+    const ecartsCases = CASES.filter((q, i) => places[i] !== `${q.x}:${q.y}`)
+    check('Rust place chaque case isometrique la ou le moteur la place',
+      ecartsCases.length === 0,
+      ecartsCases.length
+        ? `${ecartsCases.length} decalees, ex. ${ecartsCases[0].cx},${ecartsCases[0].cy} attendue en ${ecartsCases[0].x}:${ecartsCases[0].y}, obtenue ${places[CASES.indexOf(ecartsCases[0])]}`
+        : `${CASES.length} cases`)
   }
 } else {
   check('rustc est disponible', false, 'chargeur Rust non eprouve')
@@ -223,10 +332,15 @@ const m = await import(${JSON.stringify(f)})
 const p = m.chargerProjet(readFileSync(${JSON.stringify(join(dir, 'projet.json'))}, 'utf8'))
 const table = ${JSON.stringify(TABLE)}
 const images = table.map((e) => m.imageA(m.clipNomme(p, e.clip), e.ms))
+const pixels = ${JSON.stringify(PIXELS_POS)}.map(
+  (e) => m.pixelDePlanche(m.plancheNommee(p, 'essai'), e.i, e.x, e.y))
+const cases = ${JSON.stringify(CASES_POS)}.map((e) => m.caseVersMonde(p.projection, e.cx, e.cy))
 console.log(JSON.stringify({
   clips: p.animations.map((a) => a.nom),
   images,
-  cases: m.deplierCases(p.cartes[0], p.cartes[0].calques[0])[1 * p.cartes[0].largeur + 1],
+  pixels,
+  cases,
+  tuileEn11: m.deplierCases(p.cartes[0], p.cartes[0].calques[0])[1 * p.cartes[0].largeur + 1],
 }))
 `)
   const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
@@ -237,8 +351,16 @@ console.log(JSON.stringify({
     const v = JSON.parse(e.stdout)
     check('le chargeur TypeScript tourne et lit le projet exporte',
       v.clips.join(',') === CLIPS.map((c) => c.nom).join(',')
-      && v.cases === mur.cases[carte.index(1, 1)],
-      `${v.clips.length} clips, tuile ${v.cases} en 1,1`)
+      && v.tuileEn11 === mur.cases[carte.index(1, 1)],
+      `${v.clips.length} clips, tuile ${v.tuileEn11} en 1,1`)
+    const ecartsPixels = PIXELS.filter((e, i) => (v.pixels[i] ?? null) !== e.couleur)
+    check('TypeScript retrouve chacun des pixels de la planche',
+      ecartsPixels.length === 0,
+      ecartsPixels.length ? `${ecartsPixels.length} faux` : `${PIXELS.length} pixels`)
+    const ecartsCases = CASES.filter((e, i) => v.cases[i].x !== e.x || v.cases[i].y !== e.y)
+    check('TypeScript place chaque case isometrique la ou le moteur la place',
+      ecartsCases.length === 0,
+      ecartsCases.length ? `${ecartsCases.length} decalees` : `${CASES.length} cases`)
     const ecarts = TABLE.filter((t, i) => v.images[i] !== t.image)
     check('TypeScript rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -251,11 +373,16 @@ console.log('\n--- ce qui n\'est PAS execute, faute d\'interprete ici ---')
 
 for (const [cible, marqueurs] of [
   ['csharp', ['class Projet', 'public const int VIDE = -1', 'DeplierCases', 'namespace PixelForge',
-    'class Clip', 'public int ImageA(int ms)', 'OrdreDeLecture', 'aller-retour']],
+    'class Clip', 'public int ImageA(int ms)', 'OrdreDeLecture', 'aller-retour',
+    'class Planche', 'public string Pixel(int index, int x, int y)',
+    'class Projection', 'public void CaseVersMonde']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
-    'static func image_a', 'static func ordre_de_lecture', 'aller-retour']],
+    'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
+    'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
-    'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour']],
+    'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
+    'function Projet.pixel_de_planche', 'function Projet:planche(',
+    'function Projet.case_vers_monde']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

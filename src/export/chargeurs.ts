@@ -113,6 +113,37 @@ export interface Clip {
   evenements: EvenementAnim[]
 }
 
+/**
+ * Une planche de dessins, en lettres : une couleur par caractere, le point
+ * pour le vide. C'est ce qui rend un projet lisible dans un diff — et
+ * autonome : sans les planches, un fichier decrit une carte sans dire a quoi
+ * ses tuiles ressemblent.
+ */
+export interface Planche {
+  nom: string
+  largeurCase: number
+  hauteurCase: number
+  colonnes: number
+  cle: Record<string, string>
+  dessins: string[][]
+}
+
+/**
+ * Comment le monde se montre.
+ *
+ * Le mode vaut 'orthogonale', 'isometrique', 'iso-decalee' ou 'hexagonale' ;
+ * le regard vaut 'dessus' ou 'cote'. Les deux sont independants : la meme
+ * grille orthogonale sert a un Zelda et a un Mario, et ce qui les separe est
+ * le tri en profondeur et la gravite, pas la geometrie.
+ */
+export interface Projection {
+  mode: string
+  regard: string
+  largeurTuile: number
+  hauteurTuile: number
+  hauteurBloc: number
+}
+
 export interface Projet {
   version: number
   nom: string
@@ -121,6 +152,32 @@ export interface Projet {
   cartes: Carte[]
   scenes: { nom: string; racine: Noeud }[]
   animations: Clip[]
+  planches: Planche[]
+  projection: Projection
+}
+
+/**
+ * Case -> coin haut-gauche de son dessin, en pixels.
+ *
+ * C'est la fonction que tout moteur d'accueil doit avoir juste, et celle ou
+ * les portages divergent. En isometrique, la transformation donne le SOMMET du
+ * losange ; on rend le coin de sa boite, une demi-largeur a gauche. Rendre le
+ * sommet fait pointer l'editeur sur une case pendant que le jeu en dessine une
+ * autre.
+ */
+export function caseVersMonde(p: Projection, cx: number, cy: number): { x: number; y: number } {
+  const l = p.largeurTuile
+  const h = p.hauteurTuile
+  switch (p.mode) {
+    case 'isometrique':
+      return { x: (cx - cy) * (l / 2) - l / 2, y: (cx + cy) * (h / 2) }
+    case 'iso-decalee':
+      return { x: cx * l + (cy % 2 ? l / 2 : 0), y: cy * (h / 2) }
+    case 'hexagonale':
+      return { x: cx * Math.floor(l * 0.75), y: cy * h + (cx % 2 ? Math.floor(h / 2) : 0) }
+    default:
+      return { x: cx * l, y: cy * h }
+  }
 }
 
 /** Une case vide. Zero est une vraie tuile : ne pas les confondre. */
@@ -195,6 +252,28 @@ export function imageA(c: Clip, ms: number): number {
 
 export function clipNomme(p: Projet, nom: string): Clip | null {
   return p.animations.find((a) => a.nom === nom) ?? null
+}
+
+export function plancheNommee(p: Projet, nom: string): Planche | null {
+  return p.planches.find((t) => t.nom === nom) ?? null
+}
+
+/**
+ * La couleur d'un pixel d'une case de planche, ou null pour le vide.
+ *
+ * C'est le seul acces dont un moteur d'accueil a besoin : a partir de la il
+ * peint dans sa propre texture, avec ses propres outils.
+ */
+export function pixelDePlanche(
+  t: Planche, index: number, x: number, y: number,
+): string | null {
+  const d = t.dessins[index]
+  if (!d) return null
+  const ligne = d[y]
+  if (!ligne) return null
+  const c = ligne[x]
+  if (!c || c === '.') return null
+  return t.cle[c] ?? null
 }
 `
 }
@@ -363,6 +442,67 @@ namespace PixelForge
         }
     }
 
+    /// <summary>Comment le monde se montre. Le mode et le regard sont independants.</summary>
+    [Serializable]
+    public class Projection
+    {
+        public string mode;
+        public string regard;
+        public int largeurTuile;
+        public int hauteurTuile;
+        public int hauteurBloc;
+
+        /// <summary>Case -> coin haut-gauche de son dessin, en pixels.</summary>
+        public void CaseVersMonde(int cx, int cy, out double x, out double y)
+        {
+            double l = largeurTuile;
+            double h = hauteurTuile;
+            switch (mode)
+            {
+                case "isometrique":
+                    x = (cx - cy) * (l / 2.0) - l / 2.0;
+                    y = (cx + cy) * (h / 2.0);
+                    return;
+                case "iso-decalee":
+                    x = cx * l + (cy % 2 != 0 ? l / 2.0 : 0.0);
+                    y = cy * (h / 2.0);
+                    return;
+                case "hexagonale":
+                    x = cx * Math.Floor(l * 0.75);
+                    y = cy * h + (cx % 2 != 0 ? Math.Floor(h / 2.0) : 0.0);
+                    return;
+                default:
+                    x = cx * l;
+                    y = cy * h;
+                    return;
+            }
+        }
+    }
+
+    /// <summary>Une planche de dessins, en lettres : une couleur par caractere.</summary>
+    [Serializable]
+    public class Planche
+    {
+        public string nom;
+        public int largeurCase;
+        public int hauteurCase;
+        public int colonnes;
+        public Dictionary<string, string> cle;
+        public List<List<string>> dessins;
+
+        /// <summary>La couleur d'un pixel, ou null pour le vide.</summary>
+        public string Pixel(int index, int x, int y)
+        {
+            if (dessins == null || index < 0 || index >= dessins.Count) return null;
+            var dessin = dessins[index];
+            if (y < 0 || y >= dessin.Count) return null;
+            var ligne = dessin[y];
+            if (x < 0 || x >= ligne.Length || ligne[x] == '.') return null;
+            string couleur;
+            return cle != null && cle.TryGetValue(ligne[x].ToString(), out couleur) ? couleur : null;
+        }
+    }
+
     [Serializable]
     public class Projet
     {
@@ -373,6 +513,8 @@ namespace PixelForge
         public List<Carte> cartes;
         public List<Scene> scenes;
         public List<Clip> animations;
+        public List<Planche> planches;
+        public Projection projection;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -381,6 +523,13 @@ namespace PixelForge
         {
             if (animations == null) return null;
             foreach (var a in animations) if (a.nom == nomClip) return a;
+            return null;
+        }
+
+        public Planche Planche(string nomPlanche)
+        {
+            if (planches == null) return null;
+            foreach (var t in planches) if (t.nom == nomPlanche) return t;
             return null;
         }
     }
@@ -402,6 +551,8 @@ var palette: Dictionary = {}
 var cartes: Array = []
 var scenes: Array = []
 var animations: Array = []
+var planches: Array = []
+var projection: Dictionary = {}
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -420,6 +571,8 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.cartes = brut.get("cartes", [])
 	p.scenes = brut.get("scenes", [])
 	p.animations = brut.get("animations", [])
+	p.planches = brut.get("planches", [])
+	p.projection = brut.get("projection", {})
 	return p
 
 ## Le clip portant ce nom, ou un dictionnaire vide.
@@ -428,6 +581,42 @@ func clip(nom_clip: String) -> Dictionary:
 		if a.get("nom", "") == nom_clip:
 			return a
 	return {}
+
+## La planche portant ce nom, ou un dictionnaire vide.
+func planche(nom_planche: String) -> Dictionary:
+	for t in planches:
+		if t.get("nom", "") == nom_planche:
+			return t
+	return {}
+
+## Case -> coin haut-gauche de son dessin, en pixels.
+## C'est la fonction que tout moteur d'accueil doit avoir juste, et celle ou
+## les portages divergent : en isometrique, on rend le coin de la boite du
+## losange et non son sommet.
+static func case_vers_monde(proj: Dictionary, cx: int, cy: int) -> Vector2:
+	var l: float = float(proj.get("largeurTuile", 16))
+	var h: float = float(proj.get("hauteurTuile", 16))
+	var mode: String = proj.get("mode", "orthogonale")
+	if mode == "isometrique":
+		return Vector2((cx - cy) * (l / 2.0) - l / 2.0, (cx + cy) * (h / 2.0))
+	if mode == "iso-decalee":
+		return Vector2(cx * l + (l / 2.0 if cy % 2 != 0 else 0.0), cy * (h / 2.0))
+	if mode == "hexagonale":
+		return Vector2(cx * floor(l * 0.75), cy * h + (floor(h / 2.0) if cx % 2 != 0 else 0.0))
+	return Vector2(cx * l, cy * h)
+
+## La couleur d'un pixel d'une planche, ou une chaine vide pour le vide.
+static func pixel_de_planche(planche_: Dictionary, index: int, x: int, y: int) -> String:
+	var dessins: Array = planche_.get("dessins", [])
+	if index < 0 or index >= dessins.size():
+		return ""
+	var dessin: Array = dessins[index]
+	if y < 0 or y >= dessin.size():
+		return ""
+	var ligne: String = dessin[y]
+	if x < 0 or x >= ligne.length() or ligne[x] == ".":
+		return ""
+	return planche_.get("cle", {}).get(ligne[x], "")
 
 ## Deplie un calque en PackedInt32Array, indexe par y * largeur + x.
 static func deplier_cases(carte: Dictionary, calque: Dictionary) -> PackedInt32Array:
@@ -677,6 +866,64 @@ impl Clip {
     }
 }
 
+/// Une planche de dessins, en lettres : une couleur par caractere, le point
+/// pour le vide. C'est ce qui rend un projet autonome et lisible dans un diff.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Planche {
+    pub nom: String,
+    pub largeur_case: i32,
+    pub hauteur_case: i32,
+    pub colonnes: i32,
+    pub cle: std::collections::HashMap<String, String>,
+    pub dessins: Vec<Vec<String>>,
+}
+
+impl Planche {
+    /// La couleur d'un pixel, ou None pour le vide.
+    pub fn pixel(&self, index: usize, x: usize, y: usize) -> Option<&String> {
+        let dessin = self.dessins.get(index)?;
+        let ligne = dessin.get(y)?;
+        let c = ligne.chars().nth(x)?;
+        if c == '.' {
+            return None;
+        }
+        self.cle.get(&c.to_string())
+    }
+}
+
+/// Comment le monde se montre. Le mode et le regard sont independants.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Projection {
+    pub mode: String,
+    pub regard: String,
+    pub largeur_tuile: i32,
+    pub hauteur_tuile: i32,
+    pub hauteur_bloc: i32,
+}
+
+impl Projection {
+    /// Case -> coin haut-gauche de son dessin, en pixels.
+    pub fn case_vers_monde(&self, cx: i32, cy: i32) -> (f64, f64) {
+        let l = self.largeur_tuile as f64;
+        let h = self.hauteur_tuile as f64;
+        let (cxf, cyf) = (cx as f64, cy as f64);
+        match self.mode.as_str() {
+            "isometrique" => ((cxf - cyf) * (l / 2.0) - l / 2.0, (cxf + cyf) * (h / 2.0)),
+            "iso-decalee" => (
+                cxf * l + if cy % 2 != 0 { l / 2.0 } else { 0.0 },
+                cyf * (h / 2.0),
+            ),
+            "hexagonale" => (
+                cxf * (l * 0.75).floor(),
+                cyf * h + if cx % 2 != 0 { (h / 2.0).floor() } else { 0.0 },
+            ),
+            _ => (cxf * l, cyf * h),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Projet {
     pub version: i32,
@@ -686,6 +933,8 @@ pub struct Projet {
     pub cartes: Vec<Carte>,
     pub scenes: Vec<Scene>,
     pub animations: Vec<Clip>,
+    pub planches: Vec<Planche>,
+    pub projection: Projection,
 }
 
 impl Projet {
@@ -695,6 +944,10 @@ impl Projet {
 
     pub fn clip(&self, nom: &str) -> Option<&Clip> {
         self.animations.iter().find(|c| c.nom == nom)
+    }
+
+    pub fn planche(&self, nom: &str) -> Option<&Planche> {
+        self.planches.iter().find(|p| p.nom == nom)
     }
 }
 `
@@ -722,6 +975,11 @@ function Projet.depuis(donnees)
   self.cartes = donnees.cartes or {}
   self.scenes = donnees.scenes or {}
   self.animations = donnees.animations or {}
+  self.planches = donnees.planches or {}
+  self.projection = donnees.projection or {
+    mode = "orthogonale", regard = "dessus",
+    largeurTuile = 16, hauteurTuile = 16, hauteurBloc = 0,
+  }
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -760,6 +1018,45 @@ function Projet:clip(nom)
     if a.nom == nom then return a end
   end
   return nil
+end
+
+-- Case -> coin haut-gauche de son dessin, en pixels.
+-- C'est la fonction que tout moteur d'accueil doit avoir juste : en
+-- isometrique on rend le coin de la boite du losange, pas son sommet.
+function Projet.case_vers_monde(proj, cx, cy)
+  local l = proj.largeurTuile or 16
+  local h = proj.hauteurTuile or 16
+  local mode = proj.mode or "orthogonale"
+  if mode == "isometrique" then
+    return (cx - cy) * (l / 2) - l / 2, (cx + cy) * (h / 2)
+  elseif mode == "iso-decalee" then
+    return cx * l + (cy % 2 ~= 0 and l / 2 or 0), cy * (h / 2)
+  elseif mode == "hexagonale" then
+    return cx * math.floor(l * 0.75), cy * h + (cx % 2 ~= 0 and math.floor(h / 2) or 0)
+  end
+  return cx * l, cy * h
+end
+
+-- La planche portant ce nom, ou nil.
+function Projet:planche(nom)
+  for _, t in ipairs(self.planches or {}) do
+    if t.nom == nom then return t end
+  end
+  return nil
+end
+
+-- La couleur d'un pixel d'une planche, ou nil pour le vide. Les index de
+-- dessin et de rangee sont ceux du FORMAT, donc a partir de zero ; les tables
+-- Lua commencent a un. C'est la seule difference avec les autres portages, et
+-- c'est celle qu'on oublie.
+function Projet.pixel_de_planche(planche, index, x, y)
+  local dessin = (planche.dessins or {})[index + 1]
+  if not dessin then return nil end
+  local ligne = dessin[y + 1]
+  if not ligne then return nil end
+  local c = ligne:sub(x + 1, x + 1)
+  if c == "" or c == "." then return nil end
+  return (planche.cle or {})[c]
 end
 
 -- L'ordre de lecture. Les rangs sont des index de tableau Lua, donc a partir
@@ -942,6 +1239,52 @@ class Clip:
 
 
 @dataclass
+class Projection:
+    """Comment le monde se montre. Le mode et le regard sont independants."""
+
+    mode: str = "orthogonale"
+    regard: str = "dessus"
+    largeurTuile: int = 16
+    hauteurTuile: int = 16
+    hauteurBloc: int = 0
+
+    def case_vers_monde(self, cx: int, cy: int) -> tuple[float, float]:
+        """Case -> coin haut-gauche de son dessin, en pixels."""
+        l, h = self.largeurTuile, self.hauteurTuile
+        if self.mode == "isometrique":
+            return ((cx - cy) * (l / 2) - l / 2, (cx + cy) * (h / 2))
+        if self.mode == "iso-decalee":
+            return (cx * l + (l / 2 if cy % 2 else 0), cy * (h / 2))
+        if self.mode == "hexagonale":
+            return (cx * (l * 3 // 4), cy * h + (h // 2 if cx % 2 else 0))
+        return (cx * l, cy * h)
+
+
+@dataclass
+class Planche:
+    """Une planche de dessins, en lettres : une couleur par caractere."""
+
+    nom: str
+    largeurCase: int
+    hauteurCase: int
+    colonnes: int
+    cle: dict[str, str] = field(default_factory=dict)
+    dessins: list[list[str]] = field(default_factory=list)
+
+    def pixel(self, index: int, x: int, y: int) -> str | None:
+        """La couleur d'un pixel, ou None pour le vide."""
+        if index < 0 or index >= len(self.dessins):
+            return None
+        dessin = self.dessins[index]
+        if y < 0 or y >= len(dessin):
+            return None
+        ligne = dessin[y]
+        if x < 0 or x >= len(ligne) or ligne[x] == ".":
+            return None
+        return self.cle.get(ligne[x])
+
+
+@dataclass
 class Projet:
     version: int
     nom: str
@@ -950,11 +1293,19 @@ class Projet:
     cartes: list[Carte] = field(default_factory=list)
     scenes: list[dict[str, Any]] = field(default_factory=list)
     animations: list[Clip] = field(default_factory=list)
+    planches: list[Planche] = field(default_factory=list)
+    projection: Projection = field(default_factory=Projection)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
             if a.nom == nom:
                 return a
+        return None
+
+    def planche(self, nom: str) -> Planche | None:
+        for t in self.planches:
+            if t.nom == nom:
+                return t
         return None
 
     @staticmethod
@@ -986,9 +1337,12 @@ class Projet:
             )
             for a in d.get("animations", [])
         ]
+        planches = [Planche(**t) for t in d.get("planches", [])]
+        projection = Projection(**d["projection"]) if d.get("projection") else Projection()
         return Projet(
             version=d["version"], nom=d["nom"], vue=d["vue"], palette=d["palette"],
-            cartes=cartes, scenes=scenes, animations=animations,
+            cartes=cartes, scenes=scenes, animations=animations, planches=planches,
+            projection=projection,
         )
 `
 }
