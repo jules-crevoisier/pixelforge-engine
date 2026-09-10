@@ -4249,6 +4249,90 @@ console.log('\n--- le noeud ephemere ---')
     'c\'est le cas qui a fait naitre la regle')
 }
 
+/*
+ * LA CARTE PARTOUT OU DES CASES SONT NOMMEES — le format 15.
+ *
+ * Les salles gagnent leur carte comme les declencheurs avaient gagne la
+ * leur, et chaque carte peut porter sa propre lumiere ambiante. Les deux
+ * regles ont le meme revers : sans nom, tout vaut partout — ce que
+ * faisaient tous les fichiers d'avant, qui se relisent tels quels.
+ */
+console.log('\n--- la carte partout : salles et lumiere par carte ---')
+{
+  const { salle, chevauchements } = await import('../src/niveau/salles.ts')
+  const { serialiserProjet, versTexte, relireCarte, serialiserCarte, VERSION_FORMAT } =
+    await import('../src/export/format.ts')
+  const { Carte } = await import('../src/tuiles/tilemap.ts')
+  const { Palette } = await import('../src/noyau/palette.ts')
+  const { projetNeuf, reglerAmbianteCarteProjet, reglerSalleProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+
+  {
+    const memesCases = { x: 0, y: 0, largeur: 10, hauteur: 8 }
+    check('deux salles aux memes cases sur deux cartes ne se genent pas',
+      chevauchements([
+        salle('a', { ...memesCases, carte: 'niveau1' }),
+        salle('b', { ...memesCases, carte: 'niveau2' }),
+      ]).length === 0,
+      'elles occupent les memes cases, jamais en meme temps')
+    check('mais une salle sans carte croise n\'importe qui',
+      chevauchements([
+        salle('a', { ...memesCases, carte: '' }),
+        salle('b', { ...memesCases, carte: 'niveau2' }),
+      ]).length === 1,
+      'elle vit partout, donc aussi la ou l\'autre vit')
+    check('et sur la meme carte, le recouvrement reste une faute',
+      chevauchements([
+        salle('a', { ...memesCases, carte: 'niveau1' }),
+        salle('b', { ...memesCases, carte: 'niveau1' }),
+      ]).length === 1)
+  }
+
+  {
+    const c = new Carte(8, 6, 16)
+    c.ajouterCalque('sol')
+    c.ambiante = 0.4
+    const pj = serialiserProjet('v15', { largeur: 320, hauteur: 180 }, new Palette('p', []),
+      [{ nom: 'grotte', carte: c }], [], [], [], undefined, [], [], [], {}, [], {},
+      [salle('entree', { carte: 'grotte', largeur: 4, hauteur: 3 })])
+    const relu = JSON.parse(versTexte(pj))
+    check('la carte d\'une salle et l\'ambiante d\'une carte traversent l\'enregistrement',
+      relu.version === VERSION_FORMAT && relu.salles[0].carte === 'grotte'
+      && relu.cartes[0].ambiante === 0.4, `version ${relu.version}`)
+    const c2 = relireCarte(relu.cartes[0], (l, h, t) => new Carte(l, h, t))
+    check('et l\'ambiante revient sur la carte vivante', c2.ambiante === 0.4)
+    const vieux = { ...relu.cartes[0] }
+    delete vieux.ambiante
+    check('un fichier d\'avant la version 15 se relit en lumiere de projet',
+      relireCarte(vieux, (l, h, t) => new Carte(l, h, t)).ambiante === null,
+      'ce que faisaient toutes les cartes jusqu\'ici')
+    check('une carte sans nuit s\'ecrit null, pas zero',
+      serialiserCarte('x', new Carte(4, 4, 16)).ambiante === null,
+      'zero serait la nuit noire — le contraire du defaut')
+  }
+
+  {
+    let pj = reglerAmbianteCarteProjet(projetNeuf(), 'carte', 3)
+    check('l\'ambiante d\'une carte est bornee au reglage',
+      pj.cartes[0].ambiante === 1)
+    pj = reglerAmbianteCarteProjet(pj, 'carte', null)
+    check('et se remet a « celle du projet » d\'un champ vide',
+      pj.cartes[0].ambiante === null)
+    pj = reglerSalleProjet({ ...pj, salles: [salle('s', {})] }, 's', { carte: 'carte' })
+    check('une salle change de carte par le panneau',
+      pj.salles[0].carte === 'carte')
+  }
+
+  {
+    // Le jeu-temoin s'en sert : la nuit s'epaissit en descendant.
+    const { projetGouffre } = await import('../src/demo/exemple-gouffre.ts')
+    const pj = projetGouffre()
+    check('dans « Le Gouffre », la nuit s\'epaissit en descendant',
+      pj.cartes.map((c) => c.ambiante).join(',') === '0.8,0.5,0.3',
+      pj.cartes.map((c) => `${c.nom} ${c.ambiante}`).join(' · '))
+  }
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

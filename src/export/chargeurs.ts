@@ -88,6 +88,8 @@ export interface Carte {
   largeur: number
   hauteur: number
   tuile: number
+  /** La lumiere ambiante de cette carte. Null : celle du projet. */
+  ambiante: number | null
   calques: Calque[]
   /** Une chaine par rangee, 0 ou 1 colles. */
   solides: string[]
@@ -360,6 +362,8 @@ export interface Declencheur {
 /** Un tableau du niveau, en cases. Voir les fonctions plus bas. */
 export interface Salle {
   nom: string
+  /** La carte sur laquelle elle vit. Vide : toutes. */
+  carte?: string
   x: number
   y: number
   largeur: number
@@ -769,6 +773,8 @@ namespace PixelForge
     public class Salle
     {
         public string nom;
+        /// <summary>La carte sur laquelle elle vit. Vide : toutes.</summary>
+        public string carte;
         public int x;
         public int y;
         public int largeur;
@@ -859,6 +865,9 @@ namespace PixelForge
         public int largeur;
         public int hauteur;
         public int tuile;
+        /// <summary>Ambiante de cette carte. Negatif : celle du projet — le
+        /// JSON dit null, et JsonUtility laisse alors la valeur par defaut.</summary>
+        public float ambiante = -1f;
         public List<Calque> calques;
         /// <summary>Une chaine par rangee, 0 ou 1 colles.</summary>
         public List<string> solides;
@@ -1878,6 +1887,9 @@ pub struct Carte {
     pub largeur: i32,
     pub hauteur: i32,
     pub tuile: i32,
+    /// La lumiere ambiante de cette carte. Absente : celle du projet.
+    #[serde(default)]
+    pub ambiante: Option<f64>,
     pub calques: Vec<Calque>,
     /// Une chaine par rangee, 0 ou 1 colles.
     pub solides: Vec<String>,
@@ -2411,6 +2423,9 @@ pub struct ZoneCases {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Salle {
     pub nom: String,
+    /// La carte sur laquelle elle vit. Vide : toutes.
+    #[serde(default)]
+    pub carte: String,
     pub x: i32,
     pub y: i32,
     pub largeur: i32,
@@ -3040,6 +3055,8 @@ class Carte:
     largeur: int
     hauteur: int
     tuile: int
+    #: La lumiere ambiante de cette carte. None : celle du projet.
+    ambiante: float | None = None
     calques: list[Calque] = field(default_factory=list)
     solides: list[str] = field(default_factory=list)
 
@@ -3357,6 +3374,7 @@ class Projet:
         cartes = [
             Carte(
                 nom=c["nom"], largeur=c["largeur"], hauteur=c["hauteur"], tuile=c["tuile"],
+                ambiante=c.get("ambiante"),
                 calques=[
                     Calque(
                         nom=l["nom"], visible=l["visible"], devant=l["devant"],

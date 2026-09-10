@@ -11,6 +11,7 @@ import {
   renommerSalleProjet, reglerSalleProjet, retirerSalleProjet,
   ajouterDeclencheurProjet, reglerDeclencheurProjet, retirerDeclencheurProjet,
   ajouterCarteProjet, renommerCarteProjet, retirerCarteProjet, reglerDerouleProjet,
+  reglerAmbianteCarteProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
 import { chevauchements } from '../niveau/salles.ts'
@@ -275,7 +276,24 @@ export class PanneauProjet {
       const taille = document.createElement('span')
       taille.className = 'menu'
       taille.textContent = `${c.largeur}×${c.hauteur}`
-      ligne.append(nom, taille)
+      // La lumiere de CETTE carte. Vide : celle du projet — la nuit d'un jeu
+      // peut s'epaissir en descendant, carte par carte.
+      const nuit = document.createElement('input')
+      nuit.type = 'number'
+      nuit.step = '0.05'
+      nuit.min = '0'
+      nuit.max = '1'
+      nuit.placeholder = '☀'
+      nuit.style.width = '52px'
+      nuit.value = c.ambiante === null || c.ambiante === undefined ? '' : String(c.ambiante)
+      nuit.title = 'La lumière ambiante de cette carte, de 0 à 1. Vide : celle du projet.'
+      nuit.addEventListener('change', () => {
+        const brut = nuit.value.trim()
+        const v = brut === '' ? null : Number(brut)
+        this.appliquer(reglerAmbianteCarteProjet(this.frais(), c.nom, v),
+          v === null ? `« ${c.nom} » : lumière du projet` : `« ${c.nom} » : ambiante ${v}`)
+      })
+      ligne.append(nom, taille, nuit)
       if (c.nom === active) {
         const marque = document.createElement('span')
         marque.className = 'menu'
@@ -466,9 +484,29 @@ export class PanneauProjet {
       const oter = bouton('✕', 'Retirer cette salle', () => {
         this.appliquer(retirerSalleProjet(this.frais(), s.nom), `Salle « ${s.nom} » retirée`)
       })
+      // La carte de la salle : une salle est en cases, et deux cartes ont
+      // les memes cases — voir les declencheurs, meme regle, meme raison.
+      const surCarte = document.createElement('select')
+      const toutes = document.createElement('option')
+      toutes.value = ''
+      toutes.textContent = 'toutes'
+      surCarte.appendChild(toutes)
+      for (const cc of p.cartes) {
+        const o = document.createElement('option')
+        o.value = cc.nom
+        o.textContent = cc.nom
+        if ((s.carte ?? '') === cc.nom) o.selected = true
+        surCarte.appendChild(o)
+      }
+      surCarte.title = 'La carte sur laquelle cette salle découpe. « Toutes » : partout.'
+      surCarte.addEventListener('change', () => {
+        this.appliquer(reglerSalleProjet(this.frais(), s.nom, { carte: surCarte.value }),
+          `Salle « ${s.nom} » : ${surCarte.value || 'toutes les cartes'}`)
+      })
       ligne.append(nom, champ('x', 'Colonne du coin haut-gauche, en cases'),
         champ('y', 'Rangée du coin haut-gauche, en cases'),
-        champ('largeur', 'Largeur en cases'), champ('hauteur', 'Hauteur en cases'), oter)
+        champ('largeur', 'Largeur en cases'), champ('hauteur', 'Hauteur en cases'),
+        surCarte, oter)
       liste.appendChild(ligne)
     }
     d.appendChild(liste)

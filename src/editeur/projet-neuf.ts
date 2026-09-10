@@ -88,6 +88,8 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     largeur,
     hauteur,
     tuile,
+    // Null : la lumiere du projet. Une carte ne contredit que si on lui demande.
+    ambiante: null,
     calques: [
       {
         nom: 'sol', visible: true, devant: false, terrain: null,
@@ -391,7 +393,7 @@ export function renommerSalleProjet(
  */
 export function reglerSalleProjet(
   p: ProjetSerialise, nom: string,
-  changements: Partial<{ x: number; y: number; largeur: number; hauteur: number }>,
+  changements: Partial<{ x: number; y: number; largeur: number; hauteur: number; carte: string }>,
 ): ProjetSerialise {
   const entier = (v: number | undefined, mini: number, defaut: number): number =>
     (Number.isFinite(v) ? Math.max(mini, Math.round(v as number)) : defaut)
@@ -403,7 +405,26 @@ export function reglerSalleProjet(
       y: entier(changements.y, 0, s.y),
       largeur: entier(changements.largeur, 1, s.largeur),
       hauteur: entier(changements.hauteur, 1, s.hauteur),
+      carte: changements.carte ?? s.carte ?? '',
     } : s)),
+  }
+}
+
+/**
+ * Regle la lumiere ambiante d'UNE carte. Null : celle du projet.
+ *
+ * La nuit s'epaissit en descendant : une surface claire et une grotte noire
+ * dans le meme jeu — c'est le cas que la version 15 ajoute.
+ */
+export function reglerAmbianteCarteProjet(
+  p: ProjetSerialise, nomCarte: string, ambiante: number | null,
+): ProjetSerialise {
+  const bornee = ambiante === null || !Number.isFinite(ambiante)
+    ? null
+    : Math.max(0, Math.min(1, ambiante))
+  return {
+    ...p,
+    cartes: p.cartes.map((c) => (c.nom === nomCarte ? { ...c, ambiante: bornee } : c)),
   }
 }
 
@@ -562,6 +583,7 @@ export function ajouterCarteProjet(p: ProjetSerialise): ProjetSerialise {
     largeur: modele.largeur,
     hauteur: modele.hauteur,
     tuile: modele.tuile,
+    ambiante: null,
     // Les MEMES calques que la premiere carte, vides : un niveau deux qui
     // n'aurait pas le calque « décor » ferait echouer les gestes qui le
     // nomment, et personne ne saurait pourquoi le niveau un les accepte.

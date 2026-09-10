@@ -143,8 +143,13 @@ function installer(nouveau: Monde): void {
    * melanger ferait qu'un « defaire » sur un coup de pinceau retirerait aussi
    * une salle posee entre-temps, ce que personne n'attend.
    */
+  // Les salles VISIBLES sont celles de la carte sous le pinceau : une salle
+  // du niveau deux dessinee sur le niveau un semblerait poser un tableau
+  // fantome — et le clic droit le retirerait sans qu'on comprenne quoi.
+  const sallesIci = (): SalleJeu[] => (monde.salles ?? []).filter(
+    (q) => !(q.carte ?? '') || q.carte === (monde.carteActive ?? ''))
   edition.surSalle = {
-    liste: () => (monde.salles ?? []) as { nom: string; x: number; y: number; largeur: number; hauteur: number }[],
+    liste: () => sallesIci() as { nom: string; x: number; y: number; largeur: number; hauteur: number }[],
     poser: (x, y, largeur, hauteur) => {
       const m = monde as Monde & { salles?: SalleJeu[] }
       if (!m.salles) m.salles = []
@@ -152,7 +157,9 @@ function installer(nouveau: Monde): void {
       // et deux salles du meme nom rendraient « laquelle ? » sans reponse.
       let n = m.salles.length + 1
       while (m.salles.some((q) => q.nom === `salle${n}`)) n++
-      m.salles.push(salleNeuve(`salle${n}`, { x, y, largeur, hauteur }))
+      // La salle nait sur la carte SOUS LE PINCEAU : c'est la qu'on la voit
+      // naitre, c'est la qu'elle doit vivre — voir le format v15.
+      m.salles.push(salleNeuve(`salle${n}`, { x, y, largeur, hauteur, carte: monde.carteActive ?? '' }))
       // Le compte et l'avertissement vont dans la barre d'etat, qui les
       // GARDE : voir `majEtat`.
       panneauProjet?.montrer()
@@ -723,7 +730,8 @@ function dessinerSalles(): void {
   const oy = -Math.round(jeu.camera.y)
   const enSalle = edition.etat.outil === 'salle'
 
-  for (const s of monde.salles ?? []) {
+  for (const s of (monde.salles ?? []).filter(
+    (q) => !(q.carte ?? '') || q.carte === (monde.carteActive ?? ''))) {
     const x = s.x * t + ox
     const y = s.y * t + oy
     const l = s.largeur * t

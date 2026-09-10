@@ -305,11 +305,25 @@ export function mondeDepuisProjet(
         dialogue.ouvrir(d.repliques)
         return true
       }
-      // Les salles du fichier bornent la camera, comme dans un monde ecrit a
-      // la main. Sans cette ligne, un chapitre decoupe dans l'editeur se
-      // rouvrait avec une camera qui suit partout — le decoupage semblait
-      // enregistre pour rien.
-      if (p.salles?.length) jeu.salles = new Salles(p.salles, premiere.tuile)
+      /*
+       * Les salles du fichier bornent la camera — celles de CETTE carte.
+       *
+       * Une salle nomme sa carte depuis la version 15, comme un declencheur :
+       * le decoupage du niveau un s'appliquait au niveau deux, aux memes
+       * cases. Une salle sans carte vit partout, ce que faisaient toutes les
+       * salles d'avant.
+       */
+      const sallesPour = (nomCarte: string): Salles | null => {
+        const liste = (p.salles ?? []).filter((q) => !(q.carte ?? '') || q.carte === nomCarte)
+        return liste.length ? new Salles(liste, premiere.tuile) : null
+      }
+      jeu.salles = sallesPour(nomActif)
+      /*
+       * La lumiere de la carte, ou celle du projet : chaque carte peut
+       * contredire l'ambiante — la nuit s'epaissit en descendant.
+       */
+      const ambianteDe = (nomCarte: string): number =>
+        cartes.find((q) => q.nom === nomCarte)?.carte.ambiante ?? (p.lumiere?.ambiante ?? 1)
       /*
        * CHANGER DE CARTE : le verbe `c.aller`, et son deroule.
        *
@@ -325,6 +339,8 @@ export function mondeDepuisProjet(
         jeu.carte = cible.carte
         jeu.racine = r2
         activer(pairePour(nomCible, r2, cible.carte.tuile))
+        jeu.salles = sallesPour(nomCible)
+        if (jeu.eclairage) jeu.eclairage.ambiante = ambianteDe(nomCible)
         courant.dirige = dirigeDans(recenserDans(r2))
         if (courant.dirige) {
           jeu.suivreNoeud(courant.dirige.nom)
@@ -346,10 +362,11 @@ export function mondeDepuisProjet(
        * debrancher. Le cout de ce recensement est proportionnel a la scene,
        * pas au monde ; celui de la passe est mesure au banc de charge.
        */
-      const ambiante = p.lumiere?.ambiante ?? 1
-      if (ambiante < 1) {
+      const nuitQuelquePart = (p.lumiere?.ambiante ?? 1) < 1
+        || cartes.some((q) => (q.carte.ambiante ?? 1) < 1)
+      if (nuitQuelquePart) {
         const eclairage = new Eclairage(p.palette.couleurs)
-        eclairage.ambiante = ambiante
+        eclairage.ambiante = ambianteDe(nomActif)
         eclairage.sources = () => {
           const sources: { x: number; y: number; rayon: number }[] = []
           const visiter = (n: Noeud): void => {
@@ -555,6 +572,16 @@ export function mondeDepuisProjet(
       if (jeuCourant && fluxActif !== nomActif) {
         jeuCourant.carte = premiere
         jeuCourant.racine = racine
+        jeuCourant.salles = jeuCourant.salles === null && !(p.salles ?? []).length
+          ? null
+          : (() => {
+            const liste = (p.salles ?? []).filter((q) => !(q.carte ?? '') || q.carte === nomActif)
+            return liste.length ? new Salles(liste, premiere.tuile) : null
+          })()
+        if (jeuCourant.eclairage) {
+          jeuCourant.eclairage.ambiante =
+            cartes.find((q) => q.nom === nomActif)?.carte.ambiante ?? (p.lumiere?.ambiante ?? 1)
+        }
         courant.paire = paires.get(nomActif) ?? courant.paire
         if (courant.paire) {
           jeuCourant.sonneur = courant.paire.aventure?.sonneur ?? jeuCourant.sonneur

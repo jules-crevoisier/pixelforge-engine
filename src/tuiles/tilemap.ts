@@ -295,6 +295,14 @@ export class Carte {
   readonly tuile: number
   calques: Calque[] = []
   /**
+   * La lumiere ambiante de CETTE carte, ou null pour celle du projet.
+   *
+   * Une surface claire et une grotte noire ne s'exprimaient pas dans le meme
+   * jeu : l'ambiante etait une donnee de projet. Elle le reste — c'est le
+   * defaut — et chaque carte peut la contredire. Voir le format v15.
+   */
+  ambiante: number | null = null
+  /**
    * Ce que chaque case FAIT : un jeu de drapeaux, independant du dessin.
    *
    * Le nom est reste au pluriel de « solide » parce que c'est ce qu'il porte

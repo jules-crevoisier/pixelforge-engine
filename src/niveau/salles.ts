@@ -36,6 +36,14 @@
 /** Une salle, en CASES. Les pixels se deduisent de la taille de tuile. */
 export interface Salle {
   nom: string
+  /**
+   * La carte sur laquelle cette salle vit. Vide : toutes.
+   *
+   * Une salle est en cases, et deux cartes ont les memes cases — la meme
+   * raison qui a donne leur carte aux declencheurs (format v14) : sans elle,
+   * le decoupage du niveau un s'appliquait aussi au niveau deux.
+   */
+  carte?: string
   x: number
   y: number
   largeur: number
@@ -56,6 +64,7 @@ export interface Salle {
 export function salle(nom: string, p: Partial<Salle> = {}): Salle {
   return {
     nom,
+    carte: p.carte ?? '',
     x: p.x ?? 0,
     y: p.y ?? 0,
     largeur: Math.max(1, p.largeur ?? 20),
@@ -205,7 +214,12 @@ export function chevauchements(liste: Salle[]): [string, string][] {
     for (let j = i + 1; j < liste.length; j++) {
       const a = liste[i]
       const b = liste[j]
-      const seCroise = a.x < b.x + b.largeur && b.x < a.x + a.largeur
+      // Deux salles de cartes DIFFERENTES ne se genent pas : elles occupent
+      // les memes cases, mais jamais en meme temps. Une salle sans carte vit
+      // partout, donc elle peut croiser n'importe qui.
+      const memeMonde = !(a.carte ?? '') || !(b.carte ?? '') || a.carte === b.carte
+      const seCroise = memeMonde
+        && a.x < b.x + b.largeur && b.x < a.x + a.largeur
         && a.y < b.y + b.hauteur && b.y < a.y + a.hauteur
       if (seCroise) out.push([a.nom, b.nom])
     }

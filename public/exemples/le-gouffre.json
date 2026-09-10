@@ -1,5 +1,5 @@
 {
-  "version": 14,
+  "version": 15,
   "nom": "le-gouffre",
   "vue": {
     "largeur": 320,
@@ -50,6 +50,7 @@
       "largeur": 60,
       "hauteur": 16,
       "tuile": 16,
+      "ambiante": 0.8,
       "calques": [
         {
           "nom": "mur",
@@ -123,6 +124,7 @@
       "largeur": 60,
       "hauteur": 16,
       "tuile": 16,
+      "ambiante": 0.5,
       "calques": [
         {
           "nom": "mur",
@@ -196,6 +198,7 @@
       "largeur": 60,
       "hauteur": 16,
       "tuile": 16,
+      "ambiante": 0.3,
       "calques": [
         {
           "nom": "mur",

@@ -39,6 +39,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **15** — la carte partout ou des cases sont nommees. Les salles gagnent
+ * leur carte, comme les declencheurs a la version 14, et pour la meme
+ * raison : le decoupage du niveau un s'appliquait aussi au niveau deux, aux
+ * memes cases. Et chaque carte peut porter sa propre lumiere ambiante — une
+ * surface claire et une grotte noire dans le meme jeu ; null, c'est celle du
+ * projet, ce que faisaient toutes les cartes jusqu'ici. Un fichier d'avant
+ * se relit tel quel.
+ *
  * **14** — la carte d'un declencheur. C'est le jeu-temoin qui a trouve le
  * trou : dans un projet a trois niveaux, une zone posee en cases ne disait
  * pas SUR QUELLE CARTE elle vit, et la sortie du niveau un tirait aussi au
@@ -144,7 +152,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 14
+export const VERSION_FORMAT = 15
 
 export interface ProjetSerialise {
   version: number
@@ -331,6 +339,8 @@ export interface CarteSerialisee {
   largeur: number
   hauteur: number
   tuile: number
+  /** La lumiere ambiante de cette carte. Null : celle du projet. */
+  ambiante: number | null
   calques: {
     nom: string
     visible: boolean
@@ -434,6 +444,7 @@ export function serialiserCarte(nom: string, c: Carte): CarteSerialisee {
     largeur: c.largeur,
     hauteur: c.hauteur,
     tuile: c.tuile,
+    ambiante: c.ambiante === null ? null : Math.max(0, Math.min(1, c.ambiante)),
     calques: c.calques.map((l) => ({
       nom: l.nom,
       visible: l.visible,
@@ -498,7 +509,7 @@ export function serialiserProjet(
       Object.entries(textes).map(([l, t]) => [l, { ...t }]),
     ),
     salles: salles.map((s) => ({
-      ...s, reprise: s.reprise ? { ...s.reprise } : null,
+      ...s, carte: s.carte ?? '', reprise: s.reprise ? { ...s.reprise } : null,
     })),
     // Chaque champ, toujours : un declencheur « salle » porte quand meme sa
     // zone a zero, pour qu'un chargeur n'ait jamais a traiter un champ absent.
@@ -538,6 +549,9 @@ const depuisLigne = (l: string, sep: string): number[] =>
 
 export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number, t: number) => Carte): Carte {
   const c = fabrique(s.largeur, s.hauteur, s.tuile)
+  // Un fichier d'avant la version 15 n'a pas d'ambiante par carte : null,
+  // c'est celle du projet, ce que faisaient toutes les cartes.
+  c.ambiante = typeof s.ambiante === 'number' ? Math.max(0, Math.min(1, s.ambiante)) : null
   c.calques = []
   for (const l of s.calques) {
     const calque = c.ajouterCalque(l.nom, {

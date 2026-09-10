@@ -116,6 +116,9 @@ export function carteDepuisPlan(nom: string, plan: string[]): CarteSerialisee {
     largeur: LARGEUR,
     hauteur: HAUTEUR,
     tuile: TUILE,
+    // La nuit s'epaissit en descendant : chaque carte porte SA lumiere —
+    // c'est le cas que la version 15 ajoute, et ce jeu qui l'a demande.
+    ambiante: nom === 'clairiere' ? 0.8 : nom === 'caverne' ? 0.5 : 0.3,
     calques: [{
       nom: 'mur', visible: true, devant: false, terrain: null,
       cases,

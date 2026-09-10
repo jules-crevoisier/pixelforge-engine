@@ -967,6 +967,7 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     for (let i = 0; i < 8; i++) {
       alaFin = await p.evaluate(() => ({
         ...window.pfe.monde.sonde(), musique: window.pfe.jeu.musicien?.nom ?? '',
+        ambiante: window.pfe.jeu.eclairage?.ambiante ?? -1,
       }))
       if (alaFin.finOuverte) break
       await p.keyboard.press('Space')
@@ -975,6 +976,9 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     ok('c.fin() ouvre l’écran de fin, une fois le dernier dialogue lu',
       alaFin.finOuverte === true && alaFin.musique === 'victoire',
       `FIN affichée, « ${alaFin.musique} » joue — avant, c.dire('fin') laissait la partie ouverte sur du vide`)
+    ok('et la nuit du fond du gouffre est celle de SA carte',
+      Math.abs(alaFin.ambiante - 0.3) < 1e-9,
+      `ambiante ${alaFin.ambiante} au fond, 0,8 dans la clairière — le format 15, mesuré en jouant`)
     await p.keyboard.press('Space')
     await p.waitForTimeout(400)
     const auTitre = await p.evaluate(() => window.pfe.monde.sonde())

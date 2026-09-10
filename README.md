@@ -571,14 +571,17 @@ est devenu soit une correction, soit une ligne de ce carnet.
   de plus par-dessus. Ce qui appartient à l'exécution porte maintenant un
   drapeau `ephemere`, et la sérialisation le saute.
 
-**Au carnet, dans l'ordre où ça mord :**
+- **La carte partout où des cases sont nommées** (format v15). Les salles
+  gagnent leur carte comme les déclencheurs avaient gagné la leur — le
+  découpage du niveau un s'appliquait au niveau deux, aux mêmes cases ; deux
+  salles aux mêmes cases sur deux cartes ne se gênent plus, et l'outil
+  « Salle » pose sur la carte sous le pinceau. Et chaque carte peut porter sa
+  propre **ambiante** — la nuit du Gouffre s'épaissit en descendant : 0,8 en
+  clairière, 0,5 dans la caverne, 0,3 au fond, mesuré en jouant.
 
-1. **L'ambiante est globale.** Une surface claire et une grotte noire ne
-   s'expriment pas dans le même projet : la lumière se règle par projet, pas
-   par carte. « Le Gouffre » s'en sort parce que tout y est souterrain.
-2. **Les salles sont globales aussi** — des cases sans carte, comme l'étaient
-   les déclencheurs avant la v14. Même remède à prévoir.
-3. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
+**Au carnet :**
+
+1. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
    traversent le fichier et se jouent, mais s'écrivent à la main. Un bloc de
    plus, sur le modèle des sons.
 
@@ -765,12 +768,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  83 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 388 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
+npm run banc:mondes     # 399 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
 npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 112 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
+npm run fumee           # 113 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire
