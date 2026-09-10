@@ -1,7 +1,8 @@
 import { Ecran, type Vue } from './ecran.ts'
 import { Entrees } from './entree.ts'
 import { Boucle } from './boucle.ts'
-import { deplacer } from './collision.ts'
+import { deplacer, type GrilleSolide } from './collision.ts'
+import { CorpsMobiles, grilleAvecCorps } from './corps.ts'
 import { rendreScene, suivre, type Camera } from './rendu.ts'
 import {
   type Projection, ORTHO_DESSUS, projeter, boiteMonde,
@@ -29,6 +30,17 @@ export interface ContexteJeu {
   readonly entrees: Entrees
   readonly racine: Noeud
   readonly carte: Carte
+  /**
+   * Le decor ET les corps mobiles, reunis. C'est contre elle qu'on se deplace.
+   *
+   * `carte` reste le decor seul, parce que c'est lui qu'on interroge pour
+   * savoir ce qu'une CASE fait — une pointe, un liquide. Confondre les deux
+   * ferait croire qu'une plateforme mobile a une matiere de case, ce qui n'a
+   * pas de sens : elle n'est pas dans la grille.
+   */
+  readonly grille: GrilleSolide
+  /** Les corps mobiles du monde : plateformes, caisses, obstacles vivants. */
+  readonly corps: CorpsMobiles
   /** Numero du pas depuis le demarrage. */
   readonly pas: number
   trouver(nom: string): Noeud | null
@@ -83,6 +95,16 @@ export class Jeu {
    * donne le glissement d'Isaac. Plus long, et l'on attend.
    */
   dureeTransition = 0.28
+  /**
+   * Les corps mobiles du monde.
+   *
+   * Le jeu les detient parce que c'est lui qui compose la grille contre
+   * laquelle tout se deplace. Le peuplement les REMPLIT a chaque pas depuis
+   * la scene, comme il remplit le reste : rien ne s'y inscrit a la main.
+   */
+  readonly corps = new CorpsMobiles()
+  private grilleComposee: GrilleSolide | null = null
+  private carteComposee: Carte | null = null
   cartes = new Map<string, { carte: Carte; atlas: Atlas }>()
   sprites = new Map<string, Atlas>()
   /** Scripts par nom de noeud. */
@@ -224,6 +246,8 @@ export class Jeu {
       entrees: this.entrees,
       racine: this.racine,
       carte: this.carte,
+      grille: this.grille,
+      corps: this.corps,
       pas: this.boucle.pas,
       trouver: (nom) => trouverParNom(this.racine, nom),
       bouger: (corps, dx, dy) => this.bouger(corps, dx, dy),
@@ -248,12 +272,28 @@ export class Jeu {
 
     const boite = rect(hote.x + corps.x + corps.boiteX, hote.y + corps.y + corps.boiteY,
       corps.boiteL, corps.boiteH)
-    const c = deplacer(this.carte, boite, pas.x, pas.y)
+    const c = deplacer(this.grille, boite, pas.x, pas.y)
     hote.x += c.dx
     hote.y += c.dy
     if (c.bloqueX) acc.bloquerX()
     if (c.bloqueY) acc.bloquerY()
     return { dx: c.dx, dy: c.dy, bloque: c.bloqueX || c.bloqueY }
+  }
+
+  /**
+   * La grille composee, reconstruite seulement quand la carte change.
+   *
+   * On la garde d'un pas a l'autre : `bouger` avance pixel par pixel et
+   * appelle la grille des dizaines de fois par corps et par pas. Fabriquer
+   * l'objet a chaque appel se verrait au ramasse-miettes bien avant de se
+   * voir a l'ecran.
+   */
+  get grille(): GrilleSolide {
+    if (!this.grilleComposee || this.carteComposee !== this.carte) {
+      this.grilleComposee = grilleAvecCorps(this.carte, this.corps)
+      this.carteComposee = this.carte
+    }
+    return this.grilleComposee
   }
 
   /** Le noeud qui porte ce corps : c'est lui qu'on deplace, pas la boite. */

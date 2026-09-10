@@ -3,10 +3,11 @@ import { creerNoeud } from '../scene/noeud.ts'
 import type { ContexteJeu } from './jeu.ts'
 import { Combat, visibleSousInvulnerabilite, type Camp } from './combat.ts'
 import { Lecteur, type Clip } from './animation.ts'
-import { rect } from '../noyau/pixel.ts'
+import { rect, seChevauchent } from '../noyau/pixel.ts'
 import { BLESSANTE } from '../tuiles/tilemap.ts'
 import { type Projection, ORTHO_DESSUS, deprojeter } from '../noyau/projection.ts'
 import { Plateformeur, lireEntrees, type ReglagesPlateforme } from './plateforme.ts'
+import { porter } from './corps.ts'
 
 /**
  * Les entites : des especes decrites en DONNEES, posees dans la scene.
@@ -47,11 +48,11 @@ import { Plateformeur, lireEntrees, type ReglagesPlateforme } from './plateforme
  */
 export type Comportement =
   | 'immobile' | 'patrouille' | 'poursuite' | 'bond' | 'joueur' | 'plateformeur'
-  | 'projectile'
+  | 'projectile' | 'porteur'
 
 export const COMPORTEMENTS: Comportement[] = [
   'immobile', 'patrouille', 'poursuite', 'bond', 'joueur', 'plateformeur',
-  'projectile',
+  'projectile', 'porteur',
 ]
 
 /**
@@ -176,6 +177,58 @@ export interface Espece {
    * il ne rencontre rien.
    */
   duree: number
+  /**
+   * Ce que cette entite oppose aux AUTRES corps. Zero : on la traverse.
+   *
+   * `1` solide — une caisse, une porte, une plateforme mobile pleine. `2`
+   * plateforme a sens unique — on la traverse par en dessous et l'on se pose
+   * dessus. Ce sont les memes drapeaux que les cases, et ce n'est pas une
+   * coincidence : du point de vue de qui se cogne dedans, un obstacle mobile
+   * est du decor.
+   */
+  matiereCorps: number
+  /**
+   * L'aller-retour d'un corps porteur. Zero partout : il reste ou il est.
+   *
+   * Un aller-retour et non une liste de points : c'est ce que sont
+   * quatre-vingt-dix pour cent des plateformes mobiles, ca tient en quatre
+   * nombres dans un fichier, et ca se lit dans l'editeur sans outil de
+   * trajectoire. Ce qui demande davantage s'ecrit dans l'atelier de scripts.
+   */
+  trajet: { dx: number; dy: number; duree: number; pause: number }
+  /**
+   * Degats subis quand on lui saute sur la tete. Zero : on ne la pietine pas.
+   *
+   * C'est le verbe le plus universel du jeu de plateforme, et il ne peut pas
+   * etre implicite : une creature a pointes doit pouvoir REFUSER d'etre
+   * pietinee, sans quoi le joueur apprend un geste qui le tue une fois sur
+   * deux.
+   */
+  degatsPietinement: number
+  /**
+   * Hauteur du rebond apres pietinement, en pixels. Zero : on ne rebondit pas.
+   *
+   * Elle appartient a la VICTIME et non au pietineur : un ressort vivant
+   * renvoie plus haut qu'un champignon, et c'est ce qui distingue deux ennemis
+   * qui se ressemblent.
+   */
+  rebondPietinement: number
+  /**
+   * Elle tombe. Sans effet dans un monde vu de dessus.
+   *
+   * ## Pourquoi DEUX conditions, et pas une
+   *
+   * Le monde decide qu'il existe un bas — c'est le regard de la projection.
+   * L'espece decide si elle y obeit : une chauve-souris vole dans le meme
+   * monde ou la gelee tombe. Mettre la pesanteur sur la seule espece la ferait
+   * tomber vers le sud dans le donjon vu de dessus ; la mettre sur le seul
+   * monde clouerait la chauve-souris au sol.
+   *
+   * Elle a ete ajoutee apres avoir JOUE : la gelee posee dans la caverne
+   * derivait doucement vers le haut de l'ecran en poursuivant le heros. Aucun
+   * banc ne l'avait dit, parce qu'aucun banc ne regarde.
+   */
+  pesante: boolean
 }
 
 export function espece(id: string, p: Partial<Espece> = {}): Espece {
@@ -201,6 +254,11 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
     etats: p.etats ?? [],
     etatInitial: p.etatInitial ?? '',
     duree: p.duree ?? 0,
+    matiereCorps: p.matiereCorps ?? 0,
+    trajet: p.trajet ?? { dx: 0, dy: 0, duree: 0, pause: 0 },
+    degatsPietinement: p.degatsPietinement ?? 0,
+    rebondPietinement: p.rebondPietinement ?? 0,
+    pesante: p.pesante ?? false,
   }
 }
 
@@ -217,6 +275,29 @@ export const RAYON_ACTIVITE = 340
 
 /** Ce qu'une case blessante retire, par defaut. */
 export const DEGATS_MATIERE = 1
+
+/**
+ * Epaisseur de la bande de pietinement, en pixels.
+ *
+ * Trop mince, le pietinement rate quand la chute est rapide — le corps saute
+ * par-dessus la bande entre deux pas. Trop epaisse, on tue en frolant de cote,
+ * et le joueur ne sait plus ce qu'il a fait. Quatre pixels couvrent une chute
+ * de trois cents pixels par seconde a soixante images.
+ */
+export const BANDE_PIETINEMENT = 5
+
+/**
+ * La pesanteur des creatures, en pixels par seconde carree, et leur vitesse de
+ * chute maximale.
+ *
+ * Elles ne passent pas par le controleur de plateforme : il porte un saut, un
+ * dash, un coyote et une glissade murale dont une gelee n'a que faire, et le
+ * lui donner reviendrait a payer douze reglages pour en employer un. Ici la
+ * pesanteur seule, et la vitesse limite qui evite de traverser un sol mince
+ * quand une image est longue.
+ */
+export const PESANTEUR_ENTITE = 900
+export const CHUTE_MAX_ENTITE = 300
 
 /** Duree d'un bond, et du repos qui suit, en millisecondes. */
 const DUREE_BOND = 520
@@ -245,6 +326,12 @@ interface Vivante {
   vy: number
   /** Millisecondes de vie restantes, ou l'infini. */
   restant: number
+  /** Ou l'entite a ete posee : l'origine de son aller-retour. */
+  origine: { x: number; y: number }
+  /** Millisecondes ecoulees sur le cycle du trajet. */
+  phase: number
+  /** Vraie a l'instant ou l'on vient de lui sauter dessus. */
+  pietinee: boolean
 }
 
 /**
@@ -258,6 +345,8 @@ interface Vivante {
  */
 export class Peuplement {
   private vivantes = new Map<string, Vivante>()
+  /** Les corps mobiles que CE peuplement a inscrits au registre du jeu. */
+  private corpsInscrits = new Set<string>()
   private catalogue = new Map<string, Espece>()
   private racine: Noeud
   private combat: Combat
@@ -429,6 +518,9 @@ export class Peuplement {
       vx: 0,
       vy: 0,
       restant: e.duree > 0 ? e.duree : Infinity,
+      origine: { x: n.x, y: n.y },
+      phase: 0,
+      pietinee: false,
     })
   }
 
@@ -464,6 +556,10 @@ export class Peuplement {
   ): { id: string; nom: string }[] {
     const evenements: { id: string; nom: string }[] = []
     const aRetirer: string[] = []
+    // Les corps mobiles d'abord : une plateforme doit avoir bouge, et avoir
+    // porte son passager, AVANT que le passager ne decide ou il va. L'inverse
+    // le ferait decider depuis une position qui n'existe deja plus.
+    this.avancerPorteurs(c, dtMs)
     for (const v of this.vivantes.values()) {
       const vie = this.combat.vies.get(v.noeud.id)
       // Un mort n'agit pas, ne frappe pas, et ne se fait pas frapper. Le
@@ -521,19 +617,164 @@ export class Peuplement {
         }
       }
 
+    }
+    // Le pietinement se resout APRES le mouvement, et les degats de contact
+    // apres lui.
+    //
+    // C'est un ordre, et il repare un defaut precis. En resolvant le
+    // pietinement avant le mouvement, on le juge sur les positions du pas
+    // PRECEDENT : le heros mord la poussiere a l'image ou il atterrit sur la
+    // creature, et ne l'ecrase qu'a la suivante — il paie donc un coup pour un
+    // geste reussi. En frappant apres le mouvement, chacun frappe depuis la
+    // place ou il est vraiment.
+    this.resoudrePietinements()
+    for (const v of this.vivantes.values()) {
+      const vie = this.combat.vies.get(v.noeud.id)
+      if (!vie || vie.mort) continue
+      const e = v.espece
+      if (e.degats <= 0 || v.pietinee) continue
+      if (e.comportement === 'joueur' || e.comportement === 'plateformeur') continue
+      const distance = Math.hypot(cible.x - v.noeud.x, cible.y - v.noeud.y)
+      if (distance > RAYON_ACTIVITE) continue
       // Le contact blesse par une frappe d'une seule image, refaite a chaque
       // pas. Une « zone qui blesse en permanence » serait un deuxieme
       // mecanisme a cote des frappes, avec ses propres regles de repetition —
       // donc deux endroits ou se tromper.
-      if (v.espece.degats > 0 && !dirigee) {
-        this.combat.frapper(v.espece.camp, rect(
-          v.noeud.x + v.espece.boite.x, v.noeud.y + v.espece.boite.y,
-          v.espece.boite.l, v.espece.boite.h,
-        ), v.espece.degats, 1, 150, dx, dy)
-      }
+      this.combat.frapper(e.camp, rect(
+        v.noeud.x + e.boite.x, v.noeud.y + e.boite.y, e.boite.l, e.boite.h,
+      ), e.degats, 1, 150, cible.x - v.noeud.x, cible.y - v.noeud.y)
     }
     for (const id of aRetirer) this.tuer(id)
     return evenements
+  }
+
+  /**
+   * Fait bouger les corps mobiles, et porter ce qui se tient dessus.
+   *
+   * ## Pourquoi les passagers sont releves AVANT le mouvement
+   *
+   * On cherche ce qui repose sur le dessus de la plateforme. Une fois qu'elle
+   * a bouge, plus rien n'y repose : le passager est reste en arriere, ou bien
+   * elle lui est passee au travers. Il faut donc faire la liste d'abord, puis
+   * deplacer, puis rattraper la liste — c'est l'ordre qu'emploient tous les
+   * jeux ou l'on monte sur une plateforme sans glisser dessus.
+   *
+   * ## Pourquoi le porteur n'est jamais endormi par le rayon d'activite
+   *
+   * Une creature qui s'immobilise hors de l'ecran ne se remarque pas. Une
+   * plateforme, si : on revient dans la salle et elle n'est plus en phase avec
+   * les trois autres, donc le passage n'est plus franchissable. Le decor doit
+   * rester previsible, meme non regarde.
+   */
+  private avancerPorteurs(c: ContexteJeu, dtMs: number): void {
+    const vus = new Set<string>()
+    for (const v of this.vivantes.values()) {
+      const e = v.espece
+      if (e.matiereCorps === 0) continue
+      vus.add(v.noeud.id)
+      const b = e.boite
+      const t = e.trajet
+      let nx = v.noeud.x
+      let ny = v.noeud.y
+      if (t.duree > 0 && (t.dx !== 0 || t.dy !== 0)) {
+        const cycle = 2 * t.duree + 2 * t.pause
+        v.phase = (v.phase + dtMs) % cycle
+        const p = avancementTrajet(v.phase, t.duree, t.pause)
+        // Arrondi : la plateforme se pose sur la grille de pixels comme tout
+        // le reste. Une plateforme en sous-pixel ferait vibrer son passager.
+        nx = v.origine.x + Math.round(t.dx * p)
+        ny = v.origine.y + Math.round(t.dy * p)
+      }
+      const dx = nx - v.noeud.x
+      const dy = ny - v.noeud.y
+      const passagers = dx !== 0 || dy !== 0 ? this.passagersDe(v) : []
+      v.noeud.x = nx
+      v.noeud.y = ny
+      c.corps.poser(v.noeud.id, nx + b.x, ny + b.y, b.l, b.h, e.matiereCorps)
+      this.corpsInscrits.add(v.noeud.id)
+      const vie = this.combat.vies.get(v.noeud.id)
+      if (vie) { vie.x = nx; vie.y = ny }
+      for (const w of passagers) {
+        const wb = w.espece.boite
+        const boite = rect(w.noeud.x + wb.x, w.noeud.y + wb.y, wb.l, wb.h)
+        const fait = porter(c.grille, boite, dx, dy)
+        w.noeud.x += fait.dx
+        w.noeud.y += fait.dy
+        const vw = this.combat.vies.get(w.noeud.id)
+        if (vw) { vw.x = w.noeud.x; vw.y = w.noeud.y }
+      }
+    }
+    // Un corps dont l'entite a disparu doit disparaitre aussi, sinon le monde
+    // garde un obstacle invisible. On ne retire que ce qu'on a inscrit : le
+    // registre appartient au jeu, pas au peuplement.
+    for (const id of [...this.corpsInscrits]) {
+      if (vus.has(id)) continue
+      c.corps.retirer(id)
+      this.corpsInscrits.delete(id)
+    }
+  }
+
+  /** Les entites qui reposent sur le dessus de ce corps mobile. */
+  private passagersDe(porteurEntite: Vivante): Vivante[] {
+    const b = porteurEntite.espece.boite
+    const hx = porteurEntite.noeud.x + b.x
+    const hy = porteurEntite.noeud.y + b.y
+    const sur: Vivante[] = []
+    for (const w of this.vivantes.values()) {
+      // Une plateforme ne porte pas une plateforme : empiler des corps mobiles
+      // demande de les ordonner, et un cycle entre deux d'entre eux n'aurait
+      // pas de reponse. On le refuse au lieu de le rendre imprevisible.
+      if (w === porteurEntite || w.espece.matiereCorps !== 0) continue
+      const wb = w.espece.boite
+      if (w.noeud.y + wb.y + wb.h !== hy) continue
+      const x0 = w.noeud.x + wb.x
+      if (x0 < hx + b.l && x0 + wb.l > hx) sur.push(w)
+    }
+    return sur
+  }
+
+  /**
+   * Sauter sur une tete : la frappe et le rebond.
+   *
+   * ## Pourquoi une passe a part
+   *
+   * Le pietinement et les degats de contact se disputent le meme instant. Les
+   * laisser dans la meme boucle ferait dependre le vainqueur de l'ordre des
+   * noeuds dans la scene — le heros mange la gelee s'il vient avant, la gelee
+   * mange le heros s'il vient apres. Ce n'est pas une regle, c'est un tirage
+   * au sort. La passe separee tranche : le pied passe avant la dent.
+   *
+   * ## Pourquoi il faut descendre
+   *
+   * `vy > 0` seulement. Sans cette condition, longer une creature en montant
+   * la tuerait, et le joueur apprendrait un geste qui n'existe pas.
+   */
+  private resoudrePietinements(): void {
+    for (const v of this.vivantes.values()) v.pietinee = false
+    for (const v of this.vivantes.values()) {
+      const p = v.plateformeur
+      if (!p || p.vy <= 0) continue
+      const b = v.espece.boite
+      const pieds = rect(
+        v.noeud.x + b.x, v.noeud.y + b.y + b.h - BANDE_PIETINEMENT,
+        b.l, BANDE_PIETINEMENT + 1,
+      )
+      for (const w of this.vivantes.values()) {
+        if (w === v || w.espece.degatsPietinement <= 0) continue
+        if (w.espece.camp === v.espece.camp) continue
+        const vw = this.combat.vies.get(w.noeud.id)
+        if (!vw || vw.mort || vw.invulnerable > 0) continue
+        const wb = w.espece.boite
+        const tete = rect(w.noeud.x + wb.x, w.noeud.y + wb.y, wb.l, BANDE_PIETINEMENT)
+        if (!seChevauchent(pieds, tete)) continue
+        // Une frappe ordinaire, du camp du pietineur : l'invulnerabilite, la
+        // poussee et le compte des abattus fonctionnent sans rien reecrire.
+        this.combat.frapper(v.espece.camp, tete, w.espece.degatsPietinement, 1, 0, 0, 0)
+        w.pietinee = true
+        p.rebondir(w.espece.rebondPietinement)
+        break
+      }
+    }
   }
 
   /**
@@ -703,11 +944,17 @@ function agir(
   projection: Projection, tuile: number,
 ): boolean {
   const e = v.espece
+  // La pesanteur AVANT l'intention : une creature qui vient de tomber d'un
+  // rebord doit decider ou aller depuis la place ou elle est.
+  if (e.pesante && projection.regard === 'cote') tomber(v, c)
   const remarque = e.vigilance > 0 && distance < e.vigilance
   // L'intention de l'ETAT l'emporte sur celle de l'espece : c'est tout
   // l'interet d'avoir des etats. Sans etats, l'espece decide seule.
   const intention = v.etat ? v.etat.intention : e.comportement
 
+  // Un porteur ne « fait » rien ici : son mouvement appartient a la passe des
+  // corps mobiles, qui doit s'executer avant que quiconque ne decide ou il va.
+  if (intention === 'porteur') return false
   if (intention === 'projectile') return avancerProjectile(v, c)
   if (intention === 'joueur') { dirigerVuDeDessus(v, c, projection, tuile); return false }
   if (intention === 'plateformeur') { dirigerDeCote(v, c); return false }
@@ -744,6 +991,22 @@ function agir(
 }
 
 /**
+ * Ou en est l'aller-retour, de 0 a 1.
+ *
+ * Le cycle a quatre temps : aller, pause, retour, pause. Le mouvement est
+ * LINEAIRE et non adouci — une plateforme adoucie est plus jolie et moins
+ * lisible : on ne sait plus quand elle repart, donc on rate le saut. Ce qui
+ * demande un rythme particulier s'ecrit dans l'atelier de scripts.
+ */
+export function avancementTrajet(phase: number, duree: number, pause: number): number {
+  if (duree <= 0) return 0
+  if (phase < duree) return phase / duree
+  if (phase < duree + pause) return 1
+  if (phase < 2 * duree + pause) return 1 - (phase - duree - pause) / duree
+  return 0
+}
+
+/**
  * Un projectile : il va tout droit, et meurt sur ce qu'il touche.
  *
  * Il meurt sur le DECOR et non sur ce qu'il blesse : c'est sa frappe de
@@ -754,6 +1017,19 @@ function agir(
 function avancerProjectile(v: Vivante, c: ContexteJeu): boolean {
   const fait = c.bouger(v.corps, v.vx * c.dt, v.vy * c.dt)
   return fait.bloque
+}
+
+/**
+ * La chute d'une creature ordinaire.
+ *
+ * Le compteur se remet a zero des qu'elle bute : garder la vitesse acquise
+ * contre le sol la ferait s'enfoncer d'un coup au moment ou le sol disparait,
+ * ce qui est le meme defaut que l'accumulateur bloque du controleur.
+ */
+function tomber(v: Vivante, c: ContexteJeu): void {
+  v.vy = Math.min(CHUTE_MAX_ENTITE, v.vy + PESANTEUR_ENTITE * c.dt)
+  const r = c.bouger(v.corps, 0, v.vy * c.dt)
+  if (r.bloque) v.vy = 0
 }
 
 function patrouiller(v: Vivante, c: ContexteJeu): void {
@@ -792,7 +1068,9 @@ function dirigerDeCote(v: Vivante, c: ContexteJeu): void {
   const e = lireEntrees(c.entrees)
   const b = { x: v.corps.boiteX, y: v.corps.boiteY, l: v.corps.boiteL, h: v.corps.boiteH }
   const mobile = { x: v.noeud.x, y: v.noeud.y, boite: b }
-  p.avancer(c.carte, mobile, c.dt, e.dirX, e.sauteDemande, e.sauteTenu, e.dash, e.dirY)
+  // `c.grille` et non `c.carte` : c'est ce qui fait qu'on se tient sur une
+  // plateforme mobile au lieu de la traverser.
+  p.avancer(c.grille, mobile, c.dt, e.dirX, e.sauteDemande, e.sauteTenu, e.dash, e.dirY)
   v.noeud.x = mobile.x
   v.noeud.y = mobile.y
   if (e.dirX) { v.noeud.miroir = e.dirX < 0; v.regard = { x: e.dirX, y: 0 } }

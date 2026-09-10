@@ -231,7 +231,10 @@ if (dispo('rustc')) {
   const brut = chargeur('rust', projet)
   const sansSerde = brut
     .replace(/use serde::Deserialize;\n/g, '')
-    .replace(/#\[derive\(Debug, Clone, Deserialize\)\]/g, '#[derive(Debug, Clone)]')
+    // Le retrait vise `Deserialize` DANS la liste, quelle qu'elle soit :
+    // ecrit en dur, il laissait passer le premier derive qui gagnait un
+    // `Default`, et l'echec accusait le chargeur au lieu du banc.
+    .replace(/#\[derive\(([^)]*), Deserialize\)\]/g, '#[derive($1)]')
     .replace(/^[ \t]*#\[serde\([^\]]*\)\]\n/gm, '')
     .replace(/impl Projet \{[\s\S]*?\n\}\n/, '')
 

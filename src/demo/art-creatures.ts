@@ -267,6 +267,60 @@ const LARME_DESSIN = [
   '................',
 ]
 
+/**
+ * La plateforme mobile : une dalle epaisse, posee au BAS de la case.
+ *
+ * Le bas et non le centre : le noeud d'une entite est a ses pieds, et la boite
+ * qui bloque doit coincider avec ce qu'on voit. Une dalle dessinee au milieu de
+ * sa case donnerait un sol invisible six pixels plus haut — le pire defaut
+ * possible pour une plateforme, parce qu'on l'accuse de sauter mal.
+ */
+const DALLE = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  'oooooooooooooooo',
+  'osSsSsSsSsSsSsSo',
+  'oSsSsSsSsSsSsSso',
+  'obbbbbbbbbbbbbbo',
+  'oBbBbBbBbBbBbBbo',
+  'oooooooooooooooo',
+]
+
+/**
+ * La caisse : solide, immobile, et poussee par rien pour l'instant.
+ *
+ * Trois rangees de planches et deux cerclages. Le cerclage n'est pas
+ * decoratif : c'est lui qui dit « ceci se cogne » plutot que « ceci se
+ * ramasse ». Une caisse lisse se confond avec un ramassage a la premiere
+ * lecture, et l'on saute dessus au lieu de la contourner.
+ */
+const CAISSE = [
+  '................',
+  '................',
+  '..oooooooooooo..',
+  '..onnnnnnnnnno..',
+  '..oNNNNNNNNNNo..',
+  '..onnnnnnnnnno..',
+  '..oooooooooooo..',
+  '..onnnnnnnnnno..',
+  '..oNNNNNNNNNNo..',
+  '..onnnnnnnnnno..',
+  '..oooooooooooo..',
+  '..onnnnnnnnnno..',
+  '..oNNNNNNNNNNo..',
+  '..onnnnnnnnnno..',
+  '..oooooooooooo..',
+  '................',
+]
+
 export const PLANCHE_CREATURES: string[][] = [
   gelee(0), gelee(0.22), gelee(0), gelee(-0.18),
   CHAUVE_HAUTE, CHAUVE_BASSE,
@@ -275,6 +329,7 @@ export const PLANCHE_CREATURES: string[][] = [
   BALISE_ETEINTE, BALISE_ALLUMEE,
   tourelle(0), tourelle(0.5), tourelle(1),
   LARME_DESSIN,
+  DALLE, CAISSE,
 ]
 
 export const GELEE = [0, 1, 2, 3]
@@ -287,4 +342,6 @@ export const TOURELLE_REPOS = 12
 export const TOURELLE_ANTICIPE = 13
 export const TOURELLE_TIRE = 14
 export const LARME = 15
+export const DALLE_MOBILE = 16
+export const CAISSE_INDEX = 17
 export const COLONNES_CREATURES = 6

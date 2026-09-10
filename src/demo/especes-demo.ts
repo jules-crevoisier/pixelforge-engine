@@ -3,6 +3,7 @@ import { clipRegulier, type Clip } from '../runtime/animation.ts'
 import {
   GELEE, CHAUVE_SOURIS, TAILLADE, COEUR_PLEIN, BALISE,
   TOURELLE_REPOS, TOURELLE_ANTICIPE, TOURELLE_TIRE, LARME,
+  DALLE_MOBILE, CAISSE_INDEX,
 } from './art-creatures.ts'
 import { DIR_BAS, DIR_HAUT, DIR_DROITE, TEMPS_REPOS, TEMPS_MARCHE, imageHeros } from './art.ts'
 
@@ -56,6 +57,16 @@ export const ESPECES_DEMO: Espece[] = [
     comportement: 'bond',
     vigilance: 90,
     boite: { x: -5, y: -7, l: 10, h: 7 },
+    // On lui saute dessus. C'est le verbe le plus universel du genre, et il
+    // vaut ici deux points de vie : la gelee en a deux, donc un pietinement
+    // suffit. Un ennemi qu'on doit pietiner deux fois apprend au joueur a
+    // rester en l'air au-dessus d'une chose qui bouge, ce qui est un mauvais
+    // reflexe.
+    degatsPietinement: 2,
+    rebondPietinement: 30,
+    // Elle tombe, dans un monde qui a un bas. La chauve-souris juste en
+    // dessous ne le fait pas : c'est le seul mot qui les separe.
+    pesante: true,
   }),
   espece('chauve-souris', {
     nom: 'Chauve-souris',
@@ -141,6 +152,55 @@ export const ESPECES_DEMO: Espece[] = [
     comportement: 'immobile',
     boite: { x: -6, y: -16, l: 12, h: 16 },
   }),
+  espece('plateforme-mobile', {
+    nom: 'Plateforme mobile',
+    clip: 'dalle',
+    camp: 'decor',
+    pv: 9999,
+    vitesse: 0,
+    degats: 0,
+    // « porteur » : elle ne decide de rien, son mouvement appartient a la passe
+    // des corps mobiles, qui tourne avant que quiconque ne decide ou il va.
+    comportement: 'porteur',
+    // 1 : solide. Une dalle pleine, qu'on ne traverse pas par en dessous.
+    matiereCorps: 1,
+    // Un aller-retour de trois cases en une seconde et demie, avec une demi-
+    // seconde d'arret a chaque bout. L'arret n'est pas decoratif : c'est lui
+    // qui donne au joueur le temps de monter.
+    trajet: { dx: 48, dy: 0, duree: 1500, pause: 500 },
+    // La boite EST la dalle qu'on voit : seize de large, six de haut, posee au
+    // bas de la case comme le dessin.
+    boite: { x: -8, y: -6, l: 16, h: 6 },
+    invulnerabiliteMs: 0,
+  }),
+  espece('ascenseur', {
+    nom: 'Ascenseur',
+    clip: 'dalle',
+    camp: 'decor',
+    pv: 9999,
+    vitesse: 0,
+    degats: 0,
+    comportement: 'porteur',
+    matiereCorps: 1,
+    trajet: { dx: 0, dy: -64, duree: 2000, pause: 700 },
+    boite: { x: -8, y: -6, l: 16, h: 6 },
+    invulnerabiliteMs: 0,
+  }),
+  espece('caisse', {
+    nom: 'Caisse',
+    clip: 'caisse',
+    camp: 'decor',
+    pv: 9999,
+    vitesse: 0,
+    degats: 0,
+    comportement: 'porteur',
+    matiereCorps: 1,
+    // Pas de trajet : elle ne bouge pas. Un obstacle mobile immobile n'est pas
+    // une contradiction — c'est un mur qu'on pose a la souris, hors de la
+    // grille, et qu'un script pourra pousser un jour.
+    boite: { x: -7, y: -14, l: 14, h: 14 },
+    invulnerabiliteMs: 0,
+  }),
   espece('coeur', {
     nom: 'Cœur',
     clip: 'coeur',
@@ -219,5 +279,7 @@ export function clipsCreatures(): Clip[] {
       evenements: [{ image: 1, nom: 'tir' }],
     }),
     clipRegulier('larme', [LARME], 1000),
+    clipRegulier('dalle', [DALLE_MOBILE], 1000),
+    clipRegulier('caisse', [CAISSE_INDEX], 1000),
   ]
 }

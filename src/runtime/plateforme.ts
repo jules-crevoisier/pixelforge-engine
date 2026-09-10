@@ -225,6 +225,28 @@ export class Plateformeur {
   }
 
   /**
+   * Relance vers le haut a une hauteur donnee. C'est le rebond du pietinement.
+   *
+   * On donne une HAUTEUR et non une vitesse, pour la meme raison que le saut :
+   * « rebondir de vingt-huit pixels » se compare a l'oeil sur le niveau,
+   * « rebondir a -180 » ne se compare a rien. La formule est celle du saut,
+   * inversee.
+   *
+   * Le rebond rend le dash et les sauts aeriens : sauter sur une tete est une
+   * recompense, et une recompense qui laisse en l'air sans ressource est une
+   * punition deguisee.
+   */
+  rebondir(hauteur: number): void {
+    if (hauteur <= 0) return
+    this.vy = -Math.sqrt(2 * gravitéDe(this.r) * hauteur)
+    this.auSol = false
+    this.tientSaut = false
+    this.sautsUtilises = 0
+    this.dashDispo = true
+    this.acc.bloquerY()
+  }
+
+  /**
    * Un pas de simulation.
    *
    * `dirX` vaut -1, 0 ou 1. `sauteDemande` est vrai a l'image ou le bouton est

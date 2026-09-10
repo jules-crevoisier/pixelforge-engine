@@ -35,6 +35,24 @@ export interface GrilleSolide {
    * surprenant.
    */
   matiere?(cx: number, cy: number): number
+  /**
+   * Les drapeaux des corps MOBILES qui recouvrent ce rectangle du monde.
+   *
+   * Une plateforme qui bouge ne tient pas dans `solide(cx, cy)` : elle n'est
+   * pas alignee sur la grille, et elle change de place a chaque pas. On ne
+   * peut donc pas l'exprimer par une case. Ce crochet-ci travaille en pixels,
+   * ce qui est la seule facon honnete de decrire un obstacle qui se deplace.
+   *
+   * Facultatif, et c'est voulu : une grille de decor pur reste valable, et
+   * c'est ce que rendent les mondes sans plateforme mobile.
+   */
+  corpsSur?(r: Rect): number
+  /**
+   * Vrai si le dessus d'un corps mobile a sens unique vaut exactement le bas
+   * de ce rectangle. Meme regle de croisement que pour les cases — voir
+   * `plateformeArrete`.
+   */
+  plateformeMobileSous?(r: Rect): boolean
 }
 
 /** Les drapeaux, redeclares ici pour que la collision ne dependeplus des tuiles. */
@@ -56,6 +74,9 @@ export function casesCouvertes(g: GrilleSolide, r: Rect): { x0: number; y0: numb
 
 export function toucheSolide(g: GrilleSolide, r: Rect): boolean {
   if (r.w <= 0 || r.h <= 0) return false
+  // Les corps mobiles d'abord : ils sont peu nombreux, et un corps qui bloque
+  // dispense de parcourir les cases.
+  if (g.corpsSur && (g.corpsSur(r) & M_SOLIDE) !== 0) return true
   const c = casesCouvertes(g, r)
   for (let cy = c.y0; cy <= c.y1; cy++) {
     for (let cx = c.x0; cx <= c.x1; cx++) {
@@ -81,7 +102,12 @@ export function toucheSolide(g: GrilleSolide, r: Rect): boolean {
  * exactement : le bas du corps vaut le haut de la case, ni plus ni moins.
  */
 export function plateformeArrete(g: GrilleSolide, r: Rect, traverse = false): boolean {
-  if (traverse || !g.matiere) return false
+  if (traverse) return false
+  // Une plateforme mobile obeit a la meme regle de croisement, mais son dessus
+  // est un pixel quelconque et non un multiple de la tuile : elle a donc son
+  // propre test, et il vient d'abord parce qu'il n'a pas besoin de la grille.
+  if (g.plateformeMobileSous && g.plateformeMobileSous(r)) return true
+  if (!g.matiere) return false
   const bas = r.y + r.h
   if (bas % g.tuile !== 0) return false
   const cy = bas / g.tuile

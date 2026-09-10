@@ -194,6 +194,21 @@ export interface Espece {
   etatInitial: string
   /** Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme. */
   duree: number
+  /**
+   * Ce que cette entite oppose aux autres corps : 0 rien, 1 solide,
+   * 2 plateforme a sens unique. Ce sont les drapeaux des cases, et ce n'est
+   * pas une coincidence : du point de vue de qui se cogne dedans, un obstacle
+   * mobile est du decor.
+   */
+  matiereCorps: number
+  /** L'aller-retour d'un corps porteur, en pixels et millisecondes. */
+  trajet: { dx: number; dy: number; duree: number; pause: number }
+  /** Degats subis quand on lui saute sur la tete. Zero : on ne la pietine pas. */
+  degatsPietinement: number
+  /** Hauteur du rebond apres pietinement, en pixels. */
+  rebondPietinement: number
+  /** Elle tombe. Sans effet dans un monde vu de dessus. */
+  pesante: boolean
 }
 
 export interface EtatEspece {
@@ -559,6 +574,25 @@ namespace PixelForge
         public string etatInitial;
         /// <summary>Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme.</summary>
         public int duree;
+        /// <summary>0 rien, 1 solide, 2 plateforme a sens unique.</summary>
+        public int matiereCorps;
+        public Trajet trajet;
+        /// <summary>Degats subis quand on lui saute sur la tete.</summary>
+        public int degatsPietinement;
+        /// <summary>Hauteur du rebond apres pietinement, en pixels.</summary>
+        public int rebondPietinement;
+        /// <summary>Elle tombe. Sans effet dans un monde vu de dessus.</summary>
+        public bool pesante;
+    }
+
+    /// <summary>L'aller-retour d'un corps porteur, en pixels et millisecondes.</summary>
+    [Serializable]
+    public class Trajet
+    {
+        public int dx;
+        public int dy;
+        public int duree;
+        public int pause;
     }
 
     /// <summary>Un etat d'une espece : ce qu'elle fait, et pendant combien de temps.</summary>
@@ -1123,6 +1157,33 @@ pub struct Espece {
     pub etat_initial: String,
     /// Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme.
     pub duree: i64,
+    /// 0 rien, 1 solide, 2 plateforme a sens unique.
+    #[serde(default)]
+    pub matiere_corps: i32,
+    #[serde(default)]
+    pub trajet: Trajet,
+    /// Degats subis quand on lui saute sur la tete.
+    #[serde(default)]
+    pub degats_pietinement: i32,
+    /// Hauteur du rebond apres pietinement, en pixels.
+    #[serde(default)]
+    pub rebond_pietinement: i32,
+    /// Elle tombe. Sans effet dans un monde vu de dessus.
+    #[serde(default)]
+    pub pesante: bool,
+}
+
+/// L'aller-retour d'un corps porteur, en pixels et millisecondes.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Trajet {
+    #[serde(default)]
+    pub dx: i32,
+    #[serde(default)]
+    pub dy: i32,
+    #[serde(default)]
+    pub duree: i64,
+    #[serde(default)]
+    pub pause: i64,
 }
 
 /// Un etat d'une espece. Un declencheur se pose sur un EVENEMENT du clip et
@@ -1547,6 +1608,11 @@ class Espece:
     etats: list[dict[str, Any]] = field(default_factory=list)
     etatInitial: str = ""
     duree: int = 0
+    matiereCorps: int = 0
+    trajet: dict[str, float] = field(default_factory=dict)
+    degatsPietinement: int = 0
+    rebondPietinement: int = 0
+    pesante: bool = False
 
     def etat(self, nom: str) -> dict[str, Any] | None:
         """L'etat portant ce nom, ou None."""

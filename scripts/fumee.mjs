@@ -133,6 +133,21 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.keyboard.up('ArrowRight')
   ok('les pointes tuent', mort === 1, `${mort} mort(s)`)
 
+  // Les corps mobiles, DANS LE NAVIGATEUR. Le banc construit son registre a la
+  // main ; ici c'est le jeu qui le remplit depuis la scene, et c'est ce
+  // branchement-la qui peut manquer sans qu'aucun banc s'en apercoive.
+  const corps = await p.evaluate(() => window.pfe.jeu.corps.tous.map(
+    (c) => `${c.l}x${c.h}@${c.x},${c.y}`))
+  ok('les corps mobiles du niveau sont inscrits dans le jeu',
+    corps.length === 3, corps.join(' · '))
+  // Et la plateforme BOUGE : un porteur immobile serait un mur de plus.
+  const corpsAvant = await p.evaluate(() => window.pfe.jeu.corps.tous.map((c) => c.x + ',' + c.y))
+  await p.waitForTimeout(700)
+  const corpsApres = await p.evaluate(() => window.pfe.jeu.corps.tous.map((c) => c.x + ',' + c.y))
+  ok('et la plateforme mobile se deplace vraiment',
+    corpsAvant.some((v, i) => v !== corpsApres[i]),
+    `${corpsAvant.join(' · ')} -> ${corpsApres.join(' · ')}`)
+
   await p.waitForTimeout(900)
   const apres = await p.evaluate(() => [window.pfe.monde.heros.x, window.pfe.monde.heros.y])
   ok('et l\'on réapparaît au point de reprise',

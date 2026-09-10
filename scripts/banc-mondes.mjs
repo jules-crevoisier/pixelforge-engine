@@ -479,6 +479,61 @@ const caverne = mondeCaverne()
   check('le depart n\'est pas dans un mur, et repose sur du sol',
     !dansMur && surSol, `case ${Math.floor(d.x / TUILE)},${Math.floor(d.y / TUILE)}`)
 
+  // Les corps solides POSES dans le niveau ne doivent pas le fermer.
+  //
+  // Une caisse est du contenu, pas un mur : le banc l'a appris en jouant, ou
+  // une gelee posee a cinq cases du depart tuait le heros a chaque
+  // reapparition — un niveau qui se referme sur lui-meme. La verification de
+  // franchissabilite ci-dessus ne voyait rien : elle se fait sur la CARTE, et
+  // un corps mobile n'est pas dans la carte.
+  {
+    const { CorpsMobiles, grilleAvecCorps } = await import('../src/runtime/corps.ts')
+    const registre = new CorpsMobiles()
+    const solides = []
+    const parcourir = (n) => {
+      const e = n.espece ? caverne.especes.find((q) => q.id === n.espece) : null
+      if (e && e.matiereCorps) {
+        registre.poser(n.id, n.x + e.boite.x, n.y + e.boite.y, e.boite.l, e.boite.h, e.matiereCorps)
+        solides.push({ nom: e.nom, x: n.x + e.boite.x, y: n.y + e.boite.y, l: e.boite.l })
+      }
+      for (const f of n.enfants) parcourir(f)
+    }
+    parcourir(caverne.racine)
+    check('la caverne pose bien des corps solides', solides.length >= 3,
+      solides.map((s) => s.nom).join(', '))
+
+    const avecCorps = grilleAvecCorps(carte, registre)
+    for (const b of solides) {
+      // On ne s'occupe que de ce qui est pose sur le plancher principal : le
+      // reste est en l'air, et rien n'oblige a passer dessus.
+      if (b.y + 20 < 20 * TUILE || b.y > 20 * TUILE) continue
+      const c = new Plateformeur()
+      const corps = { x: b.x - 3 * TUILE, y: 20 * TUILE, boite: { ...boite } }
+      for (let i = 0; i < 240; i++) {
+        c.avancer(avecCorps, corps, 1 / 60, 1, i % 45 === 0, i % 45 < 22)
+      }
+      check(`on passe « ${b.nom} » sans que le niveau se ferme`,
+        corps.x > b.x + b.l, `arrive a x=${corps.x}, l'obstacle finit a ${b.x + b.l}`)
+    }
+
+    // Et la creature la plus proche du depart doit etre HORS de sa vigilance :
+    // sinon elle vient au-devant du heros a chaque reapparition, et un monde a
+    // un point de vie devient une boucle de morts.
+    let pire = Infinity
+    let coupable = ''
+    const creatures = (n) => {
+      const e = n.espece ? caverne.especes.find((q) => q.id === n.espece) : null
+      if (e && e.degats > 0 && e.vigilance > 0) {
+        const d = Math.hypot(n.x - caverne.depart.x, n.y - caverne.depart.y) - e.vigilance
+        if (d < pire) { pire = d; coupable = e.nom }
+      }
+      for (const f of n.enfants) creatures(f)
+    }
+    creatures(caverne.racine)
+    check('aucune creature ne guette le point de depart',
+      pire > 0, `${coupable} : ${Math.round(pire)} px hors de sa portee de vigilance`)
+  }
+
   // Les fosses du plancher principal, mesurees dans le plan lui-meme.
   const fosses = []
   {
@@ -1468,6 +1523,270 @@ console.log('\n--- les quatre mondes se construisent tous ---')
       m.carte.calques.length > 0 && m.couleurs.length > 0 && m.heros.source === 'heros'
       && typeof m.etat() === 'string',
       `${m.carte.calques.length} calques, ${m.couleurs.length} couleurs`)
+  }
+}
+
+console.log('\n--- les corps mobiles, dans le peuplement ---')
+
+{
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+  const { Combat } = await import('../src/runtime/combat.ts')
+  const { Peuplement, espece } = await import('../src/runtime/entites.ts')
+  const { CorpsMobiles, grilleAvecCorps } = await import('../src/runtime/corps.ts')
+  const { clipRegulier } = await import('../src/runtime/animation.ts')
+
+  const T = 16
+  // Un sol plein a la rangee 20, et rien d'autre.
+  const decor = {
+    tuile: T, largeur: 40, hauteur: 40,
+    solide: (cx, cy) => cy >= 20,
+    matiere: (cx, cy) => (cy >= 20 ? 1 : 0),
+  }
+
+  const ESPECES = [
+    espece('marcheur', {
+      camp: 'heros', pv: 5, vitesse: 0, degats: 0, comportement: 'plateformeur',
+      clip: 'immobile', boite: { x: -4, y: -14, l: 8, h: 14 },
+    }),
+    espece('dalle', {
+      camp: 'decor', pv: 9999, vitesse: 0, degats: 0, comportement: 'porteur',
+      clip: 'immobile', matiereCorps: 1,
+      trajet: { dx: 48, dy: 0, duree: 1000, pause: 0 },
+      boite: { x: -8, y: -6, l: 16, h: 6 },
+    }),
+    espece('blob', {
+      camp: 'ennemi', pv: 2, vitesse: 0, degats: 1, comportement: 'immobile',
+      clip: 'immobile', boite: { x: -5, y: -7, l: 10, h: 7 },
+      degatsPietinement: 2, rebondPietinement: 30, invulnerabiliteMs: 0,
+    }),
+  ]
+  const CLIPS = [clipRegulier('immobile', [0], 1000)]
+
+  /**
+   * Le deplacement du vrai jeu, en miniature : la FRACTION est gardee.
+   *
+   * Un faux `bouger` qui arrondit a chaque appel immobilise tout ce qui avance
+   * de moins d'un pixel par pas — une creature a vingt pixels par seconde ne
+   * bouge jamais. Le banc accusait alors le moteur d'un defaut qui n'etait que
+   * le sien.
+   */
+  const bougeurFidele = (racine) => {
+    const restes = new Map()
+    const hote = (cible) => {
+      const chercher = (n) => {
+        for (const e of n.enfants) { if (e.id === cible.id) return n; const r = chercher(e); if (r) return r }
+        return null
+      }
+      return chercher(racine)
+    }
+    return (cps, dx, dy) => {
+      const r = restes.get(cps.id) ?? { x: 0, y: 0 }
+      r.x += dx; r.y += dy
+      const px = Math.trunc(r.x); const py = Math.trunc(r.y)
+      r.x -= px; r.y -= py
+      restes.set(cps.id, r)
+      const h = hote(cps)
+      if (h) { h.x += px; h.y += py }
+      return { dx: px, dy: py, bloque: false }
+    }
+  }
+
+  /** Un monde minimal : la scene, le combat, le peuplement et le contexte. */
+  const monter = () => {
+    const racine = creerNoeud('noeud', 'essai')
+    const combat = new Combat()
+    const corps = new CorpsMobiles()
+    const peuplement = new Peuplement(racine, combat, ESPECES, CLIPS, ORTHO_COTE(T), T)
+    peuplement.degatsMatiere = 0
+    const grille = grilleAvecCorps(decor, corps)
+    const ctx = {
+      dt: 1 / 60,
+      entrees: { consommer: () => false, axe: () => ({ x: 0, y: 0 }), tenue: () => false },
+      racine, carte: decor, grille, corps, pas: 0, trouver: () => null,
+      bouger: bougeurFidele(racine),
+    }
+    return { racine, combat, corps, peuplement, ctx }
+  }
+
+  // 1. Un corps mobile se declare tout seul au registre du jeu : le peuplement
+  //    le remplit depuis la scene, comme il remplit tout le reste.
+  {
+    const m = monter()
+    m.peuplement.poser('dalle', 160, 200)
+    m.peuplement.synchroniser()
+    m.peuplement.avancer(m.ctx, { x: 0, y: 0 }, 16)
+    check('une entite porteuse s\'inscrit au registre des corps mobiles',
+      m.corps.nombre === 1, `${m.corps.nombre} corps`)
+    // Et elle s'en retire quand elle disparait : un obstacle invisible est
+    // pire qu'un obstacle absent.
+    const id = m.corps.identifiants[0]
+    m.peuplement.tuer(m.peuplement.positions().length ? id : id)
+    m.peuplement.avancer(m.ctx, { x: 0, y: 0 }, 16)
+    check('et elle s\'en retire quand on la retire de la scene',
+      m.corps.nombre === 0, `${m.corps.nombre} corps`)
+  }
+
+  // 2. On se tient sur une plateforme mobile, et elle nous emmene. La mesure
+  //    qui compte n'est pas « le heros a avance » — la dalle fait un
+  //    aller-RETOUR, et sur une fenetre mal choisie le total est nul. C'est
+  //    l'ECART entre les deux qui doit rester constant, a chaque pas.
+  {
+    const m = monter()
+    m.peuplement.poser('dalle', 160, 200)
+    const h = m.peuplement.poser('marcheur', 160, 180)
+    m.peuplement.synchroniser()
+    for (let i = 0; i < 40; i++) m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+    const dalle = m.corps.tous[0]
+    const pose = h.y
+    const ecart = h.x - dalle.x
+    let pire = 0
+    let gauche = dalle.x
+    let droite = dalle.x
+    for (let i = 0; i < 150; i++) {
+      m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+      pire = Math.max(pire, Math.abs((h.x - dalle.x) - ecart))
+      gauche = Math.min(gauche, dalle.x)
+      droite = Math.max(droite, dalle.x)
+    }
+    const parcouru = droite - gauche
+    check('le heros se pose sur la plateforme mobile',
+      pose === 194, `bas du heros a ${pose}, dessus de la dalle a 194`)
+    check('et il garde sa place dessus sur tout l\'aller-retour',
+      pire === 0 && parcouru >= 40,
+      `ecart maximal ${pire} px, la dalle a parcouru ${parcouru} px`)
+  }
+
+  // 3. Sauter sur une tete : la creature meurt, le heros rebondit, et il ne
+  //    prend PAS le coup de contact au passage. Ce dernier point est ce que la
+  //    passe separee sert a garantir : sans elle, l'ordre des noeuds dans la
+  //    scene deciderait qui gagne entre le pied et la dent.
+  {
+    const m = monter()
+    const blob = m.peuplement.poser('blob', 200, 320)
+    const h = m.peuplement.poser('marcheur', 200, 290)
+    m.peuplement.synchroniser()
+    let bas = h.y
+    let remonte = 0
+    for (let i = 0; i < 60; i++) {
+      m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+      m.combat.avancer(1000 / 60)
+      bas = Math.max(bas, h.y)
+      remonte = Math.max(remonte, bas - h.y)
+    }
+    const vie = m.combat.vies.get(blob.id)
+    const vieH = m.combat.vies.get(h.id)
+    check('sauter sur une tete tue la creature', !vie || vie.mort,
+      vie ? `${vie.pv} pv, mort=${vie.mort}` : 'retiree')
+    check('et le heros rebondit au lieu de retomber', remonte >= 20,
+      `tombe jusqu'a ${bas}, remonte de ${remonte} px`)
+    check('et il ne mange pas la creature qu\'il vient d\'ecraser',
+      vieH.pv === 5, `${vieH.pv} pv sur 5`)
+  }
+
+  // 4. On ne pietine pas ce qu'on FROLE. Sans cette condition, passer a cote
+  //    d'une creature en tombant la tuerait, et le joueur croirait a un bug —
+  //    ou pire, y compterait.
+  {
+    const m = monter()
+    const blob = m.peuplement.poser('blob', 200, 320)
+    const h = m.peuplement.poser('marcheur', 220, 290)
+    m.peuplement.synchroniser()
+    for (let i = 0; i < 60; i++) {
+      m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+      m.combat.avancer(1000 / 60)
+    }
+    const vie = m.combat.vies.get(blob.id)
+    check('mais tomber a cote d\'une creature ne la pietine pas',
+      vie && !vie.mort && vie.pv === 2, vie ? `${vie.pv} pv` : 'retiree')
+  }
+
+  // 4 bis. Une creature pesante TOMBE dans un monde vu de cote, et ne tombe
+  //        pas dans un monde vu de dessus. Ce defaut-la n'a ete trouve qu'en
+  //        JOUANT : la gelee posee dans la caverne derivait vers le haut de
+  //        l'ecran en poursuivant le heros, et aucun banc ne regardait.
+  {
+    const pesante = espece('lourde', {
+      camp: 'ennemi', pv: 2, vitesse: 20, degats: 0, comportement: 'poursuite',
+      vigilance: 400, clip: 'immobile', boite: { x: -5, y: -7, l: 10, h: 7 },
+      pesante: true,
+    })
+    const chute = (regard) => {
+      const racine = creerNoeud('noeud', 'essai')
+      const combat = new Combat()
+      const corps = new CorpsMobiles()
+      const proj = regard === 'cote' ? ORTHO_COTE(T) : ORTHO_DESSUS(T)
+      const p = new Peuplement(racine, combat, [pesante], CLIPS, proj, T)
+      p.degatsMatiere = 0
+      const grille = grilleAvecCorps(decor, corps)
+      const ctx = {
+        dt: 1 / 60, entrees: { consommer: () => false, tenue: () => false, axe: () => ({ x: 0, y: 0 }) },
+        racine, carte: decor, grille, corps, pas: 0, trouver: () => null,
+        bouger: bougeurFidele(racine),
+      }
+      const n = p.poser('lourde', 200, 200)
+      p.synchroniser()
+      // La cible est PLUS HAUT qu'elle : sans pesanteur, la poursuite la fait
+      // monter, et c'est exactement ce qu'on avait a l'ecran.
+      for (let i = 0; i < 120; i++) p.avancer(ctx, { x: 200, y: 100 }, 1000 / 60)
+      return n.y - 200
+    }
+    const cote = chute('cote')
+    const dessus = chute('dessus')
+    check('une creature pesante tombe dans un monde vu de cote', cote > 40,
+      `descendue de ${cote} px`)
+    check('et la meme ne tombe pas dans un monde vu de dessus', dessus < 0,
+      `deplacee de ${dessus} px — elle monte vers sa cible, comme prevu`)
+  }
+
+  // 5. Et l'on ne pietine pas en MONTANT. Le heros saute dans une creature
+  //    posee au-dessus de lui : tant qu'il monte, elle ne doit rien perdre —
+  //    sinon le joueur apprend un geste qui n'existe pas, et s'en sert.
+  {
+    const m = monter()
+    // Le bouton PRESSE une fois, puis TENU : sans le maintien, la hauteur
+    // variable coupe la montee et le saut ne fait que douze pixels. Le banc
+    // s'est trompe la-dessus avant d'accuser le moteur.
+    let presse = false
+    let tenu = false
+    m.ctx.entrees = {
+      consommer: (a) => a === 'saut' && presse,
+      tenue: (a) => a === 'saut' && tenu,
+      axe: () => ({ x: 0, y: 0 }),
+    }
+    const blob = m.peuplement.poser('blob', 200, 290)
+    const h = m.peuplement.poser('marcheur', 200, 320)
+    m.peuplement.synchroniser()
+    for (let i = 0; i < 20; i++) m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+    presse = true
+    tenu = true
+    m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+    m.combat.avancer(1000 / 60)
+    presse = false
+    let intacteEnMontant = true
+    let pasDeMontee = 0
+    for (let i = 0; i < 120; i++) {
+      const d = m.peuplement.diagnosticDe(h.id)
+      if (d && d.vy >= 0) break
+      pasDeMontee++
+      m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+      m.combat.avancer(1000 / 60)
+      const v = m.combat.vies.get(blob.id)
+      if (!v || v.pv < 2) intacteEnMontant = false
+    }
+    tenu = false
+    check('traverser une creature en montant ne la pietine pas',
+      intacteEnMontant && pasDeMontee > 5,
+      `${pasDeMontee} pas de montee, la creature garde ses points`)
+    // Et le revers : en retombant dessus, elle y passe. Une regle qui ne fait
+    // jamais rien est indistinguable d'une regle absente.
+    let morte = false
+    for (let i = 0; i < 200 && !morte; i++) {
+      m.peuplement.avancer(m.ctx, { x: h.x, y: h.y }, 1000 / 60)
+      m.combat.avancer(1000 / 60)
+      const v = m.combat.vies.get(blob.id)
+      morte = !v || v.mort
+    }
+    check('mais en retombant dessus, si', morte, 'la creature est morte a la descente')
   }
 }
 

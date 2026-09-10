@@ -374,6 +374,181 @@ console.log('\n--- les plateformes qu\'on traverse par en dessous ---')
   }
 }
 
+
+console.log('\n--- les corps mobiles : porter, bloquer, pietiner ---')
+{
+  const { CorpsMobiles, grilleAvecCorps, porter } = await import('../src/runtime/corps.ts')
+
+  const plan = [
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '##########',
+  ]
+  const decor = grilleDe(plan)
+
+  // Une dalle solide, seize de large et quatre de haut, sous le corps.
+  const monter = (y) => {
+    const registre = new CorpsMobiles()
+    registre.poser('dalle', 16, y, 16, 4, 1)
+    return { registre, g: grilleAvecCorps(decor, registre) }
+  }
+
+  // 1. Un corps mobile ARRETE. Sans le crochet en pixels, il ne serait qu'un
+  //    dessin : on le traverserait sans rien sentir.
+  {
+    const { g } = monter(5 * T)
+    const p = new Plateformeur()
+    const c = poser(decor, 24, 2 * T, 'au-dessus de la dalle')
+    for (let i = 0; i < 90; i++) p.avancer(g, c, DT, 0, false, false)
+    check('une dalle solide arrete la chute', c.y + BOITE.y + BOITE.h === 5 * T,
+      `bas du corps a ${c.y + BOITE.y + BOITE.h}, dessus de la dalle a ${5 * T}`)
+  }
+
+  // 2. Et sans le registre, la meme chute traverse. C'est la mesure qui prouve
+  //    que c'est bien la dalle qui arrete, et non le sol du bas.
+  {
+    const p = new Plateformeur()
+    const c = poser(decor, 24, 2 * T, 'au-dessus de la dalle')
+    for (let i = 0; i < 90; i++) p.avancer(decor, c, DT, 0, false, false)
+    check('sans le registre, la meme chute va jusqu\'au sol',
+      c.y + BOITE.y + BOITE.h === 6 * T,
+      `bas du corps a ${c.y + BOITE.y + BOITE.h}`)
+  }
+
+  // 3. Le passager est PORTE. La plateforme se deplace, `porter` rattrape le
+  //    corps, et le corps ne doit pas etre laisse en arriere.
+  {
+    const { registre, g } = monter(5 * T)
+    const p = new Plateformeur()
+    const c = poser(decor, 24, 2 * T, 'au-dessus de la dalle')
+    for (let i = 0; i < 90; i++) p.avancer(g, c, DT, 0, false, false)
+    const avant = c.x
+    for (let pas = 0; pas < 20; pas++) {
+      const d = registre.de('dalle')
+      registre.poser('dalle', d.x + 1, d.y, d.l, d.h, d.matiere)
+      const boite = { x: c.x + BOITE.x, y: c.y + BOITE.y, w: BOITE.l, h: BOITE.h }
+      const fait = porter(g, boite, 1, 0)
+      c.x += fait.dx
+      p.avancer(g, c, DT, 0, false, false)
+    }
+    check('une plateforme qui avance emmene son passager', c.x - avant === 20,
+      `le passager a suivi de ${c.x - avant} px pour 20 px de plateforme`)
+  }
+
+  // 4. Le passager reste PORTE en montant : la dalle monte dans ses pieds, et
+  //    le corps ne doit pas s'y enfoncer.
+  {
+    const { registre, g } = monter(5 * T)
+    const p = new Plateformeur()
+    const c = poser(decor, 24, 2 * T, 'au-dessus de la dalle')
+    for (let i = 0; i < 90; i++) p.avancer(g, c, DT, 0, false, false)
+    for (let pas = 0; pas < 10; pas++) {
+      const d = registre.de('dalle')
+      registre.poser('dalle', d.x, d.y - 1, d.l, d.h, d.matiere)
+      const boite = { x: c.x + BOITE.x, y: c.y + BOITE.y, w: BOITE.l, h: BOITE.h }
+      const fait = porter(g, boite, 0, -1)
+      c.y += fait.dy
+      p.avancer(g, c, DT, 0, false, false)
+    }
+    const d = registre.de('dalle')
+    check('une plateforme qui monte ne s\'enfonce pas dans son passager',
+      c.y + BOITE.y + BOITE.h === d.y,
+      `bas du corps a ${c.y + BOITE.y + BOITE.h}, dessus de la dalle a ${d.y}`)
+  }
+
+  // 4 bis. Un corps solide arrete aussi la COURSE, et pas seulement la chute.
+  //        Une caisse qu'on traverse de cote n'est pas une caisse.
+  {
+    const registre = new CorpsMobiles()
+    registre.poser('caisse', 40, 6 * T - 14, 14, 14, 1)
+    const g = grilleAvecCorps(decor, registre)
+    const p = new Plateformeur()
+    const c = poser(decor, 16, 6 * T, 'au sol, a gauche de la caisse')
+    for (let i = 0; i < 120; i++) p.avancer(g, c, DT, 1, false, false)
+    check('un corps solide arrete la course', c.x + BOITE.x + BOITE.l === 40,
+      `bord droit du corps a ${c.x + BOITE.x + BOITE.l}, bord gauche de la caisse a 40`)
+
+    // Et l'on passe par-dessus en sautant : sans cela, une caisse posee sur le
+    // chemin FERME le niveau au lieu de le meubler, et le banc doit le dire.
+    const q = new Plateformeur()
+    const d = poser(decor, 16, 6 * T, 'au sol, a gauche de la caisse')
+    for (let i = 0; i < 200; i++) q.avancer(g, d, DT, 1, i % 40 === 0, i % 40 < 20)
+    check('et l\'on passe par-dessus en sautant',
+      d.x + BOITE.x > 54, `le corps est passe a x=${d.x}, la caisse finit a 54`)
+  }
+
+  // 5. Un corps a SENS UNIQUE se traverse par en dessous. Meme regle de
+  //    croisement que pour les cases, et il fallait la reecrire : le dessus
+  //    d'une dalle mobile n'est pas un multiple de la tuile.
+  {
+    const registre = new CorpsMobiles()
+    // 37 : volontairement pas un multiple de 8. Une regle ecrite avec un
+    // modulo de tuile echouerait ici, et c'est tout l'interet du test.
+    registre.poser('passerelle', 16, 37, 16, 3, 2)
+    const g = grilleAvecCorps(decor, registre)
+    const p = new Plateformeur()
+    const c = poser(decor, 24, 6 * T, 'sous la passerelle')
+    let plusHaut = c.y
+    for (let i = 0; i < 120; i++) {
+      p.avancer(g, c, DT, 0, i === 0, i < 20)
+      plusHaut = Math.min(plusHaut, c.y)
+    }
+    const traverse = plusHaut + BOITE.y + BOITE.h < 37
+    check('on traverse une passerelle mobile par en dessous', traverse,
+      `le bas du corps est monte jusqu'a ${plusHaut + BOITE.y + BOITE.h}, la passerelle est a 37`)
+    check('et l\'on se pose dessus en redescendant',
+      c.y + BOITE.y + BOITE.h === 37,
+      `bas du corps a ${c.y + BOITE.y + BOITE.h}`)
+  }
+
+  // 6. Le rebond du pietinement se regle en HAUTEUR, comme le saut. On mesure
+  //    la hauteur reellement atteinte.
+  {
+    const p = new Plateformeur()
+    const c = poser(decor, 24, 6 * T, 'au sol')
+    for (let i = 0; i < 30; i++) p.avancer(decor, c, DT, 0, false, false)
+    const depart = c.y
+    p.rebondir(30)
+    let plusHaut = c.y
+    for (let i = 0; i < 120; i++) {
+      p.avancer(decor, c, DT, 0, false, false)
+      plusHaut = Math.min(plusHaut, c.y)
+    }
+    const monte = depart - plusHaut
+    check('le rebond du pietinement atteint la hauteur demandee',
+      Math.abs(monte - 30) <= 3, `${monte} px pour 30 demandes`)
+  }
+
+  // 7. Et il rend le dash : une recompense qui laisse sans ressource en l'air
+  //    est une punition deguisee. On mesure les deux cotes — sans rebond le
+  //    deuxieme dash est refuse, avec rebond il part.
+  {
+    const haut = [...Array(39).fill('....................'), '####################']
+    const ciel = grilleDe(haut)
+    const enLair = (avecRebond) => {
+      const p = new Plateformeur()
+      const c = poser(ciel, 16, 2 * T, 'en plein ciel')
+      // Un premier dash, en l'air : il consomme la ressource.
+      p.avancer(ciel, c, DT, 1, false, false, true, 0)
+      for (let i = 0; i < 24; i++) p.avancer(ciel, c, DT, 0, false, false)
+      if (avecRebond) p.rebondir(30)
+      const avant = c.x
+      for (let i = 0; i < 10; i++) p.avancer(ciel, c, DT, 1, false, false, i === 0, 0)
+      return c.x - avant
+    }
+    const sans = enLair(false)
+    const avec = enLair(true)
+    check('sans rebond, le deuxieme dash en l\'air est refuse', sans < 20,
+      `parcouru ${sans} px en dix images`)
+    check('le rebond rend le dash', avec > sans + 15,
+      `${avec} px avec le rebond contre ${sans} sans`)
+  }
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)

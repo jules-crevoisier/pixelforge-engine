@@ -216,20 +216,35 @@ const PLAN_CAVERNE = [
   '#......................................#..#',
   '#..........===........===..............#..#',
   '#......................................#..#',
-  '#......................................#..#',
+  '#.........~............................#..#',
   '#......................................#..#',
   '#......................................#..#',
   '#......................................#..#',
   '#......................................#..#',
   '#......................................#..#',
   '#............................##....!...#..#',
-  '#......................................#..#',
-  '#..@..............###.....!...............#',
+  '#......................_...............#..#',
+  '#..@..............###.g...!...o...g.......#',
   '############...#########..#################',
   '############^^^#########^^#################',
   '###########################################',
   '###########################################',
 ]
+
+/**
+ * Ce que les lettres du plan posent comme entites.
+ *
+ * Une table et non une suite de `if` : ajouter une creature au niveau devient
+ * une ligne de donnees, et l'on voit d'un coup d'oeil tout ce que le plan sait
+ * poser. C'est le meme principe que pour les especes elles-memes.
+ */
+const ENTITES_CAVERNE: Record<string, string> = {
+  '!': 'balise',
+  '~': 'plateforme-mobile',
+  _: 'ascenseur',
+  o: 'caisse',
+  g: 'gelee',
+}
 
 export function mondeCaverne(): Monde {
   const largeur = PLAN_CAVERNE[0].length
@@ -309,22 +324,21 @@ export function mondeCaverne(): Monde {
   const peuplement = aventure.peuplement
   let pas = 0
 
-  /** Les balises du plan, posees comme des entites ordinaires. */
-  const poserBalises = (): void => {
+  /** Ce que le plan pose : balises, plateformes, caisses, creatures. */
+  const poserEntites = (): void => {
     for (let y = 0; y < hauteur; y++) {
       for (let x = 0; x < largeur; x++) {
-        if (PLAN_CAVERNE[y][x] === '!') {
-          peuplement.poser('balise', x * TUILE + TUILE / 2, y * TUILE + TUILE)
-        }
+        const id = ENTITES_CAVERNE[PLAN_CAVERNE[y][x]]
+        if (id) peuplement.poser(id, x * TUILE + TUILE / 2, y * TUILE + TUILE)
       }
     }
   }
-  poserBalises()
+  poserEntites()
 
   return {
     id: 'caverne',
     nom: 'Caverne — vue de côté',
-    aide: 'Flèches pour courir, Espace pour sauter, Maj pour le dash, Bas + Espace pour descendre d’une passerelle. Les pointes tuent ; on repart à la dernière balise.',
+    aide: 'Flèches pour courir, Espace pour sauter, Maj pour le dash, Bas + Espace pour descendre d’une passerelle. On saute sur la tête des gelées. Les pointes tuent ; on repart à la dernière balise.',
     vue: { largeur: 320, hauteur: 180 },
     projection,
     carte,
@@ -367,7 +381,7 @@ export function mondeCaverne(): Monde {
       heros.visible = true
       aventure.reinitialiser()
       aventure.reapparition = { ...depart }
-      poserBalises()
+      poserEntites()
       pas = 0
     },
     etat: () => {

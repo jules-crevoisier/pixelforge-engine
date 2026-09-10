@@ -188,6 +188,51 @@ la tourelle tirait deux fois par cycle : l'événement repassait avant la fin de
 l'état. C'est le genre de bogue qu'un banc attrape et qu'une relecture ne voit
 pas.
 
+### Ce qui bouge et qui n'est pas une case
+
+Tout le décor tenait dans la grille de tuiles. C'est exact pour un mur et faux
+pour tout ce qui bouge : une plateforme qui monte, une caisse, une porte qui
+coulisse. Une case ne sait pas dire « je suis ici, à treize pixels ».
+
+Il existe donc un **registre de corps mobiles**, en pixels, qui se *branche* sur
+la grille. Le contrôleur de plateforme, le déplacement des créatures et les
+scripts passent tous par la même interface : aucun des trois n'apprend qu'il
+existe des corps mobiles, et un obstacle qui se déplace devient du décor du
+point de vue de qui se cogne dedans. Les drapeaux sont ceux des cases — solide,
+plateforme à sens unique — et ce n'est pas une coïncidence.
+
+Une plateforme mobile est donc **une entité de plus**, décrite en données : son
+aller-retour tient en quatre nombres — de combien, en combien de temps, avec
+quelle pause aux extrémités. La pause n'est pas décorative : c'est elle qui
+donne le temps de monter. Le mouvement est linéaire et non adouci ; une
+plateforme adoucie est plus jolie et moins lisible, on ne sait plus quand elle
+repart, donc on rate le saut.
+
+Le passager est relevé **avant** que la plateforme ne bouge, jamais après : une
+fois qu'elle a bougé, plus rien ne repose dessus, et l'on cherche une liste qui
+n'existe plus. Et il est déplacé sans recevoir de vitesse — une vitesse le
+ferait continuer tout seul à l'instant où la plateforme s'arrête, ce qui est le
+défaut classique du passager éjecté en bout de course.
+
+### Sauter sur la tête, et l'ordre qui rend ça juste
+
+Le piétinement se règle en données lui aussi : la victime dit ce qu'elle perd
+et de quelle hauteur on rebondit. La hauteur appartient à la **victime** parce
+qu'un ressort vivant renvoie plus haut qu'un champignon, et que c'est ce qui
+distingue deux ennemis qui se ressemblent. Une créature à pointes peut refuser
+d'être piétinée : sans ce refus, le joueur apprend un geste qui le tue une fois
+sur deux.
+
+Ce qui a demandé le plus de soin n'est pas la détection, c'est l'**ordre**. Une
+première version résolvait le piétinement au début du pas, donc sur les
+positions du pas précédent : le héros mangeait le coup à l'image où il
+atterrissait sur la gelée, et ne l'écrasait qu'à la suivante — il payait un
+point de vie pour un geste réussi. Maintenant chacun frappe depuis la place où
+il est vraiment : on bouge, puis on piétine, puis on blesse au contact. Le banc
+mesure les deux versants — la créature meurt quand on lui tombe dessus, elle
+survit quand on la frôle ou quand on la traverse en montant — parce qu'une
+règle qui ne refuse jamais rien est indistinguable d'une règle absente.
+
 ### Défaire, et pourquoi on enregistre la différence
 
 On pourrait enregistrer « pinceau de terrain en 12,7 » et rejouer l'inverse.
@@ -280,6 +325,8 @@ seconde.
 - entités en données : catalogue d'espèces, intentions nommées, placement à la
   souris, et le héros lui-même est une entité
 - combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
+- corps mobiles : plateformes qui portent, ascenseurs, caisses solides
+- sauter sur la tête d'une créature, avec rebond réglé en hauteur
 - machines à états par espèce : bascules de distance, durées, état suivant
 - déclencheurs attachés à une image d'animation : frapper, tirer
 - projectiles, qui sont des entités comme les autres
