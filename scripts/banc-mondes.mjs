@@ -1636,6 +1636,93 @@ console.log('\n--- un projet enregistre puis relu ---')
       `${peuplement.nombre} entités adoptées, ${bougees} ont bougé en une seconde`)
   }
 
+  /*
+   * L'aller-retour COMPLET : enregistrer, relire, reenregistrer.
+   *
+   * Un seul aller ne prouve rien. Ce qui coute cher, c'est un champ que la
+   * relecture laisse tomber : le projet s'ouvre normalement, tout a l'air la,
+   * et le deuxieme enregistrement l'efface pour de bon. On compare donc le
+   * DEUXIEME fichier au premier.
+   */
+  {
+    const { mondeCaverne } = await import('../src/demo/mondes.ts')
+    const m = mondeCaverne()
+    const enProjet = (monde) => serialiserProjet(
+      monde.id, monde.vue, new Palette(monde.id, monde.couleurs.map(depuisHex)),
+      [{ nom: monde.id, carte: monde.carte }], [{ nom: 'principale', racine: monde.racine }],
+      monde.animations, monde.planches, monde.projection, monde.especes,
+      monde.sons ?? [], monde.dialogues ?? [],
+      { sauter: ['Space', 'KeyW'] },
+      monde.musiques ?? [], monde.textes ?? {},
+    )
+    const premier = enProjet(m)
+    check('un monde emporte ses musiques et ses textes dans le fichier',
+      premier.musiques.length > 0 && Object.keys(premier.textes).length >= 2,
+      `${premier.musiques.length} musiques, ${Object.keys(premier.textes).join(' et ')}`)
+    check('et une musique y est en NOTES, pas en echantillons',
+      premier.musiques[0].voies.length > 0
+      && premier.musiques[0].voies.every((v) => v.notes.every((n) => typeof n === 'string')),
+      `${premier.musiques[0].voies.reduce((n, v) => n + v.notes.length, 0)} notes — `
+      + 'la meme minute en fichier d\'onde peserait dix megaoctets')
+    check('le timbre d\'une voie est POSE dans la voie, et non renvoye par nom',
+      premier.musiques[0].voies.every((v) => v.timbre && typeof v.timbre.forme === 'string'),
+      'un renvoi vers le catalogue est une reference qui peut pendre')
+
+    const relu = mondeDepuisProjet(JSON.parse(versTexte(premier)), 'essai.json')
+    const second = enProjet(relu)
+    for (const champ of ['musiques', 'textes', 'sons', 'dialogues']) {
+      check(`« ${champ} » survit a enregistrer, relire, reenregistrer`,
+        JSON.stringify(second[champ]) === JSON.stringify(premier[champ]),
+        JSON.stringify(second[champ]) === JSON.stringify(premier[champ])
+          ? 'identique au caractere pres'
+          : `${JSON.stringify(premier[champ]).length} octets deviennent ${JSON.stringify(second[champ]).length}`)
+    }
+    check('le plan de touches aussi',
+      JSON.stringify(second.touches.sauter) === JSON.stringify(['Space', 'KeyW']),
+      JSON.stringify(second.touches.sauter))
+  }
+
+  /*
+   * Le menu de pause est-il VRAIMENT traduit ?
+   *
+   * La faute qui arrive est toujours la meme : quelqu'un ajoute une ligne au
+   * menu et ecrit son libelle en clair, parce que c'est plus court. Rien ne
+   * tombe — le menu s'affiche, en francais, dans toutes les langues. On lit
+   * donc la source : toute chaine posee dans une `entree(...)` doit venir
+   * d'une clef, et toute clef demandee doit exister dans la langue de
+   * reference.
+   */
+  {
+    const { readFileSync } = await import('node:fs')
+    const { TEXTES_DEMO, LANGUES_DEMO } = await import('../src/demo/textes-demo.ts')
+    const source = readFileSync(new URL('../src/demo/mondes.ts', import.meta.url), 'utf8')
+    const pause = source.slice(source.indexOf('class Pause'), source.indexOf('function installerMusique'))
+
+    const enClair = [...pause.matchAll(/entree\(\s*'([^']*)'/g)].map((m) => m[1])
+    check('aucun libellé du menu de pause n’est écrit en clair',
+      enClair.length === 0,
+      enClair.length ? `en clair : ${enClair.join(', ')}` : 'tous passent par une clef')
+
+    // Toute chaine en points minuscules dans ce bloc EST une clef : on les
+    // prend toutes, y compris celles posees dans un ternaire ou un gabarit,
+    // que « .t( » suivi d'un guillemet laisserait passer.
+    const clefs = [...new Set([...pause.matchAll(/'([a-z]+(?:\.[a-z]+)+)'/g)].map((m) => m[1]))]
+    const inconnues = clefs.filter((c) => TEXTES_DEMO.fr[c] === undefined)
+    check('et chaque clef qu’il demande existe en français',
+      clefs.length >= 7 && inconnues.length === 0,
+      inconnues.length ? `absentes : ${inconnues.join(', ')}` : `${clefs.length} clefs`)
+
+    // La table anglaise est incomplete EXPRES, pour montrer la regle. On
+    // verifie que le trou est bien celui qu'on a voulu, et pas un oubli qui
+    // s'est ajoute depuis.
+    const trous = Object.keys(TEXTES_DEMO.fr).filter((c) => TEXTES_DEMO.en[c] === undefined)
+    check('le seul trou de la table anglaise est celui qu’elle annonce',
+      trous.join(',') === 'langue.en',
+      `${trous.join(', ')} — une clef manquante s’affiche telle quelle, et se voit`)
+    check('et les langues du menu ont toutes une table',
+      LANGUES_DEMO.every((l) => TEXTES_DEMO[l]), LANGUES_DEMO.join(', '))
+  }
+
   // Les matieres traversent l'aller-retour, y compris celles qui ne sont pas
   // du solide. C'est ce qui permet a une pointe de rester une pointe.
   {
@@ -1680,8 +1767,29 @@ console.log('\n--- un projet enregistre puis relu ---')
       'une liste blanche par type perdrait tout champ ajoute depuis')
   }
 
-  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 6,
-    'un chargeur d\'un autre langage doit pouvoir DIRE qu\'il ne comprend pas')
+  /*
+   * La version n'est pas comparee a un nombre ecrit ici : ce serait deux
+   * endroits pour une valeur, et le banc dirait « faux » a chaque montee sans
+   * rien avoir verifie. On demande deux choses qui, elles, peuvent etre
+   * fausses : que la version parte VRAIMENT dans le fichier, et que le
+   * changement qui l'a fait monter soit ECRIT dans l'histoire des versions.
+   * Monter la version sans dire ce qu'elle ajoute est ce qui rend un format
+   * impossible a porter.
+   */
+  {
+    const { readFileSync } = await import('node:fs')
+    const source = readFileSync(new URL('../src/export/format.ts', import.meta.url), 'utf8')
+    const p = serialiserProjet('v', { largeur: 320, hauteur: 180 }, new Palette('p', []), [], [])
+    check('la version du format est ecrite dans le fichier',
+      p.version === VERSION_FORMAT,
+      `version ${p.version} — un chargeur d'un autre langage doit pouvoir DIRE qu'il ne comprend pas`)
+    const datees = [...source.matchAll(/^ \* \*\*(\d+)\*\* —/gm)].map((m) => Number(m[1]))
+    check('et chaque version, celle-ci comprise, dit ce qu\'elle a ajoute',
+      datees.includes(VERSION_FORMAT)
+      && datees.length === new Set(datees).size
+      && datees.every((v, i) => i === 0 || datees[i - 1] > v),
+      `${datees.join(', ')} — dans l'ordre, sans doublon, et ${VERSION_FORMAT} y figure`)
+  }
 
   /*
    * Ce qui n'est pas dans le fichier n'existe pas.

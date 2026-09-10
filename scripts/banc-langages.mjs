@@ -35,6 +35,8 @@ const { clip, clipRegulier, imageA } = await import('../src/runtime/animation.ts
 const { decrirePlanche } = await import('../src/export/format.ts')
 const { ISO, caseVersMonde } = await import('../src/noyau/projection.ts')
 const { espece } = await import('../src/runtime/entites.ts')
+const { son } = await import('../src/runtime/son.ts')
+const { musique, voie, frequenceDe, dureeDe } = await import('../src/runtime/musique.ts')
 
 /* Un projet minuscule mais complet : un mur, une collision, un noeud. */
 const carte = new Carte(5, 3, 16)
@@ -89,6 +91,37 @@ const ESPECES = [
   espece('coeur', { nom: 'Cœur', camp: 'neutre', degats: 0, soigne: 1, comportement: 'immobile' }),
 ]
 
+/* Un son, une musique et deux langues : ce que la version 7 du format ajoute.
+ *
+ * Les notes sont choisies sur les pieges : une alteration (do#), une octave
+ * basse (la1), un silence, et un tiret qui PROLONGE au lieu de rejouer. Un
+ * portage qui traite '-' comme une note inconnue rendrait zero et le banc le
+ * verrait.
+ *
+ * Les textes portent une clef presente dans les deux langues, une qui manque
+ * en anglais, et une substitution : trois cas, trois reponses differentes. */
+const SONS = [son('saut', { forme: 'carre', frequence: 220, frequenceFin: 660, duree: 90 })]
+
+const MUSIQUES = [musique('caverne', {
+  tempo: 120,
+  boucle: true,
+  voies: [
+    voie(['la3', 'do#4', '.', 'mi4', '-', 'la4'], { timbre: SONS[0], volume: 0.5 }),
+    voie(['la1', '-', '-', '-'], { timbre: son('basse', { forme: 'triangle' }), volume: 0.3 }),
+  ],
+})]
+
+const TEXTES = {
+  fr: { 'menu.jouer': 'Jouer', 'menu.quitter': 'Quitter', 'hud.vies': 'Vies : {n}' },
+  en: { 'menu.jouer': 'Play', 'hud.vies': 'Lives: {n}' },
+}
+
+/* Les notes qu'on demande a chaque portage de convertir, et la reponse du
+ * moteur. Le silence et la note inventee valent zero : un portage qui rendrait
+ * 440 par defaut passerait sans cette ligne. */
+const NOTES = ['la4', 'la3', 'do4', 'do#4', 'si4', 'la1', 'la-1', '.', '-', 'zz4', 'la']
+const FREQUENCES = NOTES.map((n) => frequenceDe(n))
+
 const projet = serialiserProjet(
   'demo', { largeur: 320, hauteur: 180 },
   new Palette('donjon', ['#14101a', '#7a7466'].map(depuisHex)),
@@ -99,6 +132,11 @@ const projet = serialiserProjet(
   // celle qu'une projection orthogonale ne distinguerait pas d'une erreur.
   ISO(32, 16),
   ESPECES,
+  SONS,
+  [],
+  { sauter: ['Space', 'KeyZ'] },
+  MUSIQUES,
+  TEXTES,
 )
 
 /* La table de reference des cases : ou chaque case se pose a l'ecran. */
@@ -136,7 +174,7 @@ if (dispo('python3')) {
   writeFileSync(join(dir, 'essai.py'), `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(dir)})
-from projet_charge import Projet, Espece, VIDE
+from projet_charge import Projet, Espece, VIDE, frequence_de, duree_de_musique
 
 p = Projet.charger(${JSON.stringify(join(dir, 'projet.json'))})
 c = p.cartes[0]
@@ -166,6 +204,20 @@ sortie = {
     "especes": [f"{e.id}:{e.comportement}:{e.degats}:{e.soigne}" for e in p.especes],
     "especeDuHeros": (p.espece_du_noeud(p.scenes[0]["racine"].enfants[0]) or Espece(id="?")).id,
     "cases": [list(p.projection.case_vers_monde(e["cx"], e["cy"])) for e in ${JSON.stringify(CASES_POS)}],
+    "sons": [s["nom"] for s in p.sons],
+    "touches": p.touches.get("sauter", []),
+    "musique": [p.musique("caverne")["tempo"], len(p.musique("caverne")["voies"]),
+                p.musique("caverne")["voies"][0]["notes"]],
+    "dureeMusique": duree_de_musique(p.musique("caverne")),
+    "timbre": [p.musique("caverne")["voies"][0]["timbre"]["forme"],
+               p.musique("caverne")["voies"][0]["timbre"]["duree"]],
+    "frequences": [frequence_de(n) for n in ${JSON.stringify(NOTES)}],
+    "texteFr": p.texte("menu.jouer", "fr"),
+    "texteEn": p.texte("menu.jouer", "en"),
+    "texteManquant": p.texte("menu.quitter", "en"),
+    "texteInvente": p.texte("clef.qui.n.existe.pas", "fr"),
+    "texteValeurs": p.texte("hud.vies", "fr", n=3),
+    "trous": p.trous_de_langue("en", "fr"),
 }
 print(json.dumps(sortie))
 `)
@@ -208,6 +260,29 @@ print(json.dumps(sortie))
       ecartsCases.length
         ? `${ecartsCases.length} cases decalees, ex. ${ecartsCases[0].cx},${ecartsCases[0].cy}`
         : `${CASES.length} cases — la demi-largeur du losange comprise`)
+    check('Python retrouve le catalogue des sons et le remappage des touches',
+      v.sons.join(',') === 'saut' && v.touches.join(',') === 'Space,KeyZ',
+      `sons ${v.sons.join(', ')} · sauter = ${v.touches.join(' ou ')}`)
+    check('Python retrouve la musique, ses voies et ses notes',
+      v.musique[0] === 120 && v.musique[1] === 2
+      && v.musique[2].join(' ') === MUSIQUES[0].voies[0].notes.join(' ')
+      && Math.abs(v.dureeMusique - dureeDe(MUSIQUES[0])) < 1e-6,
+      `${v.musique[0]} bpm, ${v.musique[1]} voies, ${Math.round(v.dureeMusique)} ms`)
+    check('Python retrouve le timbre POSE dans la voie, et non un renvoi qui pend',
+      v.timbre[0] === MUSIQUES[0].voies[0].timbre.forme
+      && v.timbre[1] === MUSIQUES[0].voies[0].timbre.duree,
+      `${v.timbre[0]}, ${v.timbre[1]} ms`)
+    const ecartsNotes = NOTES.filter((n, i) => Math.abs(v.frequences[i] - FREQUENCES[i]) > 1e-9)
+    check('Python convertit chaque note en la MEME frequence que le moteur',
+      ecartsNotes.length === 0,
+      ecartsNotes.length
+        ? `${ecartsNotes.length} fausses, ex. « ${ecartsNotes[0]} » : ${v.frequences[NOTES.indexOf(ecartsNotes[0])]} au lieu de ${FREQUENCES[NOTES.indexOf(ecartsNotes[0])]}`
+        : `${NOTES.length} notes, silence et note inventee compris`)
+    check('Python rend la CLEF pour un texte absent, et non une chaine vide',
+      v.texteFr === 'Jouer' && v.texteEn === 'Play'
+      && v.texteManquant === 'menu.quitter' && v.texteInvente === 'clef.qui.n.existe.pas'
+      && v.texteValeurs === 'Vies : 3' && v.trous.join(',') === 'menu.quitter',
+      `« ${v.texteEn} », « ${v.texteManquant} », « ${v.texteValeurs} » · trou : ${v.trous.join(', ')}`)
     const ecarts = TABLE.filter((e, i) => v.images[i] !== e.image)
     check('Python rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -294,6 +369,13 @@ fn main() {
         .map(|(cx, cy)| { let (x, y) = proj.case_vers_monde(*cx, *cy); format!("{}:{}", x, y) })
         .collect();
     println!("{}", places.join(","));
+
+    let notes: Vec<&str> = vec![${NOTES.map((n) => JSON.stringify(n)).join(', ')}];
+    let frequences: Vec<String> = notes
+        .iter()
+        .map(|n| Musique::frequence_de(n).to_string())
+        .collect();
+    println!("{}", frequences.join(","));
 }
 `
   const f = join(dir, 'projet_rs.rs')
@@ -319,6 +401,13 @@ fn main() {
       ecartsPixels.length
         ? `${ecartsPixels.length} faux sur ${PIXELS.length}, ex. dessin ${ecartsPixels[0].i} en ${ecartsPixels[0].x},${ecartsPixels[0].y}`
         : `${PIXELS.length} pixels, vide compris`)
+    const frequences = (lignes[3] || '').split(',').map(Number)
+    const ecartsNotesRs = NOTES.filter((n, i) => Math.abs(frequences[i] - FREQUENCES[i]) > 1e-9)
+    check('Rust convertit chaque note en la MEME frequence que le moteur',
+      frequences.length === NOTES.length && ecartsNotesRs.length === 0,
+      ecartsNotesRs.length
+        ? `${ecartsNotesRs.length} fausses, ex. « ${ecartsNotesRs[0]} »`
+        : `${NOTES.length} notes, silence et note inventee compris`)
     const places = (lignes[2] || '').split(',')
     const ecartsCases = CASES.filter((q, i) => places[i] !== `${q.x}:${q.y}`)
     check('Rust place chaque case isometrique la ou le moteur la place',
@@ -360,6 +449,21 @@ console.log(JSON.stringify({
   pixels,
   cases,
   tuileEn11: m.deplierCases(p.cartes[0], p.cartes[0].calques[0])[1 * p.cartes[0].largeur + 1],
+  sons: p.sons.map((s) => s.nom),
+  touches: p.touches.sauter ?? [],
+  musique: [m.musiqueNommee(p, 'caverne').tempo,
+            m.musiqueNommee(p, 'caverne').voies.length,
+            m.musiqueNommee(p, 'caverne').voies[0].notes],
+  dureeMusique: m.dureeDeMusique(m.musiqueNommee(p, 'caverne')),
+  timbre: [m.musiqueNommee(p, 'caverne').voies[0].timbre.forme,
+           m.musiqueNommee(p, 'caverne').voies[0].timbre.duree],
+  frequences: ${JSON.stringify(NOTES)}.map((n) => m.frequenceDe(n)),
+  texteFr: m.texteDe(p, 'menu.jouer', 'fr'),
+  texteEn: m.texteDe(p, 'menu.jouer', 'en'),
+  texteManquant: m.texteDe(p, 'menu.quitter', 'en'),
+  texteInvente: m.texteDe(p, 'clef.qui.n.existe.pas', 'fr'),
+  texteValeurs: m.texteDe(p, 'hud.vies', 'fr', { n: 3 }),
+  trous: m.trousDeLangue(p, 'en', 'fr'),
 }))
 `)
   const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
@@ -380,6 +484,24 @@ console.log(JSON.stringify({
     check('TypeScript place chaque case isometrique la ou le moteur la place',
       ecartsCases.length === 0,
       ecartsCases.length ? `${ecartsCases.length} decalees` : `${CASES.length} cases`)
+    check('TypeScript retrouve les sons, la musique et le remappage des touches',
+      v.sons.join(',') === 'saut' && v.touches.join(',') === 'Space,KeyZ'
+      && v.musique[0] === 120 && v.musique[1] === 2
+      && v.musique[2].join(' ') === MUSIQUES[0].voies[0].notes.join(' ')
+      && Math.abs(v.dureeMusique - dureeDe(MUSIQUES[0])) < 1e-6
+      && v.timbre[0] === MUSIQUES[0].voies[0].timbre.forme
+      && v.timbre[1] === MUSIQUES[0].voies[0].timbre.duree,
+      `${v.musique[0]} bpm, ${v.musique[1]} voies, ${Math.round(v.dureeMusique)} ms, timbre ${v.timbre[0]}`)
+    const ecartsNotesTs = NOTES.filter((n, i) => Math.abs(v.frequences[i] - FREQUENCES[i]) > 1e-9)
+    check('TypeScript convertit chaque note en la MEME frequence que le moteur',
+      ecartsNotesTs.length === 0,
+      ecartsNotesTs.length ? `${ecartsNotesTs.length} fausses, ex. « ${ecartsNotesTs[0]} »`
+        : `${NOTES.length} notes`)
+    check('TypeScript rend la CLEF pour un texte absent, et non une chaine vide',
+      v.texteFr === 'Jouer' && v.texteEn === 'Play'
+      && v.texteManquant === 'menu.quitter' && v.texteInvente === 'clef.qui.n.existe.pas'
+      && v.texteValeurs === 'Vies : 3' && v.trous.join(',') === 'menu.quitter',
+      `« ${v.texteEn} », « ${v.texteManquant} », « ${v.texteValeurs} » · trou : ${v.trous.join(', ')}`)
     const ecarts = TABLE.filter((t, i) => v.images[i] !== t.image)
     check('TypeScript rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -395,16 +517,23 @@ for (const [cible, marqueurs] of [
     'class Clip', 'public int ImageA(int ms)', 'OrdreDeLecture', 'aller-retour',
     'class Planche', 'public string Pixel(int index, int x, int y)',
     'class Projection', 'public void CaseVersMonde',
-    'class Espece', 'public string comportement']],
+    'class Espece', 'public string comportement',
+    'class Musique', 'public static float FrequenceDe(string note)', 'public Son timbre;',
+    'public string Texte(string clef, string langue)', 'return clef;',
+    'Dictionary<string, List<string>> touches']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
     'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
     'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde',
-    'func espece(', 'static func comportement_de', 'func espece_du_noeud']],
+    'func espece(', 'static func comportement_de', 'func espece_du_noeud',
+    'func musique(', 'static func frequence_de', 'func texte(clef: String, langue: String)',
+    'return table.get(clef, clef)', 'var touches: Dictionary']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
     'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
     'function Projet.pixel_de_planche', 'function Projet:planche(',
     'function Projet.case_vers_monde', 'function Projet:espece(',
-    'function Projet.comportement_de']],
+    'function Projet.comportement_de', 'function Projet:musique(',
+    'function Projet.frequence_de', 'function Projet:texte(clef, langue)',
+    'self.touches = donnees.touches']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))
@@ -536,6 +665,41 @@ console.log('\n--- les paquets Godot et Unity ---')
       sansImage.length === 0 && pngs.size === projet.planches.length,
       sansImage.length ? `manque : ${sansImage.map((t) => t.nom).join(', ')}`
         : `${[...pngs].join(', ')}`)
+
+    /*
+     * Le son et la musique sortent AUSSI en .wav.
+     *
+     * Le projet les garde en donnees — six nombres, des notes — et c'est le
+     * bon choix pour un fichier qui se relit. Mais Godot ne synthetise pas une
+     * onde carree : il lit un fichier. Un paquet qui n'emporterait que les
+     * donnees s'ouvrirait muet, exactement comme un paquet sans PNG s'ouvrirait
+     * blanc. On verifie donc que chaque son ET chaque musique a son fichier, et
+     * que ce fichier est un vrai WAV, pas un octet nomme .wav.
+     */
+    const wavs = new Map(entrees.filter((e) => e.chemin.endsWith('.wav'))
+      .map((e) => [e.chemin.split('/').pop().replace('.wav', ''), e.contenu]))
+    const attendus = [...projet.sons.map((q) => q.nom),
+      ...projet.musiques.map((m) => `musique-${m.nom}`)]
+    const sansOnde = attendus.filter((n) => !wavs.has(n))
+    check(`${nom} : chaque son et chaque musique sort en .wav`,
+      attendus.length > 0 && sansOnde.length === 0,
+      sansOnde.length ? `manque : ${sansOnde.join(', ')}` : `${[...wavs.keys()].join(', ')}`)
+
+    const entete = (o) => String.fromCharCode(o[0], o[1], o[2], o[3])
+      + String.fromCharCode(o[8], o[9], o[10], o[11])
+    const faux = [...wavs].filter(([, o]) => o.length <= 44 || entete(o) !== 'RIFFWAVE')
+    check(`${nom} : et ces .wav sont de vrais WAV, avec du son dedans`,
+      faux.length === 0,
+      faux.length ? `douteux : ${faux.map(([n]) => n).join(', ')}`
+        : `${[...wavs.values()].reduce((n, o) => n + o.length, 0)} octets d'onde`)
+
+    // La musique doit peser PLUS que le son : c'est ce qui distingue un rendu
+    // reel d'un en-tete vide sorti sous le bon nom.
+    const wavMusique = wavs.get('musique-caverne')
+    check(`${nom} : la musique rendue dure vraiment ses trois secondes`,
+      wavMusique && Math.abs(wavMusique.length - 44 - 3 * 44100 * 2) < 44100,
+      wavMusique ? `${Math.round((wavMusique.length - 44) / 2 / 44100 * 100) / 100} s à 44100 Hz`
+        : 'absente')
   }
 
   // Les entites remontees : c'est ce qui rend le paquet Unity lisible par

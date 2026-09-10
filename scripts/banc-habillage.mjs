@@ -157,6 +157,240 @@ console.log('\n--- le son ---')
   }
 }
 
+console.log('\n--- la musique ---')
+
+{
+  const { musique, voie, frequenceDe, dureeTemps, dureeDe, rendreMusique, Musicien } =
+    await import('../src/runtime/musique.ts')
+  const { son, rendre } = await import('../src/runtime/son.ts')
+
+  // Le la4 vaut 440 hertz, l'octave double, et le demi-ton est la racine
+  // douzieme de deux. Ces trois-la tiennent toute la table : si elles sont
+  // justes, aucune note ne peut etre fausse.
+  check('le la4 vaut 440 hertz', frequenceDe('la4') === 440, 'la référence universelle')
+  check('une octave double la fréquence',
+    Math.abs(frequenceDe('la5') - 880) < 1e-9 && Math.abs(frequenceDe('la3') - 220) < 1e-9,
+    'la5 880, la3 220')
+  check('douze demi-tons font une octave',
+    Math.abs(frequenceDe('do5') / frequenceDe('do4') - 2) < 1e-12,
+    `do4 ${frequenceDe('do4').toFixed(2)}, do5 ${frequenceDe('do5').toFixed(2)}`)
+  check('le silence, le tiret et une note inventée valent zéro, et non 440',
+    ['.', '-', '', 'zz4', 'la', 'do#'].every((n) => frequenceDe(n) === 0),
+    'une note illisible qui rendrait 440 se jouerait sans qu’on la voie')
+
+  // Une musique dure ce que sa voie la plus longue dure. C'est la voie la plus
+  // longue et non la premiere : une percussion de quatre temps sous une
+  // melodie de seize ne raccourcit pas le morceau.
+  {
+    const m = musique('essai', {
+      tempo: 120,
+      voies: [voie(['do4', 're4']), voie(['do3', '-', '-', '-', '-', '-', '-', '-'])],
+    })
+    check('un temps à 120 dure une demi-seconde', dureeTemps(120) === 500, `${dureeTemps(120)} ms`)
+    check('la musique dure ce que dure sa voie la plus LONGUE',
+      dureeDe(m) === 4000, `${dureeDe(m)} ms pour 8 temps, la voie de 2 temps ne la raccourcit pas`)
+    const e = rendreMusique(m, 8000)
+    check('et le rendu fait exactement cette durée',
+      e.length === Math.round(dureeDe(m) * 8000 / 1000), `${e.length} échantillons`)
+    check('il ne sature jamais, malgré deux voies additionnées',
+      e.every((v) => v >= -1 && v <= 1), `pointe ${Math.max(...e).toFixed(3)}`)
+  }
+
+  /*
+   * Le tiret PROLONGE au lieu de rejouer. C'est la difference entre une
+   * melodie et un martelement, et c'est invisible dans le fichier : deux
+   * musiques de meme duree, l'une tenue, l'autre martelee.
+   *
+   * On la mesure par le nombre d'ATTAQUES : une note tenue monte une fois
+   * depuis zero ; une note repetee retombe et remonte a chaque temps.
+   */
+  {
+    const t = son('t', { forme: 'carre', attaque: 20, chute: 20, duree: 100 })
+    const tenue = rendreMusique(
+      musique('tenue', { tempo: 240, voies: [voie(['do4', '-', '-', '-'], { timbre: t })] }), 8000)
+    const martelee = rendreMusique(
+      musique('mart', { tempo: 240, voies: [voie(['do4', 'do4', 'do4', 'do4'], { timbre: t })] }), 8000)
+    // Un creux : trois echantillons de suite sous un centieme, ailleurs qu'au
+    // tout debut et a la toute fin.
+    const creux = (e) => {
+      let n = 0
+      for (let i = 40; i < e.length - 40; i++) {
+        if (Math.abs(e[i]) < 0.01 && Math.abs(e[i - 1]) < 0.01 && Math.abs(e[i + 1]) < 0.01
+          && Math.abs(e[i - 2]) >= 0.01) n++
+      }
+      return n
+    }
+    check('une note tenue par des tirets ne se rattaque pas à chaque temps',
+      creux(tenue) < creux(martelee),
+      `${creux(tenue)} creux tenue contre ${creux(martelee)} martelée — même durée, ${tenue.length} échantillons`)
+    check('et les deux durent pourtant exactement le même temps',
+      tenue.length === martelee.length, `${tenue.length} échantillons`)
+  }
+
+  // La chute ne peut pas depasser la note. Une chute de 200 ms sur une croche
+  // de 100 ferait commencer la decroissance avant la fin de l'attaque.
+  {
+    const long = son('l', { chute: 400, duree: 40 })
+    const e = rendreMusique(
+      musique('vite', { tempo: 480, voies: [voie(['do4'], { timbre: long })] }), 8000)
+    check('la chute d’un timbre est rognée pour tenir dans une note brève',
+      Math.abs(e[e.length - 1]) < 0.05,
+      `fin à ${e[e.length - 1].toFixed(3)} — une note coupée à mi-volume claque`)
+  }
+
+  // Le rendu est reproductible : sinon l'export du .wav donnerait un fichier
+  // different a chaque construction, et tout diff deviendrait illisible.
+  {
+    const m = musique('r', { tempo: 200, voies: [voie(['do4', 'mi4', 'sol4'])] })
+    const a = rendreMusique(m, 8000)
+    const b = rendreMusique(m, 8000)
+    check('deux rendus de la même musique sont identiques échantillon par échantillon',
+      a.length === b.length && [...a].every((v, i) => v === b[i]),
+      'sinon chaque export produirait un fichier différent')
+  }
+
+  // Le musicien : une seule musique a la fois, et la redemander ne relance pas.
+  {
+    const musicien = new Musicien([musique('caverne'), musique('titre')])
+    const lancees = []
+    let arrets = 0
+    musicien.sortie = (m) => lancees.push(m.nom)
+    musicien.arret = () => { arrets++ }
+    check('lancer une musique la lance', musicien.jouer('caverne') && lancees.length === 1)
+    check('et le PREMIER lancement n’arrête rien, faute de quoi arrêter',
+      arrets === 0,
+      'chez l’hôte, `arret` à vide est un stop() sur une source qui n’existe pas')
+    check('la redemander ne la relance PAS',
+      !musicien.jouer('caverne') && lancees.length === 1,
+      'sinon un script qui appelle à chaque pas la ferait bégayer soixante fois par seconde')
+    check('en changer arrête la précédente',
+      musicien.jouer('titre') && arrets === 1 && musicien.nom === 'titre',
+      `${lancees.join(' puis ')}`)
+    check('une musique inconnue ne fait rien, sans se plaindre',
+      !musicien.jouer('inexistante') && musicien.nom === 'titre',
+      'un jeu ne s’arrête pas pour une musique')
+    musicien.arreter()
+    check('et l’arrêt libère la place pour relancer la même',
+      musicien.nom === '' && musicien.jouer('titre'), `${musicien.lancees} lancements`)
+  }
+}
+
+console.log('\n--- le WAV, ce que l’export donne à Godot et Unity ---')
+
+{
+  const { encoderWav } = await import('../src/export/wav.ts')
+  const { son, rendre } = await import('../src/runtime/son.ts')
+
+  const e = rendre(son('pas', { duree: 100, frequence: 300 }), 22050)
+  const w = encoderWav(e, 22050)
+  const vue = new DataView(w.buffer, w.byteOffset, w.byteLength)
+  const mot = (p) => String.fromCharCode(w[p], w[p + 1], w[p + 2], w[p + 3])
+
+  check('le fichier porte RIFF, WAVE et ses deux morceaux',
+    mot(0) === 'RIFF' && mot(8) === 'WAVE' && mot(12) === 'fmt ' && mot(36) === 'data',
+    `${w.length} octets`)
+  check('sa taille annoncée est sa taille réelle',
+    vue.getUint32(4, true) === w.length - 8 && vue.getUint32(40, true) === e.length * 2,
+    `${vue.getUint32(4, true)} + 8 = ${w.length}`)
+  check('il annonce une voie, seize bits, et le taux qu’on lui a donné',
+    vue.getUint16(20, true) === 1 && vue.getUint16(22, true) === 1
+    && vue.getUint32(24, true) === 22050 && vue.getUint16(34, true) === 16,
+    'PCM 16 bits mono à 22050 Hz')
+  check('le débit et l’alignement suivent, au lieu d’être écrits en dur',
+    vue.getUint32(28, true) === 22050 * 2 && vue.getUint16(32, true) === 2,
+    'un lecteur strict refuse un en-tête incohérent')
+
+  // La borne : sans elle, un echantillon a 1,2 deborde vers -26000, c'est-a-dire
+  // un craquement violent au beau milieu du son.
+  {
+    const debordant = new Float32Array([0, 1.5, -1.5, 0.5, -0.5])
+    const q = encoderWav(debordant, 8000)
+    const v = new DataView(q.buffer, q.byteOffset, q.byteLength)
+    const lus = [0, 1, 2, 3, 4].map((i) => v.getInt16(44 + i * 2, true))
+    check('un échantillon hors bornes est ÉCRÊTÉ, et non replié dans le négatif',
+      lus[1] === 32767 && lus[2] === -32767,
+      `1,5 → ${lus[1]} et −1,5 → ${lus[2]} ; un débordement donnerait ${(Math.round(1.5 * 32767) << 16) >> 16}`)
+    check('et ce qui tient dans les bornes garde sa valeur',
+      lus[0] === 0 && lus[3] === Math.round(0.5 * 32767) && lus[4] === Math.round(-0.5 * 32767),
+      `${lus.join(', ')}`)
+  }
+
+  // Deux exports du meme son doivent donner le meme fichier, octet pour octet :
+  // c'est ce qui rend une archive reproductible.
+  check('deux encodages du même son sont identiques octet pour octet',
+    encoderWav(e, 22050).every((v, i) => v === w[i]),
+    'sinon chaque construction changerait l’archive')
+
+  // Un son vide ne doit pas produire un fichier invalide.
+  {
+    const q = encoderWav(new Float32Array(0), 44100)
+    check('un son vide donne un en-tête valide et zéro donnée',
+      q.length === 44 && new DataView(q.buffer, q.byteOffset, 44).getUint32(40, true) === 0,
+      `${q.length} octets`)
+  }
+}
+
+console.log('\n--- la traduction ---')
+
+{
+  const { Traduction } = await import('../src/runtime/traduction.ts')
+
+  const tr = new Traduction({
+    fr: { 'menu.jouer': 'Jouer', 'menu.quitter': 'Quitter', 'hud.vies': '{n} vies', vide: '' },
+    en: { 'menu.jouer': 'Play', 'hud.vies': '{n} lives' },
+  }, 'fr')
+
+  check('elle rend le texte de la langue courante', tr.t('menu.jouer') === 'Jouer')
+  tr.langue = 'en'
+  check('et change de langue sans rien recharger', tr.t('menu.jouer') === 'Play')
+
+  // LA regle : ce qui manque doit SE VOIR. Rendre du vide ferait disparaitre
+  // un bouton, et personne ne remarque un bouton sans etiquette.
+  check('une clef non traduite rend LA CLEF, et non du vide',
+    tr.t('menu.quitter') === 'menu.quitter',
+    'un bouton sans étiquette ne se remarque pas ; « menu.quitter » à l’écran, si')
+  check('elle est retenue dans la liste de ce qui reste à traduire',
+    tr.manquantes.has('en:menu.quitter'), [...tr.manquantes].join(', '))
+  check('une clef qui n’existe nulle part rend elle aussi la clef',
+    tr.t('clef.inventee') === 'clef.inventee')
+
+  // Un texte VOLONTAIREMENT vide n'est pas un texte manquant : la difference
+  // se joue sur `undefined`, pas sur la longueur.
+  tr.langue = 'fr'
+  check('un texte volontairement vide reste vide, et n’est pas compté manquant',
+    tr.t('vide') === '' && !tr.manquantes.has('fr:vide'),
+    'sinon on ne pourrait jamais écrire une ligne vide exprès')
+
+  // Les substitutions sont NOMMEES : l'ordre des mots change d'une langue a
+  // l'autre, un %s positionnel ne survivrait pas.
+  check('la substitution est nommée et non positionnelle',
+    tr.t('hud.vies', { n: 3 }) === '3 vies', tr.t('hud.vies', { n: 3 }))
+  tr.langue = 'en'
+  check('et elle survit à une langue qui place les mots autrement',
+    tr.t('hud.vies', { n: 3 }) === '3 lives')
+  check('une valeur absente laisse le marqueur en clair au lieu de « undefined »',
+    tr.t('hud.vies') === '{n} lives',
+    'écrire « undefined lives » à l’écran serait pire que montrer le marqueur')
+
+  // Le rapport avant livraison : ce que l'anglais n'a pas.
+  check('elle dit exactement ce qui manque à une langue',
+    tr.trous('en', 'fr').join(',') === 'menu.quitter,vide',
+    tr.trous('en', 'fr').join(', '))
+  check('et rien ne manque à la langue de référence elle-même',
+    tr.trous('fr', 'fr').length === 0)
+  check('une langue entièrement absente manque de TOUT, sans planter',
+    tr.trous('de', 'fr').length === 4, `${tr.trous('de', 'fr').length} clefs`)
+
+  // `definir` complete au lieu d'ecraser : traduire dix clefs de plus ne doit
+  // pas effacer les cinquante deja faites.
+  tr.definir('en', { 'menu.quitter': 'Quit' })
+  check('ajouter des textes complète la table au lieu de l’écraser',
+    tr.t('menu.quitter') === 'Quit' && tr.t('menu.jouer') === 'Play',
+    `${tr.trous('en', 'fr').length} trous restants`)
+  check('et `a` distingue le connu de l’inconnu, langue par langue',
+    tr.a('menu.quitter', 'en') && !tr.a('menu.quitter', 'de') && tr.a('menu.quitter', 'fr'))
+}
+
 console.log('\n--- les particules ---')
 
 {

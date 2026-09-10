@@ -30,6 +30,10 @@ import { Aventure } from './aventure.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
 import { MODELES_DEMO, SYMBOLES_DEMO } from './salles-demo.ts'
 import { SONS_DEMO, brancherAudio } from './sons-demo.ts'
+import { MUSIQUES_DEMO, brancherMusique } from './musiques-demo.ts'
+import { TEXTES_DEMO, LANGUES_DEMO } from './textes-demo.ts'
+import { Musicien, rendreMusique, type Musique as MusiqueJeu } from '../runtime/musique.ts'
+import { Traduction } from '../runtime/traduction.ts'
 import { rendre as rendreSon, type Son as SonJeu } from '../runtime/son.ts'
 import { Dialogue, replique, type Replique as RepliqueJeu } from '../runtime/dialogue.ts'
 import { Menu, entree } from '../runtime/menu.ts'
@@ -79,6 +83,16 @@ export interface Monde {
    */
   readonly sons?: SonJeu[]
   readonly dialogues?: { nom: string; repliques: RepliqueJeu[] }[]
+  /** Les musiques du monde, en notes. Meme raison que les sons. */
+  readonly musiques?: MusiqueJeu[]
+  /**
+   * Les textes du monde, par langue puis par clef.
+   *
+   * Un jeu dont les libelles vivent dans le code se traduit en recompilant, et
+   * ne se traduit donc pas. Ils partent dans le fichier de projet avec le
+   * reste, et les six chargeurs les retrouvent.
+   */
+  readonly textes?: Record<string, Record<string, string>>
   /**
    * Le peuplement, quand le monde en a un.
    *
@@ -173,6 +187,8 @@ export function mondeDonjon(): Monde {
     ],
     especes: ESPECES_DEMO,
     sons: SONS_DEMO,
+    musiques: MUSIQUES_DEMO,
+    textes: TEXTES_DEMO,
     peuplement,
     tuilePinceau: 0,
     installer(jeu) {
@@ -279,16 +295,53 @@ const ENTITES_CAVERNE: Record<string, string> = {
  * pas a decider qu'un jeu se met en pause, ni avec quelles entrees.
  */
 class Pause {
-  readonly menu = new Menu([
-    entree('Reprendre', 'reprendre'),
-    entree('Recommencer', 'recommencer'),
-    entree('Son : oui', 'son'),
-  ])
+  readonly menu: Menu
+  /**
+   * La traduction du menu.
+   *
+   * Elle est ICI et pas dans le moteur : ce qu'un menu de pause dit appartient
+   * au jeu, la table qui le traduit aussi. Le moteur ne fournit que la regle —
+   * une clef absente rend la clef.
+   */
+  readonly tr = new Traduction(TEXTES_DEMO, LANGUES_DEMO[0])
+  /** Ce qui joue la musique. Absent tant qu'on n'a pas installe le monde. */
+  musicien: Musicien | null = null
 
   private ouvert = false
   private surRecommencer: () => void
+  private volumeSon = 0.6
 
-  constructor(surRecommencer: () => void) { this.surRecommencer = surRecommencer }
+  constructor(surRecommencer: () => void) {
+    this.surRecommencer = surRecommencer
+    this.menu = new Menu(this.entrees())
+  }
+
+  /**
+   * Les lignes du menu, refaites a chaque changement.
+   *
+   * Elles sont RECALCULEES et non modifiees en place : le libelle depend de la
+   * langue ET de l'etat de deux interrupteurs, et tenir trois sources a jour
+   * separement est le moyen le plus sur de les faire diverger.
+   */
+  private entrees(): ReturnType<typeof entree>[] {
+    const etat = (actif: boolean): string => this.tr.t(actif ? 'etat.oui' : 'etat.non')
+    return [
+      entree(this.tr.t('menu.reprendre'), 'reprendre'),
+      entree(this.tr.t('menu.recommencer'), 'recommencer'),
+      entree(this.tr.t('menu.son', { etat: etat(this.volumeSon > 0) }), 'son'),
+      entree(this.tr.t('menu.musique', { etat: etat((this.musicien?.volume ?? 0) > 0) }), 'musique'),
+      entree(this.tr.t('menu.langue', { langue: this.tr.t(`langue.${this.tr.langue}`) }), 'langue'),
+    ]
+  }
+
+  /**
+   * Refait les libelles.
+   *
+   * `remplacer` garde la selection par VALEUR et non par rang : c'est ce qui
+   * fait que basculer la langue ne renvoie pas le curseur en haut du menu,
+   * alors que les cinq libelles ont change en meme temps.
+   */
+  private rafraichir(): void { this.menu.remplacer(this.entrees()) }
 
   get ouverte(): boolean { return this.ouvert }
   ouvrir(): void { this.ouvert = true }
@@ -314,14 +367,43 @@ class Pause {
       // Le volume bascule, et l'entree DIT dans quel etat elle est. Un
       // interrupteur qui ne montre pas son etat se teste en appuyant dessus,
       // c'est-a-dire en subissant ce qu'on voulait eviter.
-      sonneur.volume = sonneur.volume > 0 ? 0 : 0.6
-      this.menu.remplacer([
-        entree('Reprendre', 'reprendre'),
-        entree('Recommencer', 'recommencer'),
-        entree(`Son : ${sonneur.volume > 0 ? 'oui' : 'non'}`, 'son'),
-      ])
+      this.volumeSon = this.volumeSon > 0 ? 0 : 0.6
+      sonneur.volume = this.volumeSon
+      this.rafraichir()
+    } else if (quoi === 'musique') {
+      // Couper la musique l'ARRETE au lieu de la jouer a volume zero : une
+      // source muette continue de tourner, et sur une machine modeste elle
+      // coute autant qu'une source audible.
+      const m = this.musicien
+      if (m) {
+        if (m.volume > 0) { m.volume = 0; m.arreter() } else { m.volume = 0.4; m.jouer('caverne') }
+      }
+      this.rafraichir()
+    } else if (quoi === 'langue') {
+      const i = LANGUES_DEMO.indexOf(this.tr.langue)
+      this.tr.langue = LANGUES_DEMO[(i + 1) % LANGUES_DEMO.length]
+      this.rafraichir()
     }
   }
+}
+
+/**
+ * Donne une musique au menu de pause, et la lance.
+ *
+ * Le musicien est cree ICI et non dans la pause : un monde sans musique doit
+ * pouvoir ouvrir sa pause sans en fabriquer une. `musicien` reste donc nul
+ * tant que personne n'appelle cette fonction, et l'entree « Musique » du menu
+ * ne fait rien plutot que de planter.
+ */
+function installerMusique(pause: Pause): void {
+  const musicien = new Musicien(MUSIQUES_DEMO)
+  brancherMusique(musicien, rendreMusique)
+  pause.musicien = musicien
+  // On lance sans attendre : le navigateur refusera peut-etre tant que
+  // personne n'a clique, mais le pont reprend le contexte suspendu au premier
+  // son suivant. Attendre un clic ici demanderait au monde de savoir ce qu'est
+  // un clic, ce qu'il n'a pas a savoir.
+  musicien.jouer('caverne')
 }
 
 export function mondeCaverne(): Monde {
@@ -461,6 +543,8 @@ export function mondeCaverne(): Monde {
     ],
     especes: ESPECES_DEMO,
     sons: SONS_DEMO,
+    musiques: MUSIQUES_DEMO,
+    textes: TEXTES_DEMO,
     dialogues: [{ nom: 'accueil', repliques: ACCUEIL }],
     peuplement,
     tuilePinceau: TUILE_FOND,
@@ -470,6 +554,11 @@ export function mondeCaverne(): Monde {
       // qui est eprouvee.
       aventure.sonneur.ajouter(...SONS_DEMO)
       brancherAudio(aventure.sonneur, rendreSon)
+      // La musique : meme montage que le son, meme separation. Le musicien
+      // decide QUOI joue ; le pont sait seulement fabriquer du bruit. Elle est
+      // hors de la simulation par construction — un rembobinage reseau ne peut
+      // donc pas la faire redemarrer.
+      installerMusique(pause)
       jeu.cartes.set('caverne', { carte, atlas: atlasDepuisLettres(PLANCHE_CAVERNE, CLE_CAVERNE, TUILE, 8) })
       jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
       jeu.suivreNoeud('heros')
@@ -684,6 +773,8 @@ export function mondeCitadelle(): Monde {
     ],
     especes: ESPECES_DEMO,
     sons: SONS_DEMO,
+    musiques: MUSIQUES_DEMO,
+    textes: TEXTES_DEMO,
     peuplement,
     tuilePinceau: ISO_MUR,
     installer(jeu) {
@@ -845,6 +936,8 @@ export function mondeEtage(graine = 1): Monde {
     ],
     especes: ESPECES_DEMO,
     sons: SONS_DEMO,
+    musiques: MUSIQUES_DEMO,
+    textes: TEXTES_DEMO,
     peuplement: aventure.peuplement,
     tuilePinceau: 0,
     installer(jeu) {
@@ -877,6 +970,9 @@ export function mondeEtage(graine = 1): Monde {
       })
       aventure.sonneur.ajouter(...SONS_DEMO)
       brancherAudio(aventure.sonneur, rendreSon)
+      // Pas de musique ici : cet etage n'a pas de menu de pause, donc pas
+      // d'interrupteur pour la couper. Une musique qu'on ne peut pas eteindre
+      // est pire que pas de musique du tout.
       aventure.installerEcran(jeu)
       const dessinEtage = jeu.apresDessin
       jeu.apresDessin = (ctx, ecran) => {

@@ -269,6 +269,11 @@ function projetCourant() {
     monde.especes,
     monde.sons ?? [],
     monde.dialogues ?? [],
+    // Le plan de touches part avec le reste : un joueur qui a remappe son
+    // saut ne doit pas le reperdre parce que le remappage vivait en memoire.
+    jeu.entrees.planCourant(),
+    monde.musiques ?? [],
+    monde.textes ?? {},
   )
 }
 

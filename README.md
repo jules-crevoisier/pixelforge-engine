@@ -451,6 +451,8 @@ seconde.
 - dessiner une planche, monter une animation, régler un son — dans l'éditeur
 - une charge mesurée : 300 créatures à 0,4 ms par pas de simulation
 - une fonte de pixels 5×7, accents français et tout l'ASCII imprimable
+- de la musique écrite en notes, exportée aussi en `.wav`, et des textes
+  traduits par clef — ce qui manque s'affiche au lieu de disparaître
 - du son décrit en données, synthétisé, attaché aux événements d'animation —
   et qui ne se rejoue pas quand le réseau rembobine
 - des particules, hors de la simulation par construction
@@ -569,11 +571,15 @@ avec un terrain.
 ```sh
 npm install
 npm run dev      # l'éditeur
-npm run banc            # 82 vérifications du moteur
-npm run banc:plateforme # 29 vérifications du contrôleur et des plateformes
-npm run banc:mondes     # 142 vérifications : mondes, animations, combat, étages, scripts, projets, historique
-npm run banc:langages   # 66 vérifications : chargeurs, accord entre langages, paquets
-npm run fumee           # 35 vérifications de l'éditeur, dans un vrai navigateur
+npm run banc            #  82 vérifications du moteur
+npm run banc:plateforme #  51 vérifications du contrôleur, des pentes et des plateformes
+npm run banc:mondes     # 220 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:langages   #  81 vérifications : chargeurs, accord entre langages, paquets
+npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
+npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
+npm run banc:charge     #   9 mesures de cadence — mesurées, pas promises
+npm run fumee           #  72 vérifications de l'éditeur, dans un vrai navigateur
+npm run agent           # la grille : 57 critères, et ce qu'il reste à faire
 npm run build
 ```
 
@@ -725,6 +731,61 @@ d'animation ressortent à chaque re-simulation : sans mémoire, une correction d
 cinquante pas ferait entendre cinquante bruits de pas d'un coup. Le sonneur
 retient ce qu'il a joué, par pas *et* par source — deux créatures qui marchent
 ensemble doivent s'entendre toutes les deux.
+
+### La musique s'écrit en notes
+
+Même raison, un cran plus haut. Une minute de musique en fichier d'onde pèse dix
+mégaoctets et ne se relit pas ; en notes, elle pèse deux kilo-octets et un diff
+montre **quelle note a changé**. Une musique est un tempo et des voies ; une voie
+est un timbre — un son complet, posé là — et une note par temps. Le point est un
+silence, le tiret **prolonge** la note précédente.
+
+Ce tiret n'est pas une commodité d'écriture. Sans lui, une blanche s'écrirait en
+répétant la note, et l'on entendrait deux attaques au lieu d'une note tenue :
+c'est la différence entre une mélodie et un martèlement. Un banc le mesure en
+comptant les creux d'enveloppe — la version tenue en a zéro, la version martelée
+en a trois, pour exactement la même durée.
+
+Le timbre est **posé dans la voie** et non désigné par son nom dans le catalogue
+des sons. Un renvoi économiserait quelques octets et créerait une référence qui
+peut pendre : une musique dont le timbre a été renommé jouerait en silence.
+
+Les voies s'additionnent, et le résultat est **borné**, pas normalisé. Normaliser
+ferait dépendre le volume général de la note la plus forte, et deux musiques du
+même jeu n'auraient pas le même niveau. Si ça sature, c'est aux volumes de le
+dire.
+
+**Et l'export la donne aussi en `.wav`.** Le projet garde les notes ; Godot ne
+sait pas synthétiser une onde carrée, il sait lire un fichier. C'est exactement
+ce que fait l'export des planches, qui rend des PNG là où le projet garde des
+lettres. Le paquet porte les deux, si bien qu'un aller-retour reste possible. Un
+contrôle vérifie que chaque son *et* chaque musique a son fichier, que ces
+fichiers sont de vrais RIFF/WAVE, et que la musique rendue dure bien ses trois
+secondes — un en-tête vide sorti sous le bon nom passerait les deux premiers.
+
+### La traduction : ce qui manque doit se voir
+
+On serait tenté d'indexer par le français : « Reprendre » vers « Continue ».
+Beaucoup de jeux le font, et ça casse au premier ajustement — corriger une
+virgule orpheline toutes les traductions d'un coup, sans que rien ne le signale.
+Une clef ne bouge pas.
+
+Une clef non traduite rend **la clef**, jamais du vide. Une traduction
+incomplète est la règle et non l'exception : on ajoute une réplique le lundi et
+on traduit le vendredi. Rendre du vide ferait disparaître le texte — un bouton
+sans étiquette ne se remarque pas ; `menu.quitter` affiché en plein menu, si.
+C'est la même règle que le pavé plein de la fonte pour un caractère inconnu.
+
+Les substitutions sont **nommées** — `{n} vies` — et non positionnelles : l'ordre
+des mots change d'une langue à l'autre, un `%s` ne survivrait pas. Il n'y a ni
+pluriels ni genres : ils demandent une grammaire par langue, et faire semblant
+de les gérer avec une règle simple donne du faux dans la moitié des langues.
+
+Le défaut qui arrive vraiment n'est pas dans le moteur, il est dans le jeu :
+quelqu'un ajoute une ligne au menu et écrit son libellé en clair, parce que
+c'est plus court. Rien ne tombe — le menu s'affiche, en français, dans toutes
+les langues. Un contrôle lit donc la source du menu de pause et refuse toute
+chaîne posée en clair dans une entrée.
 
 ### Les particules ne se photographient pas
 
@@ -933,13 +994,18 @@ pire défaut d'une mesure.
     Le multijoueur, et ce qu'il exige d'abord      6/6
     Ce qu'on affirme sans l'avoir mesuré           4/4
     Ce qu'un jeu de plateforme doit avoir          5/5
-    Ce qu'un jeu a en plus de son gameplay         8/8
-                                          575 vérifications
+    Ce qu'un jeu a en plus de son gameplay        13/13
+                                          660 vérifications
+
+Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
+libellés jamais en clair, accord des six portages sur les notes et les textes —
+sont partis rouges. L'un d'eux l'est resté après coup : le `.wav` était écrit,
+branché sur les deux paquets, et **rien ne vérifiait que l'archive le
+contenait**. Trois vérifications de plus, et le trou s'est fermé.
 
 Elle est de nouveau entièrement verte, donc elle ne mesure plus rien. Ce qui
-reste et qu'elle dira dès qu'on l'élargira : une musique, l'export du son vers
-Godot et Unity, la traduction, et des pentes à d'autres angles que quarante-cinq
-degrés.
+reste et qu'elle dira dès qu'on l'élargira : des pentes à d'autres angles que
+quarante-cinq degrés.
 
 Le relevé complet est dans [`docs/evaluation.md`](docs/evaluation.md).
 

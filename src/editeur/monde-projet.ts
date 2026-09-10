@@ -86,6 +86,11 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
     especes: p.especes ?? [],
     sons: p.sons ?? [],
     dialogues: p.dialogues ?? [],
+    // Les musiques et les textes REPASSENT dans le monde, sinon un projet
+    // relu puis reenregistre les perdrait en silence — la faute la plus
+    // couteuse d'un format, parce qu'elle ne se voit qu'apres coup.
+    musiques: p.musiques ?? [],
+    textes: p.textes ?? {},
     peuplement,
     planches: p.planches,
     tuilePinceau: 0,

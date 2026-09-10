@@ -168,6 +168,11 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     // Le plan de touches part avec le projet : un jeu qu'on ne peut pas
     // remapper est injouable pour une partie des gens, en silence.
     touches: new Entrees().planCourant(),
+    musiques: [],
+    // Une table par langue, vide au depart : ce qui compte est que le CHEMIN
+    // existe des le premier jour. Ajouter la traduction apres coup oblige a
+    // reprendre chaque texte ecrit en dur entre-temps.
+    textes: { fr: {} },
     dialogues: [{
       nom: 'accueil',
       repliques: [replique(

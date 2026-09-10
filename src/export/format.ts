@@ -8,6 +8,7 @@ import type { Projection } from '../noyau/projection.ts'
 import type { Espece } from '../runtime/entites.ts'
 import type { Son } from '../runtime/son.ts'
 import type { Replique } from '../runtime/dialogue.ts'
+import type { Musique } from '../runtime/musique.ts'
 import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
 
 /**
@@ -37,13 +38,9 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
- * **5** — les matieres. La grille de collision ne disait qu'un bit : ca bloque
- * ou ca ne bloque pas. Elle porte maintenant des drapeaux — solide,
- * plateforme, blessante, echelle, liquide — et s'ecrit donc en base
- * trente-six, un caractere par case comme avant. Les anciens fichiers, faits
- * de zeros et de uns, se relisent tels quels : zero vaut RIEN et un vaut
- * SOLIDE dans les deux lectures. C'est ce qui permet de monter la version sans
- * ecrire une seule ligne de migration.
+ * **7** — les musiques, les textes traduits et le plan de touches. Meme regle
+ * que la version 6, appliquee a ce qui restait dehors : ce qui n'est pas dans
+ * le fichier n'existe pas.
  *
  * **6** — les sons et les dialogues. Ils existaient, ils marchaient, et ils
  * n'etaient PAS dans le fichier : un projet enregistre se rouvrait muet, et un
@@ -54,6 +51,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  * tout ce qu'un jeu contient, sans exception : ce qui n'est pas dans le
  * fichier n'existe pas.
  *
+ * **5** — les matieres. La grille de collision ne disait qu'un bit : ca bloque
+ * ou ca ne bloque pas. Elle porte maintenant des drapeaux — solide,
+ * plateforme, blessante, echelle, liquide — et s'ecrit donc en base
+ * trente-six, un caractere par case comme avant. Les anciens fichiers, faits
+ * de zeros et de uns, se relisent tels quels : zero vaut RIEN et un vaut
+ * SOLIDE dans les deux lectures. C'est ce qui permet de monter la version sans
+ * ecrire une seule ligne de migration.
+ *
  * **4** — les especes. Une carte et une scene disaient OU se trouvent les
  * creatures, jamais ce qu'elles sont : leur vie, leur vitesse et leur
  * intention vivaient dans le code du moteur. Un projet relu redevenait une
@@ -62,14 +67,11 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  * projet enregistre reellement jouable.
  *
  * **3** — les planches de dessins, et la projection. Sans les planches, un
- * fichier decrivait une carte sans dire a quoi ses tuiles ressemblent ; sans la
- * projection, un projet isometrique se rouvrait orthogonal — la carte etait
- * juste, et tout etait dessine de travers.
- *
- * **3, suite** — les planches de dessins. Sans elles, un fichier de projet decrivait
- * une carte de tuiles sans dire a quoi ces tuiles ressemblent : il n'etait
- * lisible que par le programme qui l'avait ecrit, et qui gardait les dessins
- * dans son propre code. Un projet doit se suffire a lui-meme, sinon
+ * fichier decrivait une carte de tuiles sans dire a quoi ces tuiles
+ * ressemblent : il n'etait lisible que par le programme qui l'avait ecrit, et
+ * qui gardait les dessins dans son propre code. Sans la projection, un projet
+ * isometrique se rouvrait orthogonal — la carte etait juste, et tout etait
+ * dessine de travers. Un projet doit se suffire a lui-meme, sinon
  * l'enregistrer ne sert a rien.
  *
  * **2** — les animations. Elles auraient pu etre un champ optionnel, que les
@@ -81,7 +83,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 6
+export const VERSION_FORMAT = 7
 
 export interface ProjetSerialise {
   version: number
@@ -132,6 +134,16 @@ export interface ProjetSerialise {
    * injouable pour une partie des gens, en silence.
    */
   touches: Record<string, string[]>
+  /** Les musiques, en notes. Voir `runtime/musique.ts`. */
+  musiques: Musique[]
+  /**
+   * Les textes du jeu, par langue puis par clef.
+   *
+   * Une clef et non le texte francais comme index : le francais changera, et
+   * l'on ne veut pas que corriger une virgule invalide toutes les traductions.
+   * La langue vide est la langue d'origine.
+   */
+  textes: Record<string, Record<string, string>>
 }
 
 /**
@@ -329,6 +341,8 @@ export function serialiserProjet(
   sons: Son[] = [],
   dialogues: { nom: string; repliques: Replique[] }[] = [],
   touches: Record<string, string[]> = {},
+  musiques: Musique[] = [],
+  textes: Record<string, Record<string, string>> = {},
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -347,6 +361,12 @@ export function serialiserProjet(
       repliques: d.repliques.map((r) => ({ ...r, choix: r.choix.map((c) => ({ ...c })) })),
     })),
     touches: Object.fromEntries(Object.entries(touches).map(([a, k]) => [a, [...k]])),
+    musiques: musiques.map((m) => ({
+      ...m, voies: m.voies.map((v) => ({ ...v, timbre: { ...v.timbre }, notes: [...v.notes] })),
+    })),
+    textes: Object.fromEntries(
+      Object.entries(textes).map(([l, t]) => [l, { ...t }]),
+    ),
   }
 }
 

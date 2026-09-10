@@ -3,6 +3,9 @@ import { versTexte } from './format.ts'
 import { chargeur } from './chargeurs.ts'
 import { encoderPng, planchePixels } from './png.ts'
 import { versOctets, type Entree } from './paquet.ts'
+import { encoderWav } from './wav.ts'
+import { rendre as rendreSon } from '../runtime/son.ts'
+import { rendreMusique } from '../runtime/musique.ts'
 
 /**
  * L'export vers un projet Godot ou Unity, en un paquet qu'on ouvre.
@@ -26,6 +29,32 @@ import { versOctets, type Entree } from './paquet.ts'
  * Godot comme Unity savent l'importer, et c'est le chemin que ces moteurs
  * eux-memes recommandent.
  */
+
+/**
+ * Les sons et les musiques, en WAV, communs aux deux cibles.
+ *
+ * Le projet les garde en donnees — six nombres — parce que ca se relit et se
+ * regle. Godot et Unity, eux, ne savent pas synthetiser une onde carree : ils
+ * savent lire un fichier. L'export TRADUIT donc, exactement comme il rend des
+ * PNG la ou le projet garde des lettres. Le fichier de projet part aussi dans
+ * l'archive, si bien qu'un aller-retour reste possible.
+ */
+function sons(p: ProjetSerialise, dossier: string): Entree[] {
+  const sortie: Entree[] = []
+  for (const s of p.sons ?? []) {
+    sortie.push({
+      chemin: `${dossier}/${s.nom}.wav`,
+      contenu: encoderWav(rendreSon(s, 44100), 44100),
+    })
+  }
+  for (const m of p.musiques ?? []) {
+    sortie.push({
+      chemin: `${dossier}/musique-${m.nom}.wav`,
+      contenu: encoderWav(rendreMusique(m, 44100), 44100),
+    })
+  }
+  return sortie
+}
 
 /** Les PNG des planches, communs aux deux cibles. */
 function planches(p: ProjetSerialise, dossier: string): Entree[] {
@@ -253,6 +282,7 @@ export function paquetGodot(p: ProjetSerialise): Entree[] {
     { chemin: 'projet.json', contenu: versOctets(versTexte(p)) },
     { chemin: 'LISEZMOI.md', contenu: versOctets(lisezMoiGodot(p)) },
     ...planches(p, 'planches'),
+    ...sons(p, 'sons'),
   ]
 }
 
@@ -430,6 +460,7 @@ export function paquetUnity(p: ProjetSerialise): Entree[] {
     { chemin: 'ProjetPixelForge.cs', contenu: versOctets(chargeur('csharp', p)) },
     { chemin: 'projet.json', contenu: versOctets(versTexte(p)) },
     { chemin: 'LISEZMOI.md', contenu: versOctets(lisezMoiUnity(p)) },
+    ...sons(p, 'Sons'),
     ...planches(p, 'planches'),
   ]
 }

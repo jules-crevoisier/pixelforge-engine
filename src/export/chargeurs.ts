@@ -225,6 +225,37 @@ export interface Son {
   paliers: number
 }
 
+export interface Voie {
+  /**
+   * Le timbre de la voie : un son COMPLET, pose ici et non nomme.
+   *
+   * Un renvoi vers le catalogue economiserait quelques octets et creerait une
+   * reference qui peut pendre : une musique dont le timbre a ete renomme
+   * jouerait silencieusement. Le timbre voyage donc avec la voie.
+   */
+  timbre: Son
+  /**
+   * Les notes, une par temps. 'la4' est le la 440 ; '.' est un silence ;
+   * '-' PROLONGE la note precedente au lieu de la rejouer.
+   */
+  notes: string[]
+  volume: number
+}
+
+/**
+ * Une musique, ecrite en notes et non en fichier d'onde.
+ *
+ * Le paquet exporte porte AUSSI le rendu en .wav, pour qui ne veut pas
+ * synthetiser. Les deux disent la meme chose ; celle-ci pese cent fois moins.
+ */
+export interface Musique {
+  nom: string
+  /** Temps par minute. La duree d'un temps vaut 60000 / tempo. */
+  tempo: number
+  voies: Voie[]
+  boucle: boolean
+}
+
 export interface Replique {
   qui: string
   texte: string
@@ -261,6 +292,16 @@ export interface Projet {
   sons: Son[]
   /** Les suites de repliques. Le texte d'un jeu est du contenu, pas du code. */
   dialogues: { nom: string; repliques: Replique[] }[]
+  /** Les musiques, en notes. Voir la structure Musique. */
+  musiques: Musique[]
+  /** Action -> touches. Ce qu'un joueur a remappe voyage avec le projet. */
+  touches: Record<string, string[]>
+  /**
+   * Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise :
+   * corriger une faute de frappe en francais ne doit pas orphelinner les
+   * onze autres langues.
+   */
+  textes: Record<string, Record<string, string>>
 }
 
 /**
@@ -372,6 +413,63 @@ export function especeNommee(p: Projet, id: string): Espece | null {
 /** L'espece d'un noeud de la scene, s'il en porte une. */
 export function especeDuNoeud(p: Projet, n: Noeud): Espece | null {
   return n.espece ? especeNommee(p, n.espece) : null
+}
+
+export function musiqueNommee(p: Projet, nom: string): Musique | null {
+  return p.musiques.find((m) => m.nom === nom) ?? null
+}
+
+/** La duree d'un temps, en millisecondes. */
+export function dureeTemps(m: Musique): number {
+  return 60000 / Math.max(1, m.tempo)
+}
+
+/** La duree de la musique entiere : sa voie la plus longue. */
+export function dureeDeMusique(m: Musique): number {
+  const temps = m.voies.reduce((n, v) => Math.max(n, v.notes.length), 0)
+  return temps * dureeTemps(m)
+}
+
+const DEMI_TONS: Record<string, number> = {
+  do: 0, 'do#': 1, re: 2, 're#': 3, mi: 4, fa: 5, 'fa#': 6,
+  sol: 7, 'sol#': 8, la: 9, 'la#': 10, si: 11,
+}
+
+/**
+ * 'la4' -> 440. Un silence ou une note inconnue rend zero.
+ *
+ * La note s'ecrit en solfege latin parce que le reste du format l'est ; un
+ * moteur d'accueil qui prefere A4 n'a qu'a traduire ici, en un seul endroit.
+ */
+export function frequenceDe(note: string): number {
+  const m = /^([a-z]+#?)(-?\\d+)$/.exec(note.trim().toLowerCase())
+  if (!m) return 0
+  const demi = DEMI_TONS[m[1]!]
+  if (demi === undefined) return 0
+  const octave = Number(m[2])
+  return 440 * Math.pow(2, (demi - 9) / 12 + (octave - 4))
+}
+
+/**
+ * Le texte d'une clef, dans une langue.
+ *
+ * Une clef absente rend LA CLEF, jamais une chaine vide : un texte manquant
+ * doit se voir a l'ecran pendant le developpement, pas laisser un trou muet
+ * que personne ne remarque avant la sortie.
+ */
+export function texteDe(
+  p: Projet, clef: string, langue: string,
+  valeurs: Record<string, string | number> = {},
+): string {
+  const brut = p.textes[langue]?.[clef] ?? clef
+  return brut.replace(/\\{(\\w+)\\}/g, (t, k: string) =>
+    k in valeurs ? String(valeurs[k]) : t)
+}
+
+/** Les clefs que la langue demandee n'a pas et que la reference a. */
+export function trousDeLangue(p: Projet, langue: string, reference = 'fr'): string[] {
+  const cible = p.textes[langue] ?? {}
+  return Object.keys(p.textes[reference] ?? {}).filter((c) => !(c in cible)).sort()
 }
 
 /**
@@ -645,6 +743,61 @@ namespace PixelForge
         public int paliers;
     }
 
+    /// <summary>Une voie d'une musique : un timbre et ses notes.</summary>
+    [Serializable]
+    public class Voie
+    {
+        /// <summary>
+        /// Le timbre de la voie : un son COMPLET, pose ici et non nomme. Un
+        /// renvoi vers le catalogue creerait une reference qui peut pendre.
+        /// </summary>
+        public Son timbre;
+        /// <summary>Une note par temps. '.' est un silence, '-' prolonge la precedente.</summary>
+        public List<string> notes;
+        public float volume;
+    }
+
+    /// <summary>Une musique, ecrite en notes et non en fichier d'onde.</summary>
+    [Serializable]
+    public class Musique
+    {
+        public string nom;
+        /// <summary>Temps par minute. Un temps dure 60000 / tempo millisecondes.</summary>
+        public int tempo;
+        public List<Voie> voies;
+        public bool boucle;
+
+        public float DureeTemps() { return 60000f / Math.Max(1, tempo); }
+
+        /// <summary>La duree totale : la voie la plus longue.</summary>
+        public float Duree()
+        {
+            int temps = 0;
+            if (voies != null)
+                foreach (var v in voies)
+                    if (v.notes != null && v.notes.Count > temps) temps = v.notes.Count;
+            return temps * DureeTemps();
+        }
+
+        static readonly string[] NOMS =
+            { "do", "do#", "re", "re#", "mi", "fa", "fa#", "sol", "sol#", "la", "la#", "si" };
+
+        /// <summary>« la4 » rend 440. Un silence ou une note inconnue rend zero.</summary>
+        public static float FrequenceDe(string note)
+        {
+            if (string.IsNullOrEmpty(note)) return 0f;
+            var n = note.Trim().ToLowerInvariant();
+            int coupe = n.Length;
+            while (coupe > 0 && (char.IsDigit(n[coupe - 1]) || n[coupe - 1] == '-')) coupe--;
+            if (coupe == 0 || coupe == n.Length) return 0f;
+            var lettres = n.Substring(0, coupe);
+            int demi = Array.IndexOf(NOMS, lettres);
+            int octave;
+            if (demi < 0 || !int.TryParse(n.Substring(coupe), out octave)) return 0f;
+            return 440f * (float)Math.Pow(2.0, (demi - 9) / 12.0 + (octave - 4));
+        }
+    }
+
     /// <summary>Une replique de dialogue.</summary>
     [Serializable]
     public class Replique
@@ -737,6 +890,11 @@ namespace PixelForge
         public List<Espece> especes;
         public List<Son> sons;
         public List<Dialogue> dialogues;
+        public List<Musique> musiques;
+        /// <summary>Action -> touches. Ce qu'un joueur a remappe voyage avec le projet.</summary>
+        public Dictionary<string, List<string>> touches;
+        /// <summary>Langue -> clef -> texte. La clef est l'index, pas la phrase.</summary>
+        public Dictionary<string, Dictionary<string, string>> textes;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -761,6 +919,42 @@ namespace PixelForge
             foreach (var e in especes) if (e.id == idEspece) return e;
             return null;
         }
+
+        public Musique Musique(string nomMusique)
+        {
+            if (musiques == null) return null;
+            foreach (var m in musiques) if (m.nom == nomMusique) return m;
+            return null;
+        }
+
+        /// <summary>
+        /// Le texte d'une clef, dans une langue.
+        ///
+        /// Une clef absente rend LA CLEF, jamais une chaine vide : un texte
+        /// manquant doit se voir a l'ecran pendant le developpement.
+        /// </summary>
+        public string Texte(string clef, string langue)
+        {
+            Dictionary<string, string> table;
+            string valeur;
+            if (textes != null && textes.TryGetValue(langue, out table)
+                && table != null && table.TryGetValue(clef, out valeur)) return valeur;
+            return clef;
+        }
+
+        /// <summary>Les clefs que la langue demandee n'a pas et que la reference a.</summary>
+        public List<string> TrousDeLangue(string langue, string reference)
+        {
+            var trous = new List<string>();
+            Dictionary<string, string> source;
+            if (textes == null || !textes.TryGetValue(reference, out source)) return trous;
+            Dictionary<string, string> cible;
+            textes.TryGetValue(langue, out cible);
+            foreach (var clef in source.Keys)
+                if (cible == null || !cible.ContainsKey(clef)) trous.Add(clef);
+            trous.Sort(StringComparer.Ordinal);
+            return trous;
+        }
     }
 }
 `
@@ -783,6 +977,13 @@ var animations: Array = []
 var planches: Array = []
 var projection: Dictionary = {}
 var especes: Array = []
+var sons: Array = []
+var dialogues: Array = []
+var musiques: Array = []
+## Action -> touches. Ce qu'un joueur a remappe voyage avec le projet.
+var touches: Dictionary = {}
+## Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
+var textes: Dictionary = {}
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -804,7 +1005,64 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.planches = brut.get("planches", [])
 	p.projection = brut.get("projection", {})
 	p.especes = brut.get("especes", [])
+	p.sons = brut.get("sons", [])
+	p.dialogues = brut.get("dialogues", [])
+	p.musiques = brut.get("musiques", [])
+	p.touches = brut.get("touches", {})
+	p.textes = brut.get("textes", {})
 	return p
+
+## La musique portant ce nom, ou un dictionnaire vide.
+func musique(nom_musique: String) -> Dictionary:
+	for m in musiques:
+		if m.get("nom", "") == nom_musique:
+			return m
+	return {}
+
+## La duree d'un temps, en millisecondes.
+static func duree_temps(une_musique: Dictionary) -> float:
+	return 60000.0 / float(max(1, int(une_musique.get("tempo", 120))))
+
+## La duree de la musique entiere : sa voie la plus longue.
+static func duree_de_musique(une_musique: Dictionary) -> float:
+	var temps := 0
+	for v in une_musique.get("voies", []):
+		temps = max(temps, (v.get("notes", []) as Array).size())
+	return temps * duree_temps(une_musique)
+
+const NOMS_NOTES := ["do", "do#", "re", "re#", "mi", "fa", "fa#", "sol", "sol#", "la", "la#", "si"]
+
+## « la4 » rend 440. Un silence ou une note inconnue rend zero.
+static func frequence_de(note: String) -> float:
+	var n := note.strip_edges().to_lower()
+	var coupe := n.length()
+	while coupe > 0 and (n[coupe - 1].is_valid_int() or n[coupe - 1] == "-"):
+		coupe -= 1
+	if coupe == 0 or coupe == n.length():
+		return 0.0
+	var demi := NOMS_NOTES.find(n.substr(0, coupe))
+	if demi < 0:
+		return 0.0
+	var octave := int(n.substr(coupe))
+	return 440.0 * pow(2.0, (demi - 9) / 12.0 + (octave - 4))
+
+## Le texte d'une clef, dans une langue.
+##
+## Une clef absente rend LA CLEF, jamais une chaine vide : un texte manquant
+## doit se voir a l'ecran pendant le developpement, pas laisser un trou muet.
+func texte(clef: String, langue: String) -> String:
+	var table = textes.get(langue, {})
+	return table.get(clef, clef)
+
+## Les clefs que la langue demandee n'a pas et que la reference a.
+func trous_de_langue(langue: String, reference: String = "fr") -> Array:
+	var cible = textes.get(langue, {})
+	var trous := []
+	for clef in (textes.get(reference, {}) as Dictionary).keys():
+		if not cible.has(clef):
+			trous.append(clef)
+	trous.sort()
+	return trous
 
 ## L'espece portant cet identifiant, ou un dictionnaire vide.
 ## L'intention y est un NOM : "immobile", "patrouille", "poursuite", "bond",
@@ -1259,6 +1517,72 @@ pub struct Son {
     pub paliers: i32,
 }
 
+/// Une voie d'une musique : un timbre du catalogue et ses notes.
+///
+/// Une note par temps. '.' est un silence ; '-' PROLONGE la note precedente
+/// au lieu de la rejouer.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Voie {
+    /// Le timbre de la voie : un son COMPLET, pose ici et non nomme. Un renvoi
+    /// vers le catalogue creerait une reference qui peut pendre.
+    pub timbre: Son,
+    pub notes: Vec<String>,
+    pub volume: f64,
+}
+
+/// Une musique, ecrite en notes et non en fichier d'onde. Le paquet exporte
+/// porte AUSSI son rendu en .wav, pour qui ne veut pas synthetiser.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Musique {
+    pub nom: String,
+    /// Temps par minute. Un temps dure 60000 / tempo millisecondes.
+    pub tempo: i32,
+    pub voies: Vec<Voie>,
+    #[serde(default)]
+    pub boucle: bool,
+}
+
+const NOMS_NOTES: [&str; 12] = [
+    "do", "do#", "re", "re#", "mi", "fa", "fa#", "sol", "sol#", "la", "la#", "si",
+];
+
+impl Musique {
+    /// La duree d'un temps, en millisecondes.
+    pub fn duree_temps(&self) -> f64 {
+        60000.0 / self.tempo.max(1) as f64
+    }
+
+    /// La duree totale : la voie la plus longue.
+    pub fn duree(&self) -> f64 {
+        let temps = self.voies.iter().map(|v| v.notes.len()).max().unwrap_or(0);
+        temps as f64 * self.duree_temps()
+    }
+
+    /// « la4 » rend 440. Un silence ou une note inconnue rend zero.
+    pub fn frequence_de(note: &str) -> f64 {
+        let n = note.trim().to_lowercase();
+        let coupe = n
+            .char_indices()
+            .rev()
+            .take_while(|(_, c)| c.is_ascii_digit() || *c == '-')
+            .last()
+            .map(|(i, _)| i)
+            .unwrap_or(n.len());
+        if coupe == 0 || coupe == n.len() {
+            return 0.0;
+        }
+        let demi = match NOMS_NOTES.iter().position(|m| *m == &n[..coupe]) {
+            Some(d) => d as f64,
+            None => return 0.0,
+        };
+        let octave: f64 = match n[coupe..].parse() {
+            Ok(o) => o,
+            Err(_) => return 0.0,
+        };
+        440.0 * 2f64.powf((demi - 9.0) / 12.0 + (octave - 4.0))
+    }
+}
+
 /// Une replique de dialogue.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Replique {
@@ -1295,6 +1619,14 @@ pub struct Projet {
     pub sons: Vec<Son>,
     #[serde(default)]
     pub dialogues: Vec<Dialogue>,
+    #[serde(default)]
+    pub musiques: Vec<Musique>,
+    /// Action -> touches. Ce qu'un joueur a remappe voyage avec le projet.
+    #[serde(default)]
+    pub touches: std::collections::HashMap<String, Vec<String>>,
+    /// Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
+    #[serde(default)]
+    pub textes: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 }
 
 /// Une suite de repliques, nommee.
@@ -1319,6 +1651,40 @@ impl Projet {
 
     pub fn espece(&self, id: &str) -> Option<&Espece> {
         self.especes.iter().find(|e| e.id == id)
+    }
+
+    pub fn musique(&self, nom: &str) -> Option<&Musique> {
+        self.musiques.iter().find(|m| m.nom == nom)
+    }
+
+    /// Le texte d'une clef, dans une langue.
+    ///
+    /// Une clef absente rend LA CLEF, jamais une chaine vide : un texte
+    /// manquant doit se voir a l'ecran pendant le developpement, pas laisser
+    /// un trou muet que personne ne remarque avant la sortie.
+    pub fn texte<'a>(&'a self, clef: &'a str, langue: &str) -> &'a str {
+        self.textes
+            .get(langue)
+            .and_then(|t| t.get(clef))
+            .map(|s| s.as_str())
+            .unwrap_or(clef)
+    }
+
+    /// Les clefs que la langue demandee n'a pas et que la reference a.
+    pub fn trous_de_langue(&self, langue: &str, reference: &str) -> Vec<&str> {
+        let cible = self.textes.get(langue);
+        let mut trous: Vec<&str> = self
+            .textes
+            .get(reference)
+            .map(|t| {
+                t.keys()
+                    .filter(|c| !cible.map_or(false, |v| v.contains_key(*c)))
+                    .map(|c| c.as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        trous.sort_unstable();
+        trous
     }
 }
 `
@@ -1352,6 +1718,13 @@ function Projet.depuis(donnees)
     largeurTuile = 16, hauteurTuile = 16, hauteurBloc = 0,
   }
   self.especes = donnees.especes or {}
+  self.sons = donnees.sons or {}
+  self.dialogues = donnees.dialogues or {}
+  self.musiques = donnees.musiques or {}
+  -- Action -> touches. Ce qu'un joueur a remappe voyage avec le projet.
+  self.touches = donnees.touches or {}
+  -- Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
+  self.textes = donnees.textes or {}
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -1492,6 +1865,64 @@ function Projet.image_a(clip, ms)
   return dernier
 end
 
+-- La musique portant ce nom, ou nil.
+function Projet:musique(nom)
+  for _, m in ipairs(self.musiques or {}) do
+    if m.nom == nom then return m end
+  end
+  return nil
+end
+
+-- La duree d'un temps, en millisecondes.
+function Projet.duree_temps(musique)
+  return 60000 / math.max(1, musique.tempo or 120)
+end
+
+-- La duree de la musique entiere : sa voie la plus longue.
+function Projet.duree_de_musique(musique)
+  local temps = 0
+  for _, v in ipairs(musique.voies or {}) do
+    temps = math.max(temps, #(v.notes or {}))
+  end
+  return temps * Projet.duree_temps(musique)
+end
+
+Projet.NOMS_NOTES = {
+  ["do"] = 0, ["do#"] = 1, ["re"] = 2, ["re#"] = 3, ["mi"] = 4, ["fa"] = 5,
+  ["fa#"] = 6, ["sol"] = 7, ["sol#"] = 8, ["la"] = 9, ["la#"] = 10, ["si"] = 11,
+}
+
+-- « la4 » rend 440. Un silence ou une note inconnue rend zero.
+function Projet.frequence_de(note)
+  local lettres, octave = tostring(note):lower():match("^%s*(%a+#?)(%-?%d+)%s*$")
+  if not lettres then return 0 end
+  local demi = Projet.NOMS_NOTES[lettres]
+  if not demi then return 0 end
+  return 440 * 2 ^ ((demi - 9) / 12 + (tonumber(octave) - 4))
+end
+
+-- Le texte d'une clef, dans une langue.
+--
+-- Une clef absente rend LA CLEF, jamais une chaine vide : un texte manquant
+-- doit se voir a l'ecran pendant le developpement, pas laisser un trou muet
+-- que personne ne remarque avant la sortie.
+function Projet:texte(clef, langue)
+  local table_langue = (self.textes or {})[langue]
+  if table_langue and table_langue[clef] then return table_langue[clef] end
+  return clef
+end
+
+-- Les clefs que la langue demandee n'a pas et que la reference a.
+function Projet:trous_de_langue(langue, reference)
+  local cible = (self.textes or {})[langue] or {}
+  local trous = {}
+  for clef in pairs((self.textes or {})[reference or "fr"] or {}) do
+    if cible[clef] == nil then trous[#trous + 1] = clef end
+  end
+  table.sort(trous)
+  return trous
+end
+
 return Projet
 `
 }
@@ -1500,6 +1931,7 @@ function chargeurPython(): string {
   return `${ENTETE('Python', '#')}from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -1727,6 +2159,11 @@ class Projet:
     especes: list[Espece] = field(default_factory=list)
     sons: list[dict[str, Any]] = field(default_factory=list)
     dialogues: list[dict[str, Any]] = field(default_factory=list)
+    musiques: list[dict[str, Any]] = field(default_factory=list)
+    #: Action -> touches. Ce qu'un joueur a remappe voyage avec le projet.
+    touches: dict[str, list[str]] = field(default_factory=dict)
+    #: Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
+    textes: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -1748,6 +2185,31 @@ class Projet:
 
     def espece_du_noeud(self, noeud: Noeud) -> Espece | None:
         return self.espece(noeud.espece) if noeud.espece else None
+
+    def musique(self, nom: str) -> dict[str, Any] | None:
+        for m in self.musiques:
+            if m.get("nom") == nom:
+                return m
+        return None
+
+    def texte(self, clef: str, langue: str, **valeurs: Any) -> str:
+        \"\"\"Le texte d'une clef, dans une langue.
+
+        Une clef absente rend LA CLEF, jamais une chaine vide : un texte
+        manquant doit se voir a l'ecran pendant le developpement, pas laisser
+        un trou muet que personne ne remarque avant la sortie.
+        \"\"\"
+        brut = self.textes.get(langue, {}).get(clef, clef)
+        return re.sub(
+            r"\\{(\\w+)\\}",
+            lambda m: str(valeurs[m.group(1)]) if m.group(1) in valeurs else m.group(0),
+            brut,
+        )
+
+    def trous_de_langue(self, langue: str, reference: str = "fr") -> list[str]:
+        \"\"\"Les clefs que la langue demandee n'a pas et que la reference a.\"\"\"
+        cible = self.textes.get(langue, {})
+        return sorted(c for c in self.textes.get(reference, {}) if c not in cible)
 
     @staticmethod
     def charger(chemin: str) -> "Projet":
@@ -1785,6 +2247,32 @@ class Projet:
             version=d["version"], nom=d["nom"], vue=d["vue"], palette=d["palette"],
             cartes=cartes, scenes=scenes, animations=animations, planches=planches,
             projection=projection, especes=especes,
+            sons=d.get("sons", []), dialogues=d.get("dialogues", []),
+            musiques=d.get("musiques", []), touches=d.get("touches", {}),
+            textes=d.get("textes", {}),
         )
+#: « la4 » rend 440. Un silence ou une note inconnue rend zero.
+_DEMI_TONS = {
+    "do": 0, "do#": 1, "re": 2, "re#": 3, "mi": 4, "fa": 5,
+    "fa#": 6, "sol": 7, "sol#": 8, "la": 9, "la#": 10, "si": 11,
+}
+
+
+def frequence_de(note: str) -> float:
+    m = re.match(r"^([a-z]+#?)(-?\\d+)$", note.strip().lower())
+    if not m or m.group(1) not in _DEMI_TONS:
+        return 0.0
+    return 440.0 * 2 ** ((_DEMI_TONS[m.group(1)] - 9) / 12 + (int(m.group(2)) - 4))
+
+
+def duree_temps(musique: dict[str, Any]) -> float:
+    \"\"\"La duree d'un temps, en millisecondes.\"\"\"
+    return 60000.0 / max(1, musique.get("tempo", 120))
+
+
+def duree_de_musique(musique: dict[str, Any]) -> float:
+    \"\"\"La duree totale : la voie la plus longue.\"\"\"
+    temps = max((len(v.get("notes", [])) for v in musique.get("voies", [])), default=0)
+    return temps * duree_temps(musique)
 `
 }
