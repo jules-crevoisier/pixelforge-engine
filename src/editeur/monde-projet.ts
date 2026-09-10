@@ -510,6 +510,10 @@ export function mondeDepuisProjet(
       const dessinAvant = jeu.apresDessin
       jeu.apresDessin = (ctx, ecran) => {
         dessinAvant?.(ctx, ecran)
+        // L'interface du JEU — dialogue, titre, fin — ne se dessine qu'en
+        // jouant : a l'arret, on edite, et un ecran-titre pose sur la vue
+        // d'edition cacherait ce qu'on est en train de faire.
+        if (!jeu.tourne) return
         // Les coeurs et etincelles du NIVEAU COURANT : c'est une capture par
         // paire, et non un branchement global, pour que changer de carte
         // change aussi la jauge qu'on regarde. Et seulement PENDANT le jeu :

@@ -530,6 +530,15 @@ document.getElementById('accueilOuvrir')?.addEventListener('click', () => {
   fermerAccueil()
   ;(document.getElementById('ouvrir') as HTMLButtonElement).click()
 })
+document.getElementById('accueilGouffre')?.addEventListener('click', () => {
+  fermerAccueil()
+  // Le jeu-temoin : un projet ORDINAIRE, relu par le meme chemin qu'un
+  // fichier a soi. C'est toute sa valeur de vitrine — rien de special.
+  void fetch('exemples/le-gouffre.json')
+    .then((r) => r.text())
+    .then((texte) => { relire(texte, 'le-gouffre.json') })
+    .catch(() => { verdict.textContent = 'L’exemple n’a pas pu être chargé.' })
+})
 document.getElementById('accueilExemples')?.addEventListener('click', fermerAccueil)
 accueil.addEventListener('click', (e) => { if (e.target === accueil) fermerAccueil() })
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !accueil.hidden) fermerAccueil() })

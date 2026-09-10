@@ -1381,8 +1381,9 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.goto(`http://127.0.0.1:${PORT}/`)
   await p.waitForTimeout(900)
   const cartes = await p.$$eval('.accueil-carte', (l) => l.map((e) => e.querySelector('b')?.textContent))
-  ok('le premier lancement s’ouvre sur l’accueil, trois départs nommés',
-    cartes.length === 3 && cartes.join('|').includes('plateforme'),
+  ok('le premier lancement s’ouvre sur l’accueil : deux départs, ouvrir, et un jeu fini à voir',
+    cartes.length === 4 && cartes.join('|').includes('plateforme')
+    && cartes.join('|').includes('jeu fini'),
     cartes.join(' · '))
   await p.click('#accueilPlateforme')
   await p.waitForTimeout(800)
