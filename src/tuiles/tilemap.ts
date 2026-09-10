@@ -56,6 +56,30 @@ export const PLATEFORME = 2
 export const BLESSANTE = 4
 export const ECHELLE = 8
 export const LIQUIDE = 16
+/**
+ * Une pente a quarante-cinq degres, montant vers la DROITE ou vers la GAUCHE.
+ *
+ * ## Pourquoi seulement quarante-cinq degres
+ *
+ * Une pente est definie par la hauteur du sol EN CHAQUE COLONNE de pixels de
+ * la case. A quarante-cinq degres, cette hauteur vaut la position dans la
+ * case : une soustraction. Pour un angle quelconque il faudrait une table par
+ * angle, un arrondi par colonne, et deux tuiles voisines qui ne se raccordent
+ * pas au pixel pres — le defaut qu'on voit dans la moitie des jeux amateurs,
+ * ou le personnage sautille en montant une colline.
+ *
+ * Les demi-pentes (deux cases pour monter d'une) sont la suite naturelle, et
+ * elles se decrivent avec les memes deux drapeaux plus une hauteur de depart.
+ * Elles ne sont pas la ; le dire vaut mieux que de laisser croire.
+ *
+ * ## Pourquoi ce n'est pas « solide »
+ *
+ * Une pente marquee solide bloque comme un mur : on se cogne dans le bas de la
+ * cote au lieu de la monter. Les deux drapeaux sont donc distincts de SOLIDE,
+ * et `hauteurSol` decide, colonne par colonne, ou le sol se trouve.
+ */
+export const PENTE_DROITE = 32
+export const PENTE_GAUCHE = 64
 
 /** Le nom de chaque drapeau, pour l'editeur et les rapports. */
 export const MATIERES: { drapeau: number; nom: string; aide: string }[] = [
@@ -64,7 +88,31 @@ export const MATIERES: { drapeau: number; nom: string; aide: string }[] = [
   { drapeau: BLESSANTE, nom: 'Blessante', aide: 'Fait mal à ce qui la touche. Une pointe, un brasier.' },
   { drapeau: ECHELLE, nom: 'Échelle', aide: 'On y monte. Ne bloque pas.' },
   { drapeau: LIQUIDE, nom: 'Liquide', aide: 'On y avance moins vite. Ne bloque pas.' },
+  { drapeau: PENTE_DROITE, nom: 'Pente ↗', aide: 'Monte vers la droite, à quarante-cinq degrés.' },
+  { drapeau: PENTE_GAUCHE, nom: 'Pente ↖', aide: 'Monte vers la gauche, à quarante-cinq degrés.' },
 ]
+
+/**
+ * La hauteur du sol dans une case, pour une colonne de pixels donnee.
+ *
+ * Rend la distance depuis le HAUT de la case : zero veut dire « le sol est au
+ * sommet de la case », `tuile` veut dire « il n'y a pas de sol ici ». On
+ * compte depuis le haut parce que c'est le sens de l'ecran, et que compter
+ * depuis le bas obligerait a inverser a chaque usage — donc a se tromper une
+ * fois sur deux.
+ *
+ * `x` est la position DANS la case, de 0 a tuile-1.
+ */
+export function hauteurSol(matiere: number, x: number, tuile: number): number {
+  if ((matiere & PENTE_DROITE) !== 0) return tuile - 1 - x
+  if ((matiere & PENTE_GAUCHE) !== 0) return x
+  if ((matiere & SOLIDE) !== 0) return 0
+  return tuile
+}
+
+/** Vrai si cette matiere est une pente, d'un cote ou de l'autre. */
+export const estPente = (m: number): boolean =>
+  (m & (PENTE_DROITE | PENTE_GAUCHE)) !== 0
 
 /**
  * La matiere, en un caractere.

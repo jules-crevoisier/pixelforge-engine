@@ -637,6 +637,120 @@ console.log('\n--- le VRAI jeu, rembobine ---')
   }
 }
 
+console.log('\n--- deux personnages, deux jeux de touches ---')
+
+/*
+ * La limite qu'on annoncait : un seul jeu d'entrees par pas, donc un seul
+ * personnage dirigeable. Elle est levee — et le controle mesure d'abord le
+ * DEFAUT qu'elle produisait, parce qu'un multijoueur ou les deux personnages
+ * bougent ensemble a l'air de marcher tant qu'on teste a un joueur.
+ */
+{
+  const { creerNoeud, Mouvements } = await import('../src/scene/noeud.ts')
+  const { Combat } = await import('../src/runtime/combat.ts')
+  const { Peuplement, espece } = await import('../src/runtime/entites.ts')
+  const { CorpsMobiles, grilleAvecCorps } = await import('../src/runtime/corps.ts')
+  const { clipRegulier } = await import('../src/runtime/animation.ts')
+  const { ORTHO_COTE } = await import('../src/noyau/projection.ts')
+  const { SimulationJeu } = await import('../src/reseau/simulation-jeu.ts')
+  const { deplacer } = await import('../src/runtime/collision.ts')
+
+  const T = 16
+  const decor = {
+    tuile: T, largeur: 40, hauteur: 12,
+    solide: (cx, cy) => cy >= 10,
+    matiere: (cx, cy) => (cy >= 10 ? 1 : 0),
+  }
+  const ESPECES = [espece('heros', {
+    camp: 'heros', pv: 5, vitesse: 0, degats: 0, comportement: 'plateformeur',
+    clip: 'marche', boite: { x: -4, y: -14, l: 8, h: 14 },
+  })]
+  const CLIPS = [clipRegulier('marche', [0], 120)]
+
+  const monterDuo = (separees) => {
+    const racine = creerNoeud('noeud', 'duo')
+    const combat = new Combat()
+    const corps = new CorpsMobiles()
+    const peuplement = new Peuplement(racine, combat, ESPECES, CLIPS, ORTHO_COTE(T), T)
+    peuplement.degatsMatiere = 0
+    const grille = grilleAvecCorps(decor, corps)
+    const mouvements = new Mouvements()
+    const hote = (c) => {
+      const ch = (n) => {
+        for (const e of n.enfants) { if (e.id === c.id) return n; const r = ch(e); if (r) return r }
+        return null
+      }
+      return ch(racine)
+    }
+    const bouger = (cps, dx, dy) => {
+      const acc = mouvements.de(cps.id)
+      const pas = acc.pas(dx, dy)
+      if (!pas.x && !pas.y) return { dx: 0, dy: 0, bloque: false }
+      const h = hote(cps)
+      if (!h) return { dx: 0, dy: 0, bloque: false }
+      const b = { x: h.x + cps.boiteX, y: h.y + cps.boiteY, w: cps.boiteL, h: cps.boiteH }
+      const c = deplacer(grille, b, pas.x, pas.y)
+      h.x += c.dx; h.y += c.dy
+      if (c.bloqueX) acc.bloquerX()
+      if (c.bloqueY) acc.bloquerY()
+      return { dx: c.dx, dy: c.dy, bloque: c.bloqueX || c.bloqueY }
+    }
+    const un = peuplement.poser('heros', 100, 10 * T)
+    const deux = peuplement.poser('heros', 300, 10 * T)
+    // Le NOM du noeud sert d'identifiant de joueur : il est unique, alors
+    // qu'une espece decrit un type et peut etre partagee.
+    un.nom = 'a'
+    deux.nom = 'b'
+    peuplement.synchroniser()
+    const commune = new Entrees()
+    commune.pasMs = 1000 / 60
+    const propres = new Map([['a', new Entrees()], ['b', new Entrees()]])
+    for (const e of propres.values()) e.pasMs = 1000 / 60
+    const contexte = () => ({
+      dt: 1 / 60, entrees: commune, racine, carte: decor, grille, corps, pas: 0,
+      trouver: () => null, bouger,
+      // Le monde « avant » ne connaissait pas la notion de joueur : toutes les
+      // entites lisaient les entrees communes.
+      ...(separees ? { entreesDe: (j) => propres.get(j) } : {}),
+    })
+    const sim = new SimulationJeu({
+      racine, peuplement, combat, corps, entrees: commune, mouvements, contexte,
+      dtMs: 1000 / 60, noeudDe: () => un,
+      ...(separees ? { entreesDe: (j) => propres.get(j) } : {}),
+      pas: (c, dtMs) => {
+        peuplement.synchroniser()
+        peuplement.avancer(c, un, dtMs)
+        for (const i of combat.avancer(dtMs)) if (i.fatal) peuplement.tuer(i.cible)
+      },
+    })
+    return { sim, un, deux }
+  }
+
+  const rangD = ACTIONS_ORDRE.indexOf('droite')
+  const rangG = ACTIONS_ORDRE.indexOf('gauche')
+  const jouer = (separees) => {
+    const m = monterDuo(separees)
+    const depart = { a: m.un.x, b: m.deux.x }
+    for (let p = 0; p < 60; p++) {
+      m.sim.avancer(new Map([
+        ['a', { tenues: 1 << rangD, appuis: 0 }],
+        ['b', { tenues: 1 << rangG, appuis: 0 }],
+      ]))
+    }
+    return { a: m.un.x - depart.a, b: m.deux.x - depart.b }
+  }
+
+  const avec = jouer(true)
+  check('deux personnages, deux jeux de touches : ils partent en sens opposés',
+    avec.a > 10 && avec.b < -10, `a a fait ${avec.a} px, b a fait ${avec.b} px`)
+
+  const sans = jouer(false)
+  check('et sans entrées séparées, ils partaient du même côté',
+    Math.sign(sans.a) === Math.sign(sans.b) && sans.a !== 0,
+    `a ${sans.a} px, b ${sans.b} px — le défaut le plus prévisible d’un`
+    + ' multijoueur ajouté après coup')
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)

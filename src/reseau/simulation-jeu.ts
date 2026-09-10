@@ -38,6 +38,8 @@ export interface PiecesSimulation {
   combat: Combat
   corps: CorpsMobiles
   entrees: Entrees
+  /** Les entrees d'un joueur donne, pour un monde a plusieurs. */
+  entreesDe?(joueur: string): Entrees | undefined
   /**
    * Les fractions de pixel en attente, par corps.
    *
@@ -73,7 +75,7 @@ export class SimulationJeu implements Simulation {
   get pas(): number { return this.compteur }
 
   /**
-   * Un pas, avec les entrees de chacun.
+   * Un pas, avec les entrees de CHAQUE joueur.
    *
    * ## Pourquoi les entrees sont IMPOSEES et non lues
    *
@@ -82,21 +84,31 @@ export class SimulationJeu implements Simulation {
    * chemin qu'un pas joue : il n'y a qu'un seul chemin. Un mode « rejeu » qui
    * emprunterait un autre code ne prouverait rien de la partie d'origine.
    *
-   * ## La limite qu'on assume
+   * ## Plusieurs personnages
    *
-   * Un seul jeu d'entrees est actif a la fois, donc un seul joueur dirige par
-   * pas de simulation dans cette version. Le multijoueur a plusieurs
-   * personnages dirigeables demande que chaque entite lise SES entrees, ce qui
-   * est un changement du contexte de jeu et non du rembobinage. Le dire vaut
-   * mieux que de laisser croire.
+   * Chaque joueur a SON jeu d'entrees, et l'entite dirigee lit celui qui porte
+   * son nom. Une premiere version n'en imposait qu'un seul : les deux
+   * personnages lisaient les memes touches et bougeaient ensemble — le defaut
+   * le plus previsible d'un multijoueur ajoute apres coup, et celui qu'on ne
+   * voit pas tant qu'on teste a un joueur.
+   *
+   * Le jeu d'entrees COMMUN recoit le premier joueur par ordre alphabetique :
+   * un monde solo, qui ne connait pas la notion de joueur, continue de
+   * fonctionner sans rien savoir de tout ceci.
    */
   avancer(entrees: Map<string, EtatEntrees>): void {
-    const premier = [...entrees.keys()].sort()[0]
-    const e = premier ? entrees.get(premier) : undefined
+    const noms = [...entrees.keys()].sort()
+    for (const j of noms) {
+      const propres = this.p.entreesDe?.(j)
+      if (!propres) continue
+      propres.auPas(this.compteur)
+      propres.imposer(entrees.get(j) ?? null)
+    }
     this.p.entrees.auPas(this.compteur)
-    this.p.entrees.imposer(e ?? null)
+    this.p.entrees.imposer(noms.length ? (entrees.get(noms[0]) ?? null) : null)
     this.p.pas(this.p.contexte(), this.p.dtMs)
     this.p.entrees.imposer(null)
+    for (const j of noms) this.p.entreesDe?.(j)?.imposer(null)
     this.compteur++
   }
 

@@ -342,7 +342,18 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.waitForTimeout(250)
   ok('le panneau Projet s’ouvre', await p.isVisible('#projetCorps'))
 
-  const champs = await p.$$('#projetCorps .bloc:nth-of-type(1) input')
+  /**
+   * Trouve un bloc par son TITRE, jamais par son rang.
+   *
+   * Le rang a change le jour ou le panneau a gagne des onglets, et le banc
+   * s'est mis a viser le vide avec un message qui parlait de `undefined`. Un
+   * selecteur qui dit ce qu'il cherche survit a la mise en page ; un
+   * selecteur qui compte, non.
+   */
+  const blocDe = async (titre) => p.$$(
+    `xpath=//div[@id="projetCorps"]//div[contains(@class,"bloc")][h3[text()="${titre}"]]//input`,
+  )
+  const champs = await blocDe('Carte')
   await champs[0].fill('60')
   await champs[1].fill('30')
   await p.getByRole('button', { name: 'Redimensionner' }).click()
@@ -352,7 +363,7 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   ok('et ce qui était peint est toujours là', (await solides()) > 4,
     `${await solides()} cases solides après le redimensionnement`)
 
-  const nomCalque = await p.$('#projetCorps .bloc-actions input')
+  const nomCalque = (await blocDe('Calques'))[0]
   await nomCalque.fill('plafond')
   await p.getByRole('button', { name: '+ Décor' }).click()
   await p.waitForTimeout(450)
@@ -361,7 +372,9 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   // Une espece, sans TypeScript.
   const especes = () => p.evaluate(() => window.pfe.monde.especes.map((e) => e.id))
   const avantEsp = (await especes()).length
-  const form = await p.$$('#projetCorps .bloc:nth-of-type(3) input')
+  await p.getByRole('button', { name: 'Espèces', exact: true }).click()
+  await p.waitForTimeout(250)
+  const form = await blocDe('Espèces')
   await form[0].fill('limace')
   await form[1].fill('Limace')
   await p.getByRole('button', { name: 'Créer l’espèce' }).click()
@@ -370,6 +383,80 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     (await especes()).includes('limace') && (await especes()).length === avantEsp + 1,
     (await especes()).slice(-3).join(', '))
 
+  /*
+   * Les ateliers d'art : dessiner, monter, regler.
+   *
+   * C'est ce qui manquait pour qu'on puisse faire un jeu sans lire le moteur :
+   * on pouvait creer une espece, et elle empruntait forcement le dessin d'une
+   * autre. Ces trois onglets ne s'eprouvent que dans un navigateur — un
+   * pinceau, une toile et un bouton d'ecoute n'existent pas ailleurs.
+   */
+  await p.getByRole('button', { name: 'Dessin', exact: true }).click()
+  await p.waitForTimeout(300)
+  const toile = await p.$('.toile')
+  ok('l’atelier de dessin montre une case de planche', toile !== null)
+  const pixels = () => p.evaluate(() => {
+    const t = window.pfe.monde.planches[0]
+    return t.dessins[0].join('')
+  })
+  const avantDessin = await pixels()
+  const bt = await toile.boundingBox()
+  // On choisit une couleur, puis on peint quatre pixels en glissant.
+  const pastilles = await p.$$('.pastille')
+  await pastilles[Math.min(3, pastilles.length - 1)].click()
+  await p.mouse.move(bt.x + bt.width * 0.3, bt.y + bt.height * 0.3)
+  await p.mouse.down()
+  for (let i = 1; i <= 4; i++) {
+    await p.mouse.move(bt.x + bt.width * (0.3 + i * 0.05), bt.y + bt.height * 0.3)
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(200)
+  const apresDessin = await pixels()
+  ok('on peint des pixels dans une planche', apresDessin !== avantDessin,
+    `${[...apresDessin].filter((c, i) => c !== avantDessin[i]).length} pixels changés`)
+  ok('et le dessin part dans le projet, pas dans une copie',
+    (await p.evaluate(() => window.pfe.monde.planches[0].dessins[0].join('')))
+      === apresDessin,
+    'c’est la planche du monde qu’on peint, donc celle qui s’enregistre')
+
+  // Une couleur ajoutee a la cle : sans cela on ne dessine qu'avec ce que
+  // quelqu'un d'autre a choisi.
+  const couleurs = () => p.evaluate(() => Object.keys(window.pfe.monde.planches[0].cle).length)
+  const avantCle = await couleurs()
+  await p.getByRole('button', { name: '+ Couleur' }).click()
+  await p.waitForTimeout(250)
+  ok('on ajoute une couleur à la planche', (await couleurs()) === avantCle + 1,
+    `${avantCle} → ${await couleurs()} couleurs`)
+
+  await p.getByRole('button', { name: 'Animations', exact: true }).click()
+  await p.waitForTimeout(300)
+  const premierClip = await p.$$('#projetCorps .ligne button')
+  await premierClip[0].click()
+  await p.waitForTimeout(300)
+  const images = () => p.evaluate(() => window.pfe.monde.animations[0].images.length)
+  const avantImages = await images()
+  await p.getByRole('button', { name: '+ Image' }).click()
+  await p.waitForTimeout(250)
+  ok('on ajoute une image à une animation', (await images()) === avantImages + 1,
+    `${avantImages} → ${await images()} images`)
+
+  await p.getByRole('button', { name: 'Sons', exact: true }).click()
+  await p.waitForTimeout(300)
+  const boutonsSon = await p.$$('#projetCorps .ligne button')
+  ok('l’atelier de sons liste les sons du projet', boutonsSon.length > 0,
+    `${boutonsSon.length / 2} sons`)
+  await boutonsSon[1].click()
+  await p.waitForTimeout(250)
+  const freq = (await p.$$('#projetCorps .champs input'))[0]
+  await freq.fill('523')
+  await freq.dispatchEvent('change')
+  await p.waitForTimeout(200)
+  ok('on règle un son, et le projet le retient',
+    (await p.evaluate(() => window.pfe.monde.sons.some((s) => s.frequence === 523))),
+    'six nombres : c’est tout ce qu’un son est')
+
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(200)
   await p.click('#fermerProjet')
   await p.waitForTimeout(150)
 

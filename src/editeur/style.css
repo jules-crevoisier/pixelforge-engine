@@ -208,3 +208,38 @@ button.lien:hover { color: var(--accent); }
   background: var(--bg-0); border: 1px solid var(--line); border-radius: 4px;
   padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--texte);
 }
+
+/* Les onglets du panneau Projet. Sept sections empilees demandent de defiler
+   pour trouver quoi que ce soit, et l'on finit par ne plus se servir des trois
+   du bas. */
+.onglets {
+  display: flex; gap: 3px; padding: 8px 12px 2px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+}
+.onglets button { padding: 4px 9px; font-size: 11.5px; border-radius: 5px; }
+.onglets button.actif { border-color: var(--accent); color: var(--accent); background: var(--bg-0); }
+
+/* Le nuancier d'une planche. Le vide est une pastille comme les autres :
+   une gomme qu'on cherche est une gomme qu'on n'emploie pas. */
+.nuancier { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.pastille {
+  width: 22px; height: 22px; padding: 0; border-radius: 4px;
+  border: 1px solid var(--line); cursor: pointer; font-size: 11px; color: var(--dim);
+}
+.pastille.actif { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* La toile de dessin. `pixelated` sinon le navigateur lisse l'agrandissement,
+   et l'on ne voit plus la grille qu'on est en train de peindre. */
+.toile {
+  display: block; margin: 6px 0; image-rendering: pixelated;
+  border: 1px solid var(--line); border-radius: 4px; cursor: crosshair;
+  touch-action: none; max-width: 100%;
+}
+.ligne input[type="number"], .ligne input[type="text"], .ligne input:not([type]) {
+  background: var(--bg-1); color: var(--texte); border: 1px solid var(--line);
+  border-radius: 4px; padding: 2px 5px; font: inherit; font-size: 11.5px; min-width: 0;
+}
+.bloc-actions input[type="color"] {
+  width: 30px; height: 26px; padding: 0; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--bg-0);
+}

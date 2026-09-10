@@ -211,6 +211,26 @@ export interface Espece {
   pesante: boolean
 }
 
+export interface Son {
+  nom: string
+  /** 'carre', 'triangle', 'scie' ou 'bruit'. */
+  forme: string
+  frequence: number
+  frequenceFin: number
+  duree: number
+  volume: number
+  attaque: number
+  chute: number
+  /** Quantification en demi-tons. Zero : glissando continu. */
+  paliers: number
+}
+
+export interface Replique {
+  qui: string
+  texte: string
+  choix: { texte: string; valeur: string }[]
+}
+
 export interface EtatEspece {
   nom: string
   clip: string
@@ -237,6 +257,10 @@ export interface Projet {
   planches: Planche[]
   projection: Projection
   especes: Espece[]
+  /** Les sons, decrits en donnees : six nombres, pas un fichier d'onde. */
+  sons: Son[]
+  /** Les suites de repliques. Le texte d'un jeu est du contenu, pas du code. */
+  dialogues: { nom: string; repliques: Replique[] }[]
 }
 
 /**
@@ -606,6 +630,37 @@ namespace PixelForge
         public string suivant;
     }
 
+    /// <summary>Un son, decrit en donnees.</summary>
+    [Serializable]
+    public class Son
+    {
+        public string nom;
+        public string forme;
+        public float frequence;
+        public float frequenceFin;
+        public int duree;
+        public float volume;
+        public int attaque;
+        public int chute;
+        public int paliers;
+    }
+
+    /// <summary>Une replique de dialogue.</summary>
+    [Serializable]
+    public class Replique
+    {
+        public string qui;
+        public string texte;
+    }
+
+    /// <summary>Une suite de repliques, nommee.</summary>
+    [Serializable]
+    public class Dialogue
+    {
+        public string nom;
+        public List<Replique> repliques;
+    }
+
     /// <summary>Comment le monde se montre. Le mode et le regard sont independants.</summary>
     [Serializable]
     public class Projection
@@ -680,6 +735,8 @@ namespace PixelForge
         public List<Planche> planches;
         public Projection projection;
         public List<Espece> especes;
+        public List<Son> sons;
+        public List<Dialogue> dialogues;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -1186,6 +1243,29 @@ pub struct Trajet {
     pub pause: i64,
 }
 
+/// Un son, decrit en donnees : six nombres et une forme d'onde.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Son {
+    pub nom: String,
+    pub forme: String,
+    pub frequence: f64,
+    pub frequence_fin: f64,
+    pub duree: i64,
+    pub volume: f64,
+    pub attaque: i64,
+    pub chute: i64,
+    #[serde(default)]
+    pub paliers: i32,
+}
+
+/// Une replique de dialogue.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Replique {
+    pub qui: String,
+    pub texte: String,
+}
+
 /// Un etat d'une espece. Un declencheur se pose sur un EVENEMENT du clip et
 /// non sur un temps : « le coup porte a la troisieme image » ne peut pas
 /// s'ecrire en millisecondes.
@@ -1211,6 +1291,17 @@ pub struct Projet {
     pub planches: Vec<Planche>,
     pub projection: Projection,
     pub especes: Vec<Espece>,
+    #[serde(default)]
+    pub sons: Vec<Son>,
+    #[serde(default)]
+    pub dialogues: Vec<Dialogue>,
+}
+
+/// Une suite de repliques, nommee.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Dialogue {
+    pub nom: String,
+    pub repliques: Vec<Replique>,
 }
 
 impl Projet {
@@ -1634,6 +1725,8 @@ class Projet:
     planches: list[Planche] = field(default_factory=list)
     projection: Projection = field(default_factory=Projection)
     especes: list[Espece] = field(default_factory=list)
+    sons: list[dict[str, Any]] = field(default_factory=list)
+    dialogues: list[dict[str, Any]] = field(default_factory=list)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:

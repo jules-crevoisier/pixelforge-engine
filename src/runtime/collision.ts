@@ -58,6 +58,76 @@ export interface GrilleSolide {
 /** Les drapeaux, redeclares ici pour que la collision ne dependeplus des tuiles. */
 export const M_SOLIDE = 1
 export const M_PLATEFORME = 2
+export const M_PENTE_DROITE = 32
+export const M_PENTE_GAUCHE = 64
+
+/**
+ * Le sommet du sol sous ce rectangle, en pixels du monde. Null : pas de sol.
+ *
+ * ## Pourquoi une hauteur et non un booleen
+ *
+ * Un mur repond « oui » ou « non ». Une pente repond « a telle hauteur », et
+ * la reponse change d'une colonne de pixels a l'autre a l'interieur de la
+ * meme case. Un corps sur une pente doit donc etre POSE a une hauteur, et non
+ * arrete par une case.
+ *
+ * On prend le sol le PLUS HAUT sous le corps : un personnage a cheval sur une
+ * pente et sur son palier doit se tenir sur le palier, sinon il s'enfonce d'un
+ * demi-pixel a chaque pas et l'on voit ses pieds disparaitre.
+ *
+ * ## Pourquoi seulement sous les pieds
+ *
+ * On n'interroge que la rangee de cases que le BAS du corps traverse. Un
+ * corps de quatorze pixels sur une case de seize en traverse une ou deux ; les
+ * autres ne portent rien, et les consulter ferait grimper le personnage sur
+ * une pente qu'il a au-dessus de la tete.
+ */
+export function sommetPente(g: GrilleSolide, r: Rect): number | null {
+  if (!g.matiere) return null
+  const bas = r.y + r.h
+  /*
+   * DEUX rangees, et c'est le point delicat.
+   *
+   * Debout au sommet exact d'une case de pente, les pieds sont sur sa
+   * frontiere haute : la rangee du dernier pixel du corps est celle
+   * AU-DESSUS de la pente, et la pente devient invisible. En n'en regardant
+   * qu'une, on traversait la cote sans la voir — le corps avancait tout droit
+   * et le banc rendait « monte de zero pixel ».
+   *
+   * On regarde donc la rangee des pieds et celle d'en dessous. Trois seraient
+   * de trop : une pente deux cases plus bas ne porte personne, et la
+   * consulter ferait sauter le corps par-dessus un trou.
+   */
+  const premiere = Math.floor((bas - 1) / g.tuile)
+  const x0 = Math.floor(r.x / g.tuile)
+  const x1 = Math.floor((droite(r) - 1) / g.tuile)
+  let sommet: number | null = null
+  for (let cy = premiere; cy <= premiere + 1; cy++) {
+  for (let cx = x0; cx <= x1; cx++) {
+    if (cx < 0 || cy < 0 || cx >= g.largeur || cy >= g.hauteur) continue
+    const m = g.matiere(cx, cy)
+    if ((m & (M_PENTE_DROITE | M_PENTE_GAUCHE)) === 0) continue
+    // La colonne du corps qui compte est celle de son bord AVAL sur la pente :
+    // le bord bas pour une pente montant a droite, le bord haut pour l'autre.
+    // Prendre le centre ferait enfoncer le corps de la moitie de sa largeur
+    // dans la cote a chaque fois qu'il s'y engage.
+    const gauche = Math.max(r.x, cx * g.tuile)
+    const droit = Math.min(droite(r) - 1, cx * g.tuile + g.tuile - 1)
+    const xLocal = (m & M_PENTE_DROITE) !== 0
+      ? droit - cx * g.tuile
+      : gauche - cx * g.tuile
+    const h = (m & M_PENTE_DROITE) !== 0
+      ? g.tuile - 1 - xLocal
+      : xLocal
+    const y = cy * g.tuile + h
+    // On ne remonte jamais AU-DESSUS du corps : une pente dont le sommet est
+    // plus haut que les pieds appartient a la case suivante, pas a celle-ci.
+    if (y < bas - g.tuile) continue
+    if (sommet === null || y < sommet) sommet = y
+  }
+  }
+  return sommet
+}
 
 /** Les cases que couvre un rectangle du monde. */
 export function casesCouvertes(g: GrilleSolide, r: Rect): { x0: number; y0: number; x1: number; y1: number } {
@@ -81,6 +151,10 @@ export function toucheSolide(g: GrilleSolide, r: Rect): boolean {
   for (let cy = c.y0; cy <= c.y1; cy++) {
     for (let cx = c.x0; cx <= c.x1; cx++) {
       if (cx < 0 || cy < 0 || cx >= g.largeur || cy >= g.hauteur) return true
+      // Une pente ne bloque PAS comme un mur : c'est `sommetPente` qui decide
+      // ou l'on se tient dessus. La traiter en solide ferait se cogner dans le
+      // bas de la cote au lieu de la monter.
+      if (g.matiere && (g.matiere(cx, cy) & (M_PENTE_DROITE | M_PENTE_GAUCHE)) !== 0) continue
       if (g.solide(cx, cy)) return true
     }
   }

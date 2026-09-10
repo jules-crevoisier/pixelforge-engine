@@ -1119,6 +1119,27 @@ function patrouiller(v: Vivante, c: ContexteJeu): void {
 }
 
 /**
+ * Les entrees qui appartiennent a CETTE entite.
+ *
+ * ## Pourquoi le nom du noeud
+ *
+ * Une entite dirigee doit lire ses propres touches, pas celles de tout le
+ * monde. En solo il n'y a qu'un jeu d'entrees et la question ne se pose pas ;
+ * a deux, les deux personnages lisaient les MEMES touches et bougeaient
+ * ensemble — le defaut le plus previsible d'un multijoueur ajoute apres coup.
+ *
+ * Le nom du noeud sert d'identifiant de joueur. On aurait pu ajouter un champ
+ * « joueur » a l'espece : ce serait faux, une espece decrit un TYPE de
+ * creature et deux joueurs peuvent diriger la meme. Le noeud, lui, est unique.
+ *
+ * Un contexte qui ne connait pas la notion de joueur rend les entrees
+ * communes : le solo ne paie rien.
+ */
+function entreesDe(v: Vivante, c: ContexteJeu): ContexteJeu['entrees'] {
+  return c.entreesDe ? c.entreesDe(v.noeud.nom) : c.entrees
+}
+
+/**
  * Le personnage dirige au clavier, vu de dessus.
  *
  * La direction demandee est celle de l'ECRAN : on la ramene dans le monde
@@ -1131,7 +1152,7 @@ function patrouiller(v: Vivante, c: ContexteJeu): void {
 function dirigerVuDeDessus(
   v: Vivante, c: ContexteJeu, projection: Projection, tuile: number,
 ): void {
-  const a = c.entrees.axe()
+  const a = entreesDe(v, c).axe()
   if (a.x || a.y) {
     const d = deprojeter(projection, a.x, a.y, tuile)
     const n = Math.hypot(d.x, d.y) || 1
@@ -1145,7 +1166,7 @@ function dirigerVuDeDessus(
 function dirigerDeCote(v: Vivante, c: ContexteJeu): void {
   const p = v.plateformeur
   if (!p) return
-  const e = lireEntrees(c.entrees)
+  const e = lireEntrees(entreesDe(v, c))
   const b = { x: v.corps.boiteX, y: v.corps.boiteY, l: v.corps.boiteL, h: v.corps.boiteH }
   const mobile = { x: v.noeud.x, y: v.noeud.y, boite: b }
   // `c.grille` et non `c.carte` : c'est ce qui fait qu'on se tient sur une

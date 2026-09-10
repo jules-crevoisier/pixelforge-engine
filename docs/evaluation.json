@@ -101,8 +101,8 @@
     {
       "nom": "banc:plateforme",
       "code": 0,
-      "reussies": 40,
-      "total": 40,
+      "reussies": 51,
+      "total": 51,
       "noms": [
         "la carte d'essai est assez haute pour le saut regle",
         "la hauteur theorique est celle qu'on a demandee",
@@ -143,14 +143,25 @@
         "et l'on se pose dessus en redescendant",
         "le rebond du pietinement atteint la hauteur demandee",
         "sans rebond, le deuxieme dash en l'air est refuse",
-        "le rebond rend le dash"
+        "le rebond rend le dash",
+        "une pente montante donne un sol qui monte d’un pixel par colonne",
+        "et la pente inverse descend d’autant",
+        "un solide a son sol tout en haut de la case",
+        "et le vide n’a pas de sol",
+        "le plan des pentes est bien rectangulaire",
+        "une pente n’arrête pas comme un mur",
+        "mais elle porte : on trouve son sommet sous les pieds",
+        "on monte une côte en marchant, sans sauter",
+        "et l’on reste au sol tout du long",
+        "un mur, lui, arrête toujours",
+        "on descend une côte en la suivant, sans décoller"
       ]
     },
     {
       "nom": "banc:mondes",
       "code": 0,
-      "reussies": 203,
-      "total": 203,
+      "reussies": 207,
+      "total": 207,
       "noms": [
         "redemander le clip en cours ne le recommence pas",
         "et le forcer, lui, fige bien l'animation",
@@ -310,6 +321,10 @@
         "et un caractere illisible ne fait pas tomber la lecture",
         "une propriete que le lecteur ne connait pas est conservee",
         "la version du format est ecrite dans le fichier",
+        "les sons partent dans le fichier de projet",
+        "et un son relu décrit exactement le même son",
+        "les dialogues aussi, texte et choix compris",
+        "et le texte du jeu n’est donc plus dans le code",
         "donjon : orthogonale vue de dessus, 20x15",
         "caverne : orthogonale vue de cote, 43x24",
         "citadelle : isometrique vue de dessus, 22x22",
@@ -434,8 +449,8 @@
     {
       "nom": "banc:reseau",
       "code": 0,
-      "reussies": 31,
-      "total": 31,
+      "reussies": 33,
+      "total": 33,
       "noms": [
         "aucune horloge murale dans le code des entrées",
         "un appui reste vu comme récent pendant sa fenêtre",
@@ -467,14 +482,16 @@
         "rembobiner cent vingt pas du vrai jeu refait exactement la même suite",
         "un instantané amputé de l’état vivant, lui, ne refait pas la même suite",
         "le vrai moteur, à deux, sur un lien qui retarde et qui perd",
-        "et il a fallu rembobiner pour y arriver"
+        "et il a fallu rembobiner pour y arriver",
+        "deux personnages, deux jeux de touches : ils partent en sens opposés",
+        "et sans entrées séparées, ils partaient du même côté"
       ]
     },
     {
       "nom": "banc:habillage",
       "code": 0,
-      "reussies": 53,
-      "total": 53,
+      "reussies": 72,
+      "total": 72,
       "noms": [
         "chaque glyphe fait cinq pixels sur sept",
         "elle sait écrire le français, accents et guillemets compris",
@@ -528,14 +545,50 @@
         "une version plus récente se lit sans faire semblant de la comprendre",
         "le résumé d’un emplacement se lit d’un coup d’œil",
         "une sauvegarde ne contient ni carte, ni planche, ni espèce",
-        "et elle porte une version dès le premier jour"
+        "et elle porte une version dès le premier jour",
+        "le plan de touches se lit et s’enregistre",
+        "et un plan remappé prend effet",
+        "l’ancienne touche ne fait plus rien",
+        "une manette branchée dirige comme le clavier",
+        "et lâcher la croix arrête bien le personnage",
+        "le stick gauche dirige aussi",
+        "mais une zone morte évite qu’un stick usé marche tout seul",
+        "une zone tactile presse une action",
+        "et elle compte comme un appui récent",
+        "la relâcher l’arrête",
+        "les codes inventés ne polluent pas le plan enregistré",
+        "le gel suspend la simulation, il ne la ralentit pas",
+        "et le monde repart tout seul",
+        "deux coups au même instant n’additionnent pas leurs arrêts",
+        "la secousse décale la caméra de pixels ENTIERS",
+        "et elle bouge vraiment",
+        "elle s’éteint franchement au lieu de traîner",
+        "et la même secousse redonne les mêmes décalages",
+        "le coup le plus fort l’emporte sur celui qui traîne"
+      ]
+    },
+    {
+      "nom": "banc:charge",
+      "code": 0,
+      "reussies": 9,
+      "total": 9,
+      "noms": [
+        "cent créatures tiennent dans le tiers du budget d’une image",
+        "et trois cents tiennent encore dans une image entière",
+        "le budget d’une image tient largement le pas de simulation annoncé",
+        "le coût croît proportionnellement au nombre de créatures",
+        "quatre mille particules tiennent dans le tiers d’une image",
+        "et le plafond par défaut est bien plus bas que ce seuil",
+        "prendre un instantané coûte moins qu’un pas de simulation",
+        "un rembobinage de seize pas tient dans une image",
+        "un étage s’engendre en moins d’un dixième de seconde"
       ]
     },
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 65,
-      "total": 65,
+      "reussies": 72,
+      "total": 72,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -589,6 +642,13 @@
         "et ce qui était peint est toujours là",
         "on ajoute un calque",
         "on crée une espèce sans écrire une ligne de TypeScript",
+        "l’atelier de dessin montre une case de planche",
+        "on peint des pixels dans une planche",
+        "et le dessin part dans le projet, pas dans une copie",
+        "on ajoute une couleur à la planche",
+        "on ajoute une image à une animation",
+        "l’atelier de sons liste les sons du projet",
+        "on règle un son, et le projet le retient",
         "le cadre d’édition montre plus de carte",
         "sans toucher au cadre du jeu",
         "et Jouer rend le cadre du jeu",
@@ -605,7 +665,7 @@
       ]
     }
   ],
-  "verifications": 540,
+  "verifications": 592,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -615,7 +675,7 @@
         {
           "nom": "Contrôleur nerveux : coyote, tampon, hauteur variable",
           "tenu": true,
-          "preuves": 5
+          "preuves": 6
         },
         {
           "nom": "Dash directionnel, avec récupération",
@@ -625,7 +685,7 @@
         {
           "nom": "Saut mural et glissade",
           "tenu": true,
-          "preuves": 12
+          "preuves": 14
         },
         {
           "nom": "Correction de coin",
@@ -635,7 +695,7 @@
         {
           "nom": "Pointes, mort et point de reprise",
           "tenu": true,
-          "preuves": 7
+          "preuves": 8
         },
         {
           "nom": "Plateformes à sens unique, et descente volontaire",
@@ -682,7 +742,7 @@
         {
           "nom": "Caméra verrouillée sur la salle",
           "tenu": true,
-          "preuves": 13
+          "preuves": 14
         },
         {
           "nom": "Tirs, projectiles et ennemis qui annoncent",
@@ -704,7 +764,7 @@
         {
           "nom": "Frappes à durée, poussée, invulnérabilité",
           "tenu": true,
-          "preuves": 13
+          "preuves": 15
         },
         {
           "nom": "Machines à états par espèce, déclencheurs sur l’image",
@@ -766,7 +826,7 @@
         {
           "nom": "Un projet se ferme, se rouvre, se joue",
           "tenu": true,
-          "preuves": 17
+          "preuves": 20
         },
         {
           "nom": "Une aide qui dit dans quel ordre s’y prendre",
@@ -782,8 +842,8 @@
     },
     {
       "jeu": "Le multijoueur, et ce qu’il exige d’abord",
-      "tenus": 5,
-      "total": 5,
+      "tenus": 6,
+      "total": 6,
       "criteres": [
         {
           "nom": "Simulation à pas fixe, hasard reproductible",
@@ -793,12 +853,12 @@
         {
           "nom": "Entrées déterministes : aucune horloge murale dans la simulation",
           "tenu": true,
-          "preuves": 16
+          "preuves": 18
         },
         {
           "nom": "Instantané et rejeu de l’état d’un pas",
           "tenu": true,
-          "preuves": 10
+          "preuves": 12
         },
         {
           "nom": "Transport réseau, avec latence, gigue et pertes",
@@ -809,13 +869,77 @@
           "nom": "Le vrai moteur se rembobine, pas seulement un jouet",
           "tenu": true,
           "preuves": 3
+        },
+        {
+          "nom": "Plusieurs personnages dirigeables, chacun ses touches",
+          "tenu": true,
+          "preuves": 3
+        }
+      ]
+    },
+    {
+      "jeu": "Ce qu’on affirme sans l’avoir mesuré",
+      "tenus": 4,
+      "total": 4,
+      "criteres": [
+        {
+          "nom": "La cadence est mesurée, pas promise",
+          "tenu": true,
+          "preuves": 3
+        },
+        {
+          "nom": "Le coût croît linéairement avec le nombre d’entités",
+          "tenu": true,
+          "preuves": 1
+        },
+        {
+          "nom": "Un rembobinage tient dans une image",
+          "tenu": true,
+          "preuves": 2
+        },
+        {
+          "nom": "Un étage s’engendre sans attente",
+          "tenu": true,
+          "preuves": 1
+        }
+      ]
+    },
+    {
+      "jeu": "Ce qu’un jeu de plateforme doit avoir",
+      "tenus": 5,
+      "total": 5,
+      "criteres": [
+        {
+          "nom": "Des pentes qu’on monte en marchant",
+          "tenu": true,
+          "preuves": 6
+        },
+        {
+          "nom": "Le hit-stop : un coup qui porte au lieu de traverser",
+          "tenu": true,
+          "preuves": 5
+        },
+        {
+          "nom": "Une secousse de caméra entière et reproductible",
+          "tenu": true,
+          "preuves": 2
+        },
+        {
+          "nom": "Manette, tactile et touches remappables",
+          "tenu": true,
+          "preuves": 3
+        },
+        {
+          "nom": "Dessiner, monter et régler dans l’éditeur",
+          "tenu": true,
+          "preuves": 5
         }
       ]
     },
     {
       "jeu": "Ce qu’un jeu a en plus de son gameplay",
-      "tenus": 7,
-      "total": 7,
+      "tenus": 8,
+      "total": 8,
       "criteres": [
         {
           "nom": "Une fonte de pixels, accents français compris",
@@ -825,7 +949,7 @@
         {
           "nom": "Son : décrit en données, attaché aux événements d’animation",
           "tenu": true,
-          "preuves": 42
+          "preuves": 48
         },
         {
           "nom": "Et un son ne se rejoue pas quand le réseau rembobine",
@@ -835,17 +959,22 @@
         {
           "nom": "Particules et effets",
           "tenu": true,
-          "preuves": 7
+          "preuves": 8
         },
         {
           "nom": "Dialogue : frappe, coupure, choix",
           "tenu": true,
-          "preuves": 5
+          "preuves": 7
         },
         {
           "nom": "Sauvegarde de la PARTIE, distincte du projet",
           "tenu": true,
           "preuves": 9
+        },
+        {
+          "nom": "Et tout cela traverse l’enregistrement du projet",
+          "tenu": true,
+          "preuves": 3
         },
         {
           "nom": "Menus : curseur qui boucle, entrées inertes",
@@ -907,6 +1036,7 @@
     "ce contour-la ne voit que le bas, la droite et leur coin",
     "celle du monde isometrique est un losange plus large que haut",
     "celui d'une case hexagonale a six cotes",
+    "cent créatures tiennent dans le tiers du budget d’une image",
     "cent millisecondes a dix par pas font dix pas",
     "chaque case tient en un caractere, quelle que soit sa matiere",
     "chaque cible annoncee produit un chargeur non vide",
@@ -931,8 +1061,10 @@
     "des deux cotes",
     "dessiner une tuile ne la rend pas solide par magie",
     "deux archives du meme contenu sont identiques octet pour octet",
+    "deux coups au même instant n’additionnent pas leurs arrêts",
     "deux coups coup sur coup ne comptent que pour un",
     "deux exécutions des mêmes touches donnent exactement la même suite",
+    "deux personnages, deux jeux de touches : ils partent en sens opposés",
     "deux rectangles jointifs ne se chevauchent pas",
     "deux états différents rendent deux empreintes différentes",
     "donjon : l'arret le repose au depart",
@@ -950,6 +1082,7 @@
     "elle porte la planche, ses dimensions et son image",
     "elle prefere des bandes noires a une grille qui ondule",
     "elle sait écrire le français, accents et guillemets compris",
+    "elle s’éteint franchement au lieu de traîner",
     "en isometrique, deux cases de meme somme sont a la meme profondeur",
     "en isometrique, « droite » au clavier va vers la droite a l'ecran",
     "en marchant case par case, aucune salle n'est injoignable",
@@ -964,6 +1097,8 @@
     "et deux étages ne reçoivent pas la même suite de salles",
     "et deux états identiques la même",
     "et elle a bien disparu ensuite",
+    "et elle bouge vraiment",
+    "et elle compte comme un appui récent",
     "et elle contient toutes les cases",
     "et elle disparaît avec l'outil",
     "et elle porte une version dès le premier jour",
@@ -991,26 +1126,35 @@
     "et la barre d'état dit ce qu'elle contient",
     "et la couleur de palette la plus proche, pour decider vite",
     "et la meme ne tombe pas dans un monde vu de dessus",
+    "et la même secousse redonne les mêmes décalages",
+    "et la pente inverse descend d’autant",
     "et la plateforme mobile se deplace vraiment",
     "et la position reste entiere du debut a la fin",
     "et le boss est au bout d’une impasse, du côté le plus loin du départ",
     "et le catalogue relu decrit toujours ce qu'elles font",
+    "et le dessin part dans le projet, pas dans une copie",
     "et le dialogue se ferme après la dernière réplique",
     "et le forcer, lui, fige bien l'animation",
     "et le heros rebondit au lieu de retomber",
     "et le journal dit ce qui s'est passe",
     "et le monde ne bouge plus derrière",
+    "et le monde repart tout seul",
+    "et le plafond par défaut est bien plus bas que ce seuil",
     "et le saut part a la premiere image de contact, sans temps mort",
     "et le sommet arrive au temps demande",
     "et le terrain neuf est vide, pas rempli de hasard",
+    "et le texte du jeu n’est donc plus dans le code",
     "et le vide n'occupe aucune entree",
+    "et le vide n’a pas de sol",
     "et les champs qu’on n’a pas remplis prennent la valeur du moteur",
     "et les matieres reviennent toutes",
     "et les particules disparaissent d’elles-mêmes",
     "et les trois projections proposées se construisent toutes",
     "et leur visibilité",
+    "et lâcher la croix arrête bien le personnage",
     "et l’aide se referme",
     "et l’on change leur ordre",
+    "et l’on reste au sol tout du long",
     "et n'y remet pas les champs communs",
     "et ne se sert pas deux fois",
     "et neuf pas plus tard aussi",
@@ -1028,13 +1172,17 @@
     "et sa duree suit",
     "et sa place dans le monde",
     "et sa vitesse de chute est remise à zéro tant qu’elle est posée",
+    "et sans entrées séparées, ils partaient du même côté",
     "et sans la fraction, il ne le rendrait pas",
     "et sans sauter des parois, il ne se remonte pas",
     "et se referme",
     "et ses appuis se consomment une seule fois",
+    "et trois cents tiennent encore dans une image entière",
     "et un caractere illisible ne fait pas tomber la lecture",
     "et un mort ne se fait plus toucher",
+    "et un plan remappé prend effet",
     "et un son inconnu ne fait rien, sans se plaindre",
+    "et un son relu décrit exactement le même son",
     "et une carte ne descend pas sous quatre cases",
     "et une lettre plus loin sur la ligne est décalée de la chasse",
     "et une lettre qui ne veut rien dire",
@@ -1108,7 +1256,9 @@
     "la présence d’un calque sans terrain revient de l’enregistrement",
     "la regle du voisinage unique donne des branches et des culs-de-sac",
     "la regle sait accuser une planche irreguliere",
+    "la relâcher l’arrête",
     "la repasser ne la compte pas deux fois",
+    "la secousse décale la caméra de pixels ENTIERS",
     "la sortie est reconnue comme du LDtk",
     "la sortie est reconnue comme du Tiled",
     "la sortie existe et ne bloque pas le passage",
@@ -1119,6 +1269,7 @@
     "le boss est au cul-de-sac le plus loin du depart",
     "le bras d'une croix ne voit que le bas",
     "le bruit est reproductible d’une exécution à l’autre",
+    "le budget d’une image tient largement le pas de simulation annoncé",
     "le cadre d’édition montre plus de carte",
     "le calque tranche avant tout, dans les deux regards",
     "le centre d'une croix voit ses quatre cotes et aucun coin",
@@ -1131,6 +1282,8 @@
     "le controleur franchit reellement la fosse de 3 cases",
     "le corps s'accroche bien au mur",
     "le corps se pose bien sur le sol",
+    "le coup le plus fort l’emporte sur celui qui traîne",
+    "le coût croît proportionnellement au nombre de créatures",
     "le curseur commence sur la première entrée active",
     "le curseur du menu descend",
     "le curseur se déplace dans les choix",
@@ -1140,6 +1293,7 @@
     "le depart isometrique n'est pas dans un mur",
     "le depart n'est pas dans un mur, et repose sur du sol",
     "le dialogue s’ouvre sur sa première réplique",
+    "le gel suspend la simulation, il ne la ralentit pas",
     "le heros passe devant la dalle qu'il foule",
     "le heros se pose sur la plateforme mobile",
     "le jeu blob compte bien quarante-sept tuiles",
@@ -1153,6 +1307,8 @@
     "le niveau porte sa place dans le monde",
     "le nombre de salles demande est atteint",
     "le panneau Projet s’ouvre",
+    "le plan de touches se lit et s’enregistre",
+    "le plan des pentes est bien rectangulaire",
     "le plancher principal comporte bien des fosses a franchir",
     "le projet sort en JSON indente, donc diffable",
     "le puits se remonte en sautant d'une paroi a l'autre",
@@ -1163,6 +1319,7 @@
     "le retard abandonne est jete, pas garde",
     "le résumé d’un emplacement se lit d’un coup d’œil",
     "le saut mural pousse dans le sens oppose au mur",
+    "le stick gauche dirige aussi",
     "le texte se coupe aux espaces et tient dans la largeur",
     "le texte s’écrit lettre à lettre",
     "le texte s’écrit lettre à lettre",
@@ -1172,9 +1329,11 @@
     "le vrai moteur, à deux, sur un lien qui retarde et qui perd",
     "les cases s'ecrivent une rangee par ligne",
     "les cellules sans salle restent pleines",
+    "les codes inventés ne polluent pas le plan enregistré",
     "les corps mobiles du niveau sont inscrits dans le jeu",
     "les creatures d'un etage relu bougent encore",
     "les dalles isometriques ne laissent aucun trou entre elles",
+    "les dialogues aussi, texte et choix compris",
     "les entites non importees sont signalees",
     "les particules retombent",
     "les pixels transparents sont ignores",
@@ -1183,13 +1342,18 @@
     "les remparts de la cour bloquent bien",
     "les retours à la ligne écrits sont respectés",
     "les salles dessinees sont toutes valables, retournees comprises",
+    "les sons partent dans le fichier de projet",
     "leur couleur change au cours de leur vie",
     "leurs positions sont des pixels entiers",
     "l’aide nomme chaque outil et chaque commande de la barre",
     "l’aide s’ouvre",
+    "l’ancienne touche ne fait plus rien",
+    "l’atelier de dessin montre une case de planche",
+    "l’atelier de sons liste les sons du projet",
     "mais deux sources différentes au même pas sonnent bien deux fois",
     "mais devant celui de la case au nord-ouest",
     "mais elle ne touche pas ce qui est derriere",
+    "mais elle porte : on trouve son sommet sous les pieds",
     "mais en retombant dessus, si",
     "mais il glisse quand meme sur l'autre axe",
     "mais il reste vu comme recent",
@@ -1203,20 +1367,27 @@
     "mais tomber a cote d'une creature ne la pietine pas",
     "mais un coup apres la fenetre passe",
     "mais un geste neuf efface le futur",
+    "mais une zone morte évite qu’un stick usé marche tout seul",
     "meme en tenant la direction du mur",
     "mourir fait sonner et jaillir des particules",
     "on ajoute un calque",
     "on ajoute un calque, et il est posé par-dessus les autres",
+    "on ajoute une couleur à la planche",
+    "on ajoute une image à une animation",
     "on change la résolution virtuelle du jeu",
     "on crée une espèce sans écrire une ligne de TypeScript",
+    "on descend une côte en la suivant, sans décoller",
     "on finit par mourir",
+    "on monte une côte en marchant, sans sauter",
     "on part vivant",
     "on passe « Caisse » sans que le niveau se ferme",
+    "on peint des pixels dans une planche",
     "on peint du sol dans un projet neuf",
     "on peut defaire puis refaire",
     "on pose une créature",
     "on redimensionne la carte sans écrire une ligne",
     "on retire un calque",
+    "on règle un son, et le projet le retient",
     "on se pose sur une plateforme en tombant dessus",
     "on traverse une passerelle mobile par en dessous",
     "orthogonale : aucune case visible n'est ecartee du parcours",
@@ -1231,8 +1402,10 @@
     "plusieurs planches sont signalees",
     "poser du terrain pose une tuile",
     "poser une tuile voisine change le dessin de la premiere",
+    "prendre un instantané coûte moins qu’un pas de simulation",
     "puis il annonce sa fin et enchaine sur sa suite",
     "puis l'on reapparait au point de reprise, en vie",
+    "quatre mille particules tiennent dans le tiers d’une image",
     "redemander le clip en cours ne le recommence pas",
     "relacher le bouton coupe la montee",
     "rembobiner cent vingt pas du vrai jeu refait exactement la même suite",
@@ -1311,6 +1484,7 @@
     "un menu sans entrée active se sait vide et ne bouge pas",
     "un modèle dissymétrique donne bien quatre salles différentes une fois retourné",
     "un mot plus long que la ligne est coupé plutôt que de déborder",
+    "un mur, lui, arrête toujours",
     "un niveau exporte puis reimporte garde ses tuiles",
     "un noeud garde ses proprietes propres a son type",
     "un nom déjà pris est numéroté au lieu d’écraser",
@@ -1324,6 +1498,7 @@
     "un projet neuf traverse l’enregistrement sans rien perdre",
     "un projet parti de rien se joue vraiment",
     "un projet sans niveau est signale",
+    "un rembobinage de seize pas tient dans une image",
     "un retard enorme est plafonne, pas rattrape",
     "un retard local volontaire réduit le nombre de pas refaits",
     "un saut decale de trois pixels passe quand meme le trou",
@@ -1334,7 +1509,9 @@
     "un second dash en l'air est refuse",
     "un seul coin, lui, en laisse tomber",
     "un seul coup touche DEUX cibles, une fois chacune",
+    "un solide a son sol tout en haut de la case",
     "un son dure ce qu’il annonce",
+    "un étage s’engendre en moins d’un dixième de seconde",
     "un état imposé remplace le clavier",
     "un événement rejoué par un rembobinage ne sonne pas deux fois",
     "une action se consomme",
@@ -1371,9 +1548,12 @@
     "une heure d'un coup ne fait pas tourner la boucle une heure",
     "une image dans la palette ne declenche rien",
     "une largeur isometrique impaire est ramenee au pair",
+    "une manette branchée dirige comme le clavier",
     "une memoire nulle ignore le passe",
     "une partie d’un autre projet est refusée, avec la raison",
     "une partie enregistrée se relit",
+    "une pente montante donne un sol qui monte d’un pixel par colonne",
+    "une pente n’arrête pas comme un mur",
     "une plateforme qui avance emmene son passager",
     "une plateforme qui monte ne s'enfonce pas dans son passager",
     "une propriete que le lecteur ne connait pas est conservee",
@@ -1388,6 +1568,7 @@
     "une tuile retournee par Tiled est lue sans son bit de poids fort",
     "une version plus récente se lit sans faire semblant de la comprendre",
     "une vue de côté donne un héros de côté, une vue de dessus un héros de dessus",
+    "une zone tactile presse une action",
     "valider rend la valeur",
     "valider rend le choix pris",
     "vu de cote, la case ne decide de rien",

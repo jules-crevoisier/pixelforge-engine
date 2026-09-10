@@ -1,5 +1,5 @@
 import { Accumulateur } from '../noyau/pixel.ts'
-import { type GrilleSolide, toucheSolide, plateformeArrete } from './collision.ts'
+import { type GrilleSolide, toucheSolide, plateformeArrete, sommetPente } from './collision.ts'
 import { rect, type Rect } from '../noyau/pixel.ts'
 import type { Entrees } from './entree.ts'
 
@@ -71,6 +71,19 @@ export interface ReglagesPlateforme {
   coupureSaut: number
   /** Vitesse de chute maximale, en pixels par seconde. */
   chuteMax: number
+  /**
+   * Denivele maximal franchi d'un pas en marchant, en pixels.
+   *
+   * C'est ce qui permet de MONTER une pente au lieu de s'y cogner : apres
+   * chaque pas horizontal, on cherche le sol un peu plus haut et l'on s'y
+   * pose. Le meme reglage fait franchir une marche d'un pixel sans sauter,
+   * ce qui evite d'avoir a lisser le terrain a la main.
+   *
+   * Trop grand, on escalade les murs. A quarante-cinq degres et cent dix
+   * pixels par seconde, on ne monte jamais plus de deux pixels par pas ; trois
+   * laisse de la marge sans permettre l'escalade.
+   */
+  montee: number
 
   /** Fenetre de coyote, en secondes. */
   coyote: number
@@ -117,6 +130,7 @@ export const REGLAGES_DEFAUT: ReglagesPlateforme = {
   seuilApex: 34,
   coupureSaut: 0.4,
   chuteMax: 300,
+  montee: 3,
 
   coyote: 0.1,
   tampon: 0.12,
@@ -311,8 +325,17 @@ export class Plateformeur {
     const solAvant = this.auSol
     // Une plateforme porte aussi : sans cela on tombe au travers de ce sur
     // quoi on vient d'atterrir, parce que le sol se cherche avec `solide`.
+    // Une pente porte aussi, et elle porte a une HAUTEUR : on est dessus quand
+    // le bas du corps l'atteint, pas quand il touche sa case.
+    // La boite NON decalee : une pente se cherche sous les pieds tels qu'ils
+    // sont, et l'on accepte un pixel d'avance — c'est la meme tolerance que
+    // la sonde d'un pixel qui sert au sol plat.
+    const pente = sommetPente(g, boiteA(0, 0))
+    const surPente = pente !== null
+      && corps.y + corps.boite.y + corps.boite.h >= pente - 1
     this.auSol = (toucheSolide(g, boiteA(0, 1))
-      || (this.traversee <= 0 && plateformeArrete(g, boiteA(0, 0)))) && this.vy >= 0
+      || (this.traversee <= 0 && plateformeArrete(g, boiteA(0, 0)))
+      || surPente) && this.vy >= 0
     this.murCote = 0
     if (!this.auSol) {
       if (toucheSolide(g, boiteA(-1, 0))) this.murCote = -1
@@ -426,15 +449,47 @@ export class Plateformeur {
     const pas = this.acc.pas(this.vx * dt, this.vy * dt)
     const b = corps.boite
 
-    // Horizontal, pixel par pixel.
+    /*
+     * Horizontal, pixel par pixel — et l'on MONTE ce qui se monte.
+     *
+     * Devant un obstacle, on cherche le meme pas quelques pixels plus haut. Si
+     * le corps y passe, c'est une pente ou une marche : on grimpe. Sinon c'est
+     * un mur : on s'arrete. Le meme test sert aux deux, et c'est ce qui evite
+     * d'avoir deux regles qui se contredisent un jour.
+     */
     const sx = Math.sign(pas.x)
     for (let i = 0; i < Math.abs(pas.x); i++) {
       if (toucheSolide(g, rect(corps.x + b.x + sx, corps.y + b.y, b.l, b.h))) {
+        let monte = 0
+        while (monte < this.r.montee) {
+          monte++
+          if (!toucheSolide(g, rect(corps.x + b.x + sx, corps.y + b.y - monte, b.l, b.h))) break
+        }
+        const passe = monte <= this.r.montee
+          && !toucheSolide(g, rect(corps.x + b.x + sx, corps.y + b.y - monte, b.l, b.h))
+        // On ne grimpe qu'au SOL : en l'air, une marche franchie toute seule
+        // ferait s'accrocher aux rebords en plein saut.
+        if (passe && this.auSol) {
+          corps.x += sx
+          corps.y -= monte
+          continue
+        }
         this.vx = 0
         this.acc.bloquerX()
         break
       }
       corps.x += sx
+      // Sur une pente, on SUIT la surface au lieu de la quitter : sans cela on
+      // descend une cote en petits sauts, une image sur deux en l'air.
+      if (this.auSol && this.vy >= 0) {
+        const dessous = sommetPente(g, rect(corps.x + b.x, corps.y + b.y, b.l, b.h))
+        if (dessous !== null) {
+          const cible = dessous - b.h - b.y
+          const ecart = cible - corps.y
+          if (ecart < 0 && ecart >= -this.r.montee) corps.y = cible
+          else if (ecart > 0 && ecart <= this.r.montee) corps.y = cible
+        }
+      }
     }
 
     // Vertical, avec correction de coin a la montee.
@@ -443,7 +498,12 @@ export class Plateformeur {
       const ici = rect(corps.x + b.x, corps.y + b.y, b.l, b.h)
       // Une plateforme n'arrete que ce qui descend, et seulement au moment ou
       // le bas du corps croise le haut de la case.
-      const posee = sy > 0 && this.traversee <= 0 && plateformeArrete(g, ici)
+      const surLaPente = sy > 0 && (() => {
+        const p = sommetPente(g, rect(corps.x + b.x, corps.y + b.y, b.l, b.h))
+        return p !== null && corps.y + b.y + b.h + sy > p
+      })()
+      const posee = sy > 0 && this.traversee <= 0
+        && (plateformeArrete(g, ici) || surLaPente)
       if (!posee && !toucheSolide(g, rect(corps.x + b.x, corps.y + b.y + sy, b.l, b.h))) {
         corps.y += sy
         continue

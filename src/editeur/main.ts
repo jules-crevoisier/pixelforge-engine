@@ -14,6 +14,7 @@ import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
 import { projetNeuf } from './projet-neuf.ts'
+import { rendre as rendreSon } from '../runtime/son.ts'
 import type { ProjetSerialise } from '../export/format.ts'
 import { retirerDe } from '../runtime/entites.ts'
 import * as dossier from '../io/dossier.ts'
@@ -266,6 +267,8 @@ function projetCourant() {
     monde.planches,
     monde.projection,
     monde.especes,
+    monde.sons ?? [],
+    monde.dialogues ?? [],
   )
 }
 
@@ -358,8 +361,59 @@ const panneauProjet = new PanneauProjet(
       verdict.textContent = quoi
     },
     dire: (m) => { verdict.textContent = m },
+    planches: () => monde.planches,
+    /**
+     * Une planche a change : on refait son atlas, et l'on redessine.
+     *
+     * Refaire l'atlas et non le monde. Un atlas est un canevas hors ecran
+     * reconstruit en quelques millisecondes ; le monde, lui, emporte la scene,
+     * le peuplement et l'historique. Les confondre rendrait le pinceau
+     * inutilisable des le deuxieme pixel.
+     */
+    planchesChangees: () => {
+      for (const t of monde.planches) {
+        const atlas = atlasDepuisLettres(t.dessins, t.cle, t.largeurCase, t.colonnes, t.hauteurCase)
+        jeu.sprites.set(t.nom, atlas)
+        const carte = jeu.cartes.get(t.nom)
+        if (carte) jeu.cartes.set(t.nom, { carte: carte.carte, atlas })
+      }
+      // La carte du monde peut porter un autre nom que sa planche : on refait
+      // aussi la sienne, sinon le decor garde l'ancien dessin.
+      for (const [nom, c] of jeu.cartes) {
+        const propre = jeu.sprites.get(nom) ?? jeu.sprites.get(monde.planches[0]?.nom ?? '')
+        if (propre) jeu.cartes.set(nom, { carte: c.carte, atlas: propre })
+      }
+      if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() }
+    },
+    animations: () => monde.animations as unknown as never,
+    sons: () => (monde.sons ?? []) as never,
+    ecouter: (s) => ecouterSon(s),
   },
 )
+
+/**
+ * Faire entendre un son dans l'editeur.
+ *
+ * Le contexte est cree au PREMIER son et non au chargement : un navigateur
+ * refuse d'ouvrir l'audio avant qu'on ait clique quelque part, et un contexte
+ * ouvert trop tot reste suspendu pour toujours sans rien dire.
+ */
+let audio: AudioContext | null = null
+function ecouterSon(s: Parameters<typeof rendreSon>[0]): void {
+  type Fabrique = new () => AudioContext
+  const F = globalThis as unknown as { AudioContext?: Fabrique; webkitAudioContext?: Fabrique }
+  const Classe = F.AudioContext ?? F.webkitAudioContext
+  if (!Classe) { verdict.textContent = 'Ce navigateur ne sait pas jouer de son.'; return }
+  if (!audio) audio = new Classe()
+  if (audio.state === 'suspended') void audio.resume()
+  const echantillons = rendreSon(s, audio.sampleRate)
+  const tampon = audio.createBuffer(1, echantillons.length, audio.sampleRate)
+  tampon.getChannelData(0).set(echantillons)
+  const source = audio.createBufferSource()
+  source.buffer = tampon
+  source.connect(audio.destination)
+  source.start()
+}
 
 document.getElementById('nouveau')?.addEventListener('click', () => {
   if (!window.confirm('Créer un projet vide ? Ce qui est à l’écran sera remplacé.')) return

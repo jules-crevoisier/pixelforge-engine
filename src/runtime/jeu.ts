@@ -39,6 +39,21 @@ export interface ContexteJeu {
    * pas de sens : elle n'est pas dans la grille.
    */
   readonly grille: GrilleSolide
+  /**
+   * Les entrees d'un joueur donne, pour un monde a plusieurs.
+   *
+   * ## Pourquoi une FONCTION et non un tableau
+   *
+   * Une entite dirigee demande « mes entrees » sans savoir combien de joueurs
+   * existent, ni si le jeu est en reseau. Un tableau l'obligerait a connaitre
+   * son rang ; une fonction lui permet de ne connaitre que son NOM — celui que
+   * porte son noeud. C'est la meme raison qui fait qu'une espece porte un nom
+   * d'intention et non un numero.
+   *
+   * Sans joueur nomme, on rend les entrees communes : c'est le cas d'un jeu
+   * solo, et il ne doit rien couter.
+   */
+  entreesDe?(joueur: string): Entrees
   /** Les corps mobiles du monde : plateformes, caisses, obstacles vivants. */
   readonly corps: CorpsMobiles
   /** Numero du pas depuis le demarrage. */
@@ -95,6 +110,83 @@ export class Jeu {
    * donne le glissement d'Isaac. Plus long, et l'on attend.
    */
   dureeTransition = 0.28
+
+  /**
+   * Le temps d'arret d'un impact, en millisecondes restantes.
+   *
+   * ## Ce que le hit-stop repare
+   *
+   * Un coup qui touche sans que rien ne s'arrete se lit comme un coup qui
+   * TRAVERSE. Deux ou trois images de gel, et le meme coup PORTE : l'oeil a le
+   * temps de voir la rencontre, et le cerveau lui attribue un poids. C'est la
+   * technique la moins chere et la plus efficace du genre, et celle qu'aucun
+   * moteur generaliste ne propose parce qu'elle contredit l'idee d'une
+   * simulation reguliere.
+   *
+   * ## Pourquoi elle GELE la simulation et non l'affichage
+   *
+   * On pourrait ralentir le temps. Ce n'est pas la meme chose : un
+   * ralentissement etale le mouvement, un arret le SUSPEND. C'est
+   * l'interruption nette qui fait l'impact — la meme raison qui fait qu'une
+   * image fixe d'un coup est plus violente qu'un fondu.
+   *
+   * L'affichage, lui, continue : sans quoi la fenetre paraitrait figee, et
+   * l'on ne verrait pas les etincelles jaillir pendant l'arret.
+   */
+  private gelRestant = 0
+
+  /**
+   * La secousse de camera : amplitude en pixels, et duree restante.
+   *
+   * Elle est ENTIERE et reproductible. Un tremblement en sous-pixel fait
+   * onduler toute la grille — le defaut exact que l'echelle entiere existe
+   * pour eviter, reintroduit par la porte de derriere. Et un tremblement tire
+   * au sort ferait diverger deux captures d'ecran de la meme partie.
+   */
+  private secousseAmplitude = 0
+  private secousseRestante = 0
+  private secousseDuree = 1
+  private secousseGraine = 1
+
+  /**
+   * Gele la simulation quelques millisecondes. L'affichage continue.
+   *
+   * Le plus long l'emporte : deux coups au meme instant ne doivent pas
+   * additionner leurs arrets, sinon une melee fige le jeu une demi-seconde.
+   */
+  geler(ms: number): void { this.gelRestant = Math.max(this.gelRestant, ms) }
+
+  /** Secoue la camera. Le plus fort l'emporte, pour la meme raison. */
+  secouer(amplitude: number, ms: number): void {
+    if (this.secousseRestante > 0 && amplitude <= this.secousseAmplitude) return
+    this.secousseAmplitude = amplitude
+    this.secousseRestante = ms
+    this.secousseDuree = Math.max(1, ms)
+    this.secousseGraine = (Math.imul(this.secousseGraine, 1664525) + 1013904223) >>> 0
+  }
+
+  get gele(): boolean { return this.gelRestant > 0 }
+  get secousse(): number {
+    return this.secousseRestante > 0
+      ? this.secousseAmplitude * (this.secousseRestante / this.secousseDuree)
+      : 0
+  }
+
+  /**
+   * Le decalage de la secousse a cet instant, en pixels ENTIERS.
+   *
+   * L'amplitude decroit lineairement : une decroissance exponentielle laisse
+   * un demi-pixel de tremblement pendant une seconde apres le coup, et l'on ne
+   * comprend pas pourquoi l'image ne se pose pas.
+   */
+  private decalageSecousse(): { x: number; y: number } {
+    if (this.secousseRestante <= 0) return { x: 0, y: 0 }
+    const a = this.secousse
+    const n = Math.imul(this.secousseGraine ^ Math.round(this.secousseRestante), 2654435761) >>> 0
+    const sx = ((n & 0xffff) / 65536) * 2 - 1
+    const sy = ((n >>> 16) / 65536) * 2 - 1
+    return { x: Math.round(sx * a), y: Math.round(sy * a) }
+  }
   /**
    * Les corps mobiles du monde.
    *
@@ -103,6 +195,14 @@ export class Jeu {
    * la scene, comme il remplit le reste : rien ne s'y inscrit a la main.
    */
   readonly corps = new CorpsMobiles()
+  /**
+   * Les entrees par joueur, quand il y en a plusieurs.
+   *
+   * Vide en solo : `entreesDe` rend alors les entrees communes, et rien dans
+   * le jeu ne sait qu'il existe une notion de joueur. C'est ce qui permet
+   * d'ajouter le multijoueur sans rendre le solo plus complique.
+   */
+  readonly entreesJoueurs = new Map<string, Entrees>()
   private grilleComposee: GrilleSolide | null = null
   private carteComposee: Carte | null = null
   cartes = new Map<string, { carte: Carte; atlas: Atlas }>()
@@ -173,11 +273,25 @@ export class Jeu {
 
   /** Un pas de simulation. Public, pour qu'un banc puisse le declencher. */
   avancer(): void {
+    // La secousse s'eteint meme pendant le gel : elle appartient a
+    // l'affichage, et une camera figee pendant l'arret ne tremblerait pas —
+    // c'est-a-dire qu'elle ne servirait a rien au moment ou elle sert.
+    if (this.secousseRestante > 0) this.secousseRestante -= this.boucle.pasMs
+    if (this.gelRestant > 0) {
+      this.gelRestant -= this.boucle.pasMs
+      // On rend la main SANS avancer : le monde est suspendu, pas ralenti.
+      // C'est l'interruption nette qui fait l'impact.
+      return
+    }
     // Les entrees apprennent OU L'ON EN EST avant que quiconque ne les lise.
     // C'est la seule horloge qu'elles connaissent : un compte de pas, donc une
     // partie qui se rejoue a l'identique.
     this.entrees.pasMs = this.boucle.pasMs
     this.entrees.auPas(this.boucle.pas)
+    // La manette s'INTERROGE, elle n'envoie rien. On la lit au pas, avec le
+    // reste : la lire a l'image donnerait un etat de manette different de
+    // l'etat du clavier au meme pas, et un rejeu ne reproduirait plus rien.
+    this.entrees.lireManettes()
     const ctx = this.contexte()
     for (const [nom, script] of this.scripts) {
       const n = trouverParNom(this.racine, nom)
@@ -239,7 +353,12 @@ export class Jeu {
   apresDessin: ((ctx: CanvasRenderingContext2D, ecran: Ecran) => void) | null = null
 
   dessiner(): void {
-    rendreScene(this.ecran, this.racine, this.camera, this.cartes, this.sprites, this.projection)
+    // La secousse se pose sur la camera au moment du DESSIN et n'est jamais
+    // ecrite dedans : sinon elle deriverait, et la camera ne reviendrait pas
+    // exactement ou elle etait.
+    const t = this.decalageSecousse()
+    const vue = { x: this.camera.x + t.x, y: this.camera.y + t.y }
+    rendreScene(this.ecran, this.racine, vue, this.cartes, this.sprites, this.projection)
     if (this.apresDessin) this.apresDessin(this.ecran.ctx, this.ecran)
     this.ecran.presenter()
   }
@@ -253,6 +372,7 @@ export class Jeu {
       carte: this.carte,
       grille: this.grille,
       corps: this.corps,
+      entreesDe: (j) => this.entreesJoueurs.get(j) ?? this.entrees,
       pas: this.boucle.pas,
       trouver: (nom) => trouverParNom(this.racine, nom),
       bouger: (corps, dx, dy) => this.bouger(corps, dx, dy),

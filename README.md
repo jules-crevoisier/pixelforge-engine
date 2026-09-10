@@ -445,6 +445,11 @@ seconde.
 - machines à états par espèce : bascules de distance, durées, état suivant
 - déclencheurs attachés à une image d'animation : frapper, tirer
 - projectiles, qui sont des entités comme les autres
+- des pentes à quarante-cinq degrés, montées en marchant, sans escalader les murs
+- hit-stop et secousse de caméra, entière et reproductible
+- manette, tactile par zones, et plan de touches enregistré dans le projet
+- dessiner une planche, monter une animation, régler un son — dans l'éditeur
+- une charge mesurée : 300 créatures à 0,4 ms par pas de simulation
 - une fonte de pixels 5×7, accents français et tout l'ASCII imprimable
 - du son décrit en données, synthétisé, attaché aux événements d'animation —
   et qui ne se rejoue pas quand le réseau rembobine
@@ -764,6 +769,108 @@ Une sauvegarde d'un autre projet est refusée avec la raison ; une abîmée est
 signalée au lieu d'être devinée ; une version plus récente se lit sans faire
 semblant de la comprendre.
 
+## Ce qu'un jeu de plateforme doit avoir
+
+**Les pentes.** À quarante-cinq degrés, la hauteur du sol dans une case vaut la
+position dans la case : une soustraction, et deux tuiles voisines qui se
+raccordent au pixel près. Pour un angle quelconque il faudrait une table par
+angle et un arrondi par colonne — c'est le défaut qu'on voit dans la moitié des
+jeux amateurs, où le personnage sautille en montant une colline.
+
+Une pente n'est **pas** solide : marquée solide, elle bloque comme un mur et
+l'on se cogne dans le bas de la côte au lieu de la monter. Le contrôleur
+cherche donc, devant chaque obstacle, si le même pas passe quelques pixels plus
+haut : si oui, c'est une pente ou une marche et l'on grimpe ; sinon c'est un mur
+et l'on s'arrête. Le même test sert aux deux, ce qui évite d'avoir deux règles
+qui se contredisent un jour.
+
+Un détail a coûté cher : debout au sommet exact d'une case de pente, les pieds
+sont sur sa frontière haute, donc la rangée du dernier pixel du corps est celle
+**au-dessus** de la pente — et la pente devient invisible. On en regarde
+maintenant deux.
+
+**Le hit-stop.** Un coup qui touche sans que rien ne s'arrête se lit comme un
+coup qui *traverse*. Deux ou trois images de gel, et le même coup **porte** :
+l'œil a le temps de voir la rencontre. C'est la technique la moins chère et la
+plus efficace du genre, et celle qu'aucun moteur généraliste ne propose parce
+qu'elle contredit l'idée d'une simulation régulière.
+
+Elle **gèle** la simulation, elle ne la ralentit pas : un ralentissement étale
+le mouvement, un arrêt le suspend, et c'est l'interruption nette qui fait
+l'impact. L'affichage, lui, continue — sinon on ne verrait pas les étincelles
+jaillir pendant l'arrêt. Deux coups au même instant n'additionnent pas leurs
+arrêts : le plus long l'emporte, sans quoi une mêlée fige le jeu une
+demi-seconde.
+
+**La secousse de caméra** est entière et reproductible. Un tremblement en
+sous-pixel fait onduler toute la grille — le défaut exact que l'échelle entière
+existe pour éviter, réintroduit par la porte de derrière. Elle décroît
+linéairement : une décroissance exponentielle laisse un demi-pixel de
+tremblement une seconde après le coup, et l'on ne comprend pas pourquoi l'image
+ne se pose pas.
+
+**La manette, le tactile, les touches.** La couche d'*actions* existait depuis
+le premier jour — le jeu demande « est-ce que le joueur veut aller à droite » et
+non « la flèche droite est-elle enfoncée » — et personne n'était jamais venu y
+brancher autre chose qu'un clavier. Une manette s'*interroge* au pas et non à
+l'image, sinon son état ne correspondrait plus à celui du clavier au même pas et
+un rejeu ne reproduirait plus rien. Les zones tactiles sont en **fractions** de
+la surface, pour que la même description marche sur un téléphone et sur une
+tablette. Et le plan de touches est dans le fichier de projet : un plan figé rend
+le jeu injouable pour une partie des gens, en silence.
+
+## Dessiner, monter et régler dans l'éditeur
+
+On pouvait créer une espèce sans écrire une ligne de TypeScript — et elle
+empruntait forcément le dessin d'une autre. Trois ateliers referment ça.
+
+**Le dessin** est le seul geste de l'éditeur qui ne passe **pas** par la
+reconstruction du projet. Tous les autres transforment le fichier et relisent le
+monde ; celui-ci ne peut pas, parce qu'on peint soixante pixels par seconde en
+glissant la souris. On modifie donc la planche vivante et l'on refait l'atlas —
+cent fois moins cher, et sans risque : une planche ne porte aucune référence
+vers autre chose.
+
+On peint une **lettre** et non une couleur. Un dessin est une grille de lettres,
+et la clé dit quelle couleur chaque lettre porte ; peindre une couleur
+directement obligerait à inventer une lettre par teinte. Le sous-produit est
+qu'un dessin ne peut pas sortir de la palette.
+
+**Le monteur d'animations** montre les **événements** — « le pied touche ici »,
+« le coup porte là ». C'est ce qui le distingue d'un diaporama, et la seule
+façon d'accorder un son à un dessin. Les cacher ferait régler les sons en
+millisecondes, ce que tout le moteur existe pour éviter. Retirer une image
+décale les événements suivants : ne pas les décaler ferait sonner le pas à la
+mauvaise image, sans que rien ne le signale.
+
+**Le réglage des sons** a un bouton *Écouter*, et ce n'est pas un agrément : un
+son ne se règle pas par le raisonnement. On change une fréquence de cinquante
+hertz, on écoute, on recommence. Sans ce bouton il faudrait relancer le jeu et
+provoquer l'événement pour entendre chaque essai — le réglage deviendrait si
+pénible que personne ne toucherait aux sons livrés.
+
+## Ce qu'on affirmait sans l'avoir mesuré
+
+« Soixante images par seconde » figurait dans ce README depuis le premier jour
+et reposait sur ma parole. `npm run banc:charge` le mesure :
+
+    300 créatures · 0,394 ms par pas · 42 pas de simulation par image
+    4000 particules · 0,184 ms
+    rembobinage de 16 pas · 1,05 ms
+    un étage engendré · 2,47 ms
+
+On mesure le **pas de simulation** et non l'image : le dessin dépend du
+navigateur et de la machine, la simulation ne dépend que du code. Et l'on
+mesure la **pente** du coût, pas seulement sa valeur : douze fois plus de
+créatures pour cinq fois le temps. Un coût linéaire tient encore à mille ; un
+coût quadratique s'écroule dès deux cents, et aurait donné cent quarante-quatre.
+
+Les seuils sont larges à dessein. Une machine de compilation partagée n'est pas
+une machine de joueur, et un seuil serré rendrait ce banc rouge une fois sur cinq
+pour des raisons étrangères au code — un banc qui échoue au hasard cesse d'être
+lu. Ils repèrent un décrochage franc, et le chiffre s'affiche toujours pour
+qu'une dérive se voie même quand le banc passe.
+
 ## L'agent qui évalue, et qui reboucle
 
     npm run agent            # tout, navigateur compris
@@ -823,14 +930,16 @@ pire défaut d'une mesure.
     The Binding of Isaac — salles engendrées       7/7
     Dead Cells — combat et corps                   6/6
     Faire un jeu sans lire le moteur               8/8
-    Le multijoueur, et ce qu'il exige d'abord      5/5
-    Ce qu'un jeu a en plus de son gameplay         7/7
-                                          535 vérifications
+    Le multijoueur, et ce qu'il exige d'abord      6/6
+    Ce qu'on affirme sans l'avoir mesuré           4/4
+    Ce qu'un jeu de plateforme doit avoir          5/5
+    Ce qu'un jeu a en plus de son gameplay         8/8
+                                          575 vérifications
 
-Elle est de nouveau entièrement verte, donc elle ne mesure plus rien : la
-prochaine étape est de l'élargir à ce qui manque encore — plusieurs personnages
-dirigeables en réseau, une musique, un éditeur de sons, un export du son vers
-Godot.
+Elle est de nouveau entièrement verte, donc elle ne mesure plus rien. Ce qui
+reste et qu'elle dira dès qu'on l'élargira : une musique, l'export du son vers
+Godot et Unity, la traduction, et des pentes à d'autres angles que quarante-cinq
+degrés.
 
 Le relevé complet est dans [`docs/evaluation.md`](docs/evaluation.md).
 

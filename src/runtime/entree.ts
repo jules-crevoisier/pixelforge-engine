@@ -122,6 +122,19 @@ export class Entrees {
     this.plan = new Map(Object.entries(plan))
   }
 
+  /**
+   * Le plan courant, sous une forme qui s'ecrit dans un fichier.
+   *
+   * Les codes inventes pour le tactile et la manette — ceux qui commencent par
+   * une arobase — en sont retires : ils ne designent aucune touche, et les
+   * enregistrer ferait croire a un plan qu'on pourrait modifier.
+   */
+  planCourant(): Record<Action, string[]> {
+    const sortie: Record<Action, string[]> = {}
+    for (const [a, k] of this.plan) sortie[a] = k.filter((c) => !c.startsWith('@'))
+    return sortie
+  }
+
   /** Branche l'ecoute clavier. Rend la fonction qui la debranche. */
   brancher(cible: EventTarget = window): () => void {
     const bas = (e: Event): void => {
@@ -155,7 +168,173 @@ export class Entrees {
     return this.detacher
   }
 
-  debrancher(): void { this.detacher?.(); this.detacher = null }
+  /**
+   * Les zones de l'ecran qui valent une action, pour le tactile.
+   *
+   * En FRACTIONS de la surface et non en pixels : la meme description marche
+   * sur un telephone et sur une tablette, ce qui est tout l'interet. En
+   * pixels, il faudrait un jeu de zones par appareil.
+   */
+  private zones: { x: number; y: number; l: number; h: number; action: Action }[] = []
+  private doigts = new Map<number, Action>()
+  private detacherTactile: (() => void) | null = null
+
+  /**
+   * Branche le tactile sur une surface, avec des zones.
+   *
+   * ## Pourquoi des zones et pas des boutons dessines
+   *
+   * Un bouton dessine appartient a l'interface ; une zone appartient aux
+   * ENTREES. Les separer permet a un jeu de dessiner ses boutons comme il veut
+   * — ou de ne pas les dessiner du tout, ce que font les jeux ou l'on pose le
+   * pouce n'importe ou a gauche pour marcher.
+   *
+   * ## Pourquoi on suit chaque doigt
+   *
+   * Un doigt qui glisse de la zone « gauche » a la zone « droite » doit
+   * relacher l'une et presser l'autre. En ne regardant que les appuis et les
+   * relevers, le personnage continuerait de courir a gauche pendant qu'on
+   * pousse a droite — et l'on croirait le jeu casse.
+   */
+  brancherTactile(
+    cible: HTMLElement,
+    zones: { x: number; y: number; l: number; h: number; action: Action }[],
+  ): () => void {
+    this.zones = zones
+    const actionSous = (e: PointerEvent): Action | null => {
+      const b = cible.getBoundingClientRect()
+      if (b.width <= 0 || b.height <= 0) return null
+      const fx = (e.clientX - b.left) / b.width
+      const fy = (e.clientY - b.top) / b.height
+      for (const z of this.zones) {
+        if (fx >= z.x && fx < z.x + z.l && fy >= z.y && fy < z.y + z.h) return z.action
+      }
+      return null
+    }
+    const poser = (e: Event): void => {
+      const p = e as PointerEvent
+      const a = actionSous(p)
+      const avant = this.doigts.get(p.pointerId)
+      if (avant === a) return
+      if (avant) this.relacherAction(avant)
+      if (a) { this.doigts.set(p.pointerId, a); this.presserAction(a) }
+      else this.doigts.delete(p.pointerId)
+      e.preventDefault()
+    }
+    const lever = (e: Event): void => {
+      const p = e as PointerEvent
+      const a = this.doigts.get(p.pointerId)
+      if (a) this.relacherAction(a)
+      this.doigts.delete(p.pointerId)
+    }
+    const bouger = (e: Event): void => {
+      if (!this.doigts.has((e as PointerEvent).pointerId)) return
+      poser(e)
+    }
+    cible.addEventListener('pointerdown', poser)
+    cible.addEventListener('pointermove', bouger)
+    cible.addEventListener('pointerup', lever)
+    cible.addEventListener('pointercancel', lever)
+    this.detacherTactile = () => {
+      cible.removeEventListener('pointerdown', poser)
+      cible.removeEventListener('pointermove', bouger)
+      cible.removeEventListener('pointerup', lever)
+      cible.removeEventListener('pointercancel', lever)
+      this.doigts.clear()
+    }
+    return this.detacherTactile
+  }
+
+  /**
+   * Presse une ACTION directement, sans passer par une touche.
+   *
+   * Le tactile et la manette n'ont pas de code de touche. On leur invente un
+   * code — le nom de l'action, prefixe — plutot que de tenir un deuxieme
+   * mecanisme a cote du clavier : deux mecanismes finissent par diverger, et
+   * l'un des deux oublie la memoire des appuis.
+   */
+  presserAction(a: Action): void {
+    const k = `@${a}`
+    if (!this.plan.has(a)) this.plan.set(a, [])
+    const codes = this.plan.get(a) as string[]
+    if (!codes.includes(k)) codes.push(k)
+    if (this.enfoncees.has(k)) return
+    this.enfoncees.add(k)
+    this.pasAppui.set(k, this.pasCourant)
+  }
+
+  relacherAction(a: Action): void {
+    const k = `@${a}`
+    this.enfoncees.delete(k)
+    this.pasRelache.set(k, this.pasCourant)
+  }
+
+  /**
+   * Les manettes branchees, lues a chaque pas.
+   *
+   * ## Pourquoi on INTERROGE au lieu d'ecouter
+   *
+   * Une manette n'envoie pas d'evenement : on lit son etat. C'est donc a la
+   * boucle de la consulter, une fois par pas, au moment ou elle dit aux
+   * entrees ou l'on en est. Le faire a l'image donnerait un etat de manette
+   * different de l'etat du clavier au meme pas, et un rejeu ne reproduirait
+   * plus rien.
+   *
+   * ## Le plan par defaut
+   *
+   * Celui d'une manette de salon : la croix pour se diriger, le bouton du bas
+   * pour sauter, celui de droite pour agir, les gachettes pour le dash. On y
+   * ajoute les axes du stick gauche, avec une zone morte — sans elle, un stick
+   * use fait marcher le personnage tout seul.
+   */
+  planManette: Record<number, Action> = {
+    0: 'saut', 1: 'action', 2: 'action', 3: 'dash',
+    5: 'dash', 7: 'dash',
+    9: 'annuler',
+    12: 'haut', 13: 'bas', 14: 'gauche', 15: 'droite',
+  }
+
+  /** En deca de quoi un stick est considere au repos. */
+  zoneMorte = 0.35
+
+  private manetteActive = false
+
+  /** Lit les manettes et convertit leur etat en actions. */
+  lireManettes(): void {
+    const nav = globalThis as unknown as { navigator?: { getGamepads?: () => unknown[] } }
+    const liste = nav.navigator?.getGamepads?.() ?? []
+    const voulues = new Set<Action>()
+    let branchee = false
+    for (const brut of liste) {
+      const m = brut as { buttons?: { pressed: boolean }[]; axes?: number[] } | null
+      if (!m) continue
+      branchee = true
+      const boutons = m.buttons ?? []
+      for (const [i, a] of Object.entries(this.planManette)) {
+        if (boutons[Number(i)]?.pressed) voulues.add(a)
+      }
+      const axes = m.axes ?? []
+      if ((axes[0] ?? 0) < -this.zoneMorte) voulues.add('gauche')
+      if ((axes[0] ?? 0) > this.zoneMorte) voulues.add('droite')
+      if ((axes[1] ?? 0) < -this.zoneMorte) voulues.add('haut')
+      if ((axes[1] ?? 0) > this.zoneMorte) voulues.add('bas')
+    }
+    if (!branchee && !this.manetteActive) return
+    this.manetteActive = branchee
+    // On relache ce qui n'est plus voulu : sans cela, lacher la croix
+    // laisserait le personnage courir pour toujours.
+    for (const a of ACTIONS_ORDRE) {
+      if (voulues.has(a)) this.presserAction(a)
+      else if (this.enfoncees.has(`@${a}`) && !this.doigts.size) this.relacherAction(a)
+    }
+  }
+
+  debrancher(): void {
+    this.detacher?.()
+    this.detacher = null
+    this.detacherTactile?.()
+    this.detacherTactile = null
+  }
 
   private touches(a: Action): string[] { return this.plan.get(a) ?? [] }
 

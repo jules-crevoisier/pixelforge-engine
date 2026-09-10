@@ -1680,8 +1680,42 @@ console.log('\n--- un projet enregistre puis relu ---')
       'une liste blanche par type perdrait tout champ ajoute depuis')
   }
 
-  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 5,
+  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 6,
     'un chargeur d\'un autre langage doit pouvoir DIRE qu\'il ne comprend pas')
+
+  /*
+   * Ce qui n'est pas dans le fichier n'existe pas.
+   *
+   * Le son et les dialogues ont ete ecrits, branches, eprouves — et oublies
+   * du format. Un projet enregistre se rouvrait muet, et un export ne
+   * contenait pas un octet de son. Aucun banc ne le disait, parce qu'aucun ne
+   * demandait « et cela traverse-t-il l'enregistrement ». Celui-ci le demande,
+   * et il le demandera pour tout ce qu'on ajoutera ensuite.
+   */
+  {
+    const { mondeCaverne } = await import('../src/demo/mondes.ts')
+    const m = mondeCaverne()
+    const projet = serialiserProjet(
+      m.id, m.vue, new Palette('p', m.couleurs.map(depuisHex)),
+      [{ nom: m.id, carte: m.carte }], [{ nom: 'principale', racine: m.racine }],
+      m.animations, m.planches, m.projection, m.especes, m.sons ?? [], m.dialogues ?? [],
+    )
+    const relu = JSON.parse(versTexte(projet))
+    check('les sons partent dans le fichier de projet',
+      relu.sons.length > 0 && relu.sons.every((q) => q.nom && q.forme && q.duree > 0),
+      `${relu.sons.length} sons, dont « ${relu.sons[0]?.nom} »`)
+    check('et un son relu décrit exactement le même son',
+      JSON.stringify(relu.sons) === JSON.stringify(m.sons),
+      'six nombres : la forme, deux fréquences, la durée, le volume, l’enveloppe')
+    check('les dialogues aussi, texte et choix compris',
+      relu.dialogues.length > 0
+      && relu.dialogues[0].repliques.some((r) => r.choix.length > 0)
+      && relu.dialogues[0].repliques[0].texte.includes('caverne'),
+      `${relu.dialogues[0]?.repliques.length} répliques`)
+    check('et le texte du jeu n’est donc plus dans le code',
+      relu.dialogues[0].repliques[0].qui === 'Pixl',
+      'une faute d’orthographe ne demande plus de recompiler, et une traduction devient possible')
+  }
 }
 
 console.log('\n--- les quatre mondes se construisent tous ---')

@@ -84,10 +84,16 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
     couleurs: p.palette.couleurs,
     animations,
     especes: p.especes ?? [],
+    sons: p.sons ?? [],
+    dialogues: p.dialogues ?? [],
     peuplement,
     planches: p.planches,
     tuilePinceau: 0,
     installer(jeu) {
+      // Le plan de touches du projet, s'il en a un. Sans cela, un projet
+      // remappe se rouvre avec les touches d'usine et l'on croit le
+      // remappage perdu.
+      if (p.touches && Object.keys(p.touches).length) jeu.entrees.definirPlan(p.touches)
       for (const t of p.planches) {
         const atlas = atlasDepuisLettres(t.dessins, t.cle, t.largeurCase, t.colonnes, t.hauteurCase)
         // Une planche sert aux tuiles ET aux sprites : c'est le meme dessin.

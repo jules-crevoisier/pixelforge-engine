@@ -8,6 +8,9 @@ import { espece, type Espece } from '../runtime/entites.ts'
 import { TUILE, CLE_DONJON, PLANCHE_DONJON, CLE_HEROS, PLANCHE_HEROS, COLONNES_HEROS } from '../demo/art.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from '../demo/art-creatures.ts'
 import { ESPECES_DEMO, clipsDemo } from '../demo/especes-demo.ts'
+import { SONS_DEMO } from '../demo/sons-demo.ts'
+import { replique } from '../runtime/dialogue.ts'
+import { Entrees } from '../runtime/entree.ts'
 
 /**
  * Ce qu'on ne peut pas faire au pinceau : creer, redimensionner, ajouter.
@@ -159,6 +162,19 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     // d'entites sans entite ne s'explique pas, et l'on ne saurait pas par ou
     // commencer. On les remplace ensuite, une par une.
     especes: ESPECES_DEMO.map((e) => ({ ...e, boite: { ...e.boite } })),
+    // Les sons partent avec le projet, comme les planches. Un projet neuf
+    // muet ferait croire que le moteur n'a pas de son.
+    sons: SONS_DEMO.map((q) => ({ ...q })),
+    // Le plan de touches part avec le projet : un jeu qu'on ne peut pas
+    // remapper est injouable pour une partie des gens, en silence.
+    touches: new Entrees().planCourant(),
+    dialogues: [{
+      nom: 'accueil',
+      repliques: [replique(
+        'Peignez du mur, posez des créatures, appuyez sur Jouer.',
+        { qui: 'Pixl' },
+      )],
+    }],
   }
 }
 

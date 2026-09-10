@@ -413,6 +413,191 @@ console.log('\n--- la sauvegarde de la partie ---')
     'un lecteur doit pouvoir dire qu’il ne comprend pas')
 }
 
+console.log('\n--- la manette, le tactile, et le plan de touches ---')
+
+{
+  const { Entrees, ACTIONS_ORDRE } = await import('../src/runtime/entree.ts')
+
+  // Le plan de touches est REMAPPABLE, et il s'ecrit dans un fichier. Un plan
+  // fige rend le jeu injouable pour une partie des gens, en silence.
+  {
+    const e = new Entrees()
+    const plan = e.planCourant()
+    check('le plan de touches se lit et s’enregistre',
+      Array.isArray(plan.saut) && plan.saut.includes('Space'),
+      `saut : ${plan.saut.join(', ')}`)
+    e.definirPlan({ saut: ['KeyJ'], droite: ['KeyL'] })
+    e.auPas(0)
+    e.simulerAppui('KeyJ')
+    check('et un plan remappé prend effet',
+      e.tenue('saut') && !e.tenue('droite'), 'Espace ne fait plus rien, J saute')
+    e.simulerAppui('Space')
+    check('l’ancienne touche ne fait plus rien', !e.tenue('droite'),
+      'sinon le remappage serait un ajout et non un remplacement')
+  }
+
+  // La manette : on l'INTERROGE, elle n'envoie rien. On simule le tableau que
+  // le navigateur rend, ce qui permet de l'eprouver sans manette.
+  {
+    const e = new Entrees()
+    e.pasMs = 1000 / 60
+    const faux = { buttons: [], axes: [0, 0] }
+    // `navigator` est en lecture seule sous Node : on le REMPLACE par une
+    // propriete a nous, et l'on remet l'original a la fin. Contourner en
+    // ajoutant un crochet d'injection au moteur ferait exister, dans le code
+    // livre, un chemin qui ne sert qu'au banc.
+    const navAvant = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { getGamepads: () => [faux] }, configurable: true, writable: true,
+    })
+    e.auPas(0)
+    faux.buttons = Array.from({ length: 16 }, (_, i) => ({ pressed: i === 15 }))
+    e.lireManettes()
+    check('une manette branchée dirige comme le clavier',
+      e.tenue('droite') && e.axe().x === 1, `axe x = ${e.axe().x}`)
+    e.auPas(1)
+    faux.buttons = Array.from({ length: 16 }, () => ({ pressed: false }))
+    e.lireManettes()
+    check('et lâcher la croix arrête bien le personnage',
+      !e.tenue('droite'), 'sinon il courrait pour toujours')
+    e.auPas(2)
+    faux.axes = [-0.9, 0]
+    e.lireManettes()
+    check('le stick gauche dirige aussi', e.axe().x === -1, `axe x = ${e.axe().x}`)
+    e.auPas(3)
+    faux.axes = [-0.2, 0]
+    e.lireManettes()
+    check('mais une zone morte évite qu’un stick usé marche tout seul',
+      e.axe().x === 0, 'deux dixièmes de course ne comptent pas')
+    if (navAvant) Object.defineProperty(globalThis, 'navigator', navAvant)
+    else delete globalThis.navigator
+  }
+
+  // Le tactile : des zones en FRACTIONS de la surface, donc la meme
+  // description sur un telephone et sur une tablette.
+  {
+    const e = new Entrees()
+    e.auPas(0)
+    e.presserAction('gauche')
+    check('une zone tactile presse une action',
+      e.tenue('gauche') && e.axe().x === -1, `axe x = ${e.axe().x}`)
+    check('et elle compte comme un appui récent',
+      e.vientDePresser('gauche'), 'le tampon de saut doit marcher au doigt aussi')
+    e.relacherAction('gauche')
+    check('la relâcher l’arrête', !e.tenue('gauche'))
+    check('les codes inventés ne polluent pas le plan enregistré',
+      !JSON.stringify(e.planCourant()).includes('@gauche'),
+      'ils ne désignent aucune touche : les enregistrer ferait croire à un plan modifiable')
+    void ACTIONS_ORDRE
+  }
+}
+
+console.log('\n--- le hit-stop et la secousse ---')
+
+{
+  /*
+   * Le gel et la secousse vivent dans `Jeu`, qui demande un canevas. On
+   * eprouve donc la REGLE sur un double minimal — un compteur qui s'arrete —
+   * plutot que de renoncer a la mesurer. Ce qui compte ici est l'arithmetique
+   * du gel et la decroissance de la secousse, et ni l'une ni l'autre ne
+   * dependent du navigateur.
+   */
+  class JeuMinimal {
+    constructor(pasMs) {
+      this.pasMs = pasMs
+      this.gelRestant = 0
+      this.secousseAmplitude = 0
+      this.secousseRestante = 0
+      this.secousseDuree = 1
+      this.secousseGraine = 1
+      this.pas = 0
+    }
+
+    geler(ms) { this.gelRestant = Math.max(this.gelRestant, ms) }
+
+    secouer(a, ms) {
+      if (this.secousseRestante > 0 && a <= this.secousseAmplitude) return
+      this.secousseAmplitude = a
+      this.secousseRestante = ms
+      this.secousseDuree = Math.max(1, ms)
+      this.secousseGraine = (Math.imul(this.secousseGraine, 1664525) + 1013904223) >>> 0
+    }
+
+    get secousse() {
+      return this.secousseRestante > 0
+        ? this.secousseAmplitude * (this.secousseRestante / this.secousseDuree)
+        : 0
+    }
+
+    decalage() {
+      if (this.secousseRestante <= 0) return { x: 0, y: 0 }
+      const a = this.secousse
+      const n = Math.imul(this.secousseGraine ^ Math.round(this.secousseRestante), 2654435761) >>> 0
+      return {
+        x: Math.round((((n & 0xffff) / 65536) * 2 - 1) * a),
+        y: Math.round((((n >>> 16) / 65536) * 2 - 1) * a),
+      }
+    }
+
+    avancer() {
+      if (this.secousseRestante > 0) this.secousseRestante -= this.pasMs
+      if (this.gelRestant > 0) { this.gelRestant -= this.pasMs; return }
+      this.pas++
+    }
+  }
+
+  {
+    const j = new JeuMinimal(1000 / 60)
+    for (let i = 0; i < 10; i++) j.avancer()
+    j.geler(50)
+    for (let i = 0; i < 10; i++) j.avancer()
+    check('le gel suspend la simulation, il ne la ralentit pas',
+      j.pas === 10 + 7, `${j.pas} pas — trois images gelées sur cinquante millisecondes`)
+    check('et le monde repart tout seul', !(j.gelRestant > 0), 'un gel qui ne finit pas est un plantage')
+  }
+
+  {
+    const j = new JeuMinimal(1000 / 60)
+    j.geler(100)
+    j.geler(30)
+    check('deux coups au même instant n’additionnent pas leurs arrêts',
+      j.gelRestant === 100, `${j.gelRestant} ms — sinon une mêlée fige le jeu`)
+  }
+
+  {
+    const j = new JeuMinimal(1000 / 60)
+    j.secouer(6, 200)
+    const points = []
+    for (let i = 0; i < 20; i++) { points.push(j.decalage()); j.avancer() }
+    check('la secousse décale la caméra de pixels ENTIERS',
+      points.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y)),
+      'un tremblement en sous-pixel fait onduler toute la grille')
+    check('et elle bouge vraiment',
+      points.some((p) => p.x !== 0 || p.y !== 0),
+      `pointe ${Math.max(...points.map((p) => Math.abs(p.x)))} px`)
+    check('elle s’éteint franchement au lieu de traîner',
+      j.secousse === 0 && j.decalage().x === 0 && j.decalage().y === 0,
+      'une décroissance exponentielle laisse un demi-pixel pendant une seconde')
+    // Reproductible : deux captures d'ecran de la meme partie doivent
+    // coincider, sinon on ne peut rien comparer.
+    const k = new JeuMinimal(1000 / 60)
+    k.secouer(6, 200)
+    const bis = []
+    for (let i = 0; i < 20; i++) { bis.push(k.decalage()); k.avancer() }
+    check('et la même secousse redonne les mêmes décalages',
+      JSON.stringify(points) === JSON.stringify(bis),
+      'deux captures d’écran de la même partie doivent coïncider')
+  }
+
+  {
+    const j = new JeuMinimal(1000 / 60)
+    j.secouer(2, 200)
+    j.secouer(8, 100)
+    check('le coup le plus fort l’emporte sur celui qui traîne',
+      j.secousse > 7, `${j.secousse.toFixed(1)} px`)
+  }
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)

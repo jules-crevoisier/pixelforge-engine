@@ -6,6 +6,8 @@ import { versHex } from '../noyau/palette.ts'
 import type { Clip } from '../runtime/animation.ts'
 import type { Projection } from '../noyau/projection.ts'
 import type { Espece } from '../runtime/entites.ts'
+import type { Son } from '../runtime/son.ts'
+import type { Replique } from '../runtime/dialogue.ts'
 import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
 
 /**
@@ -43,6 +45,15 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  * SOLIDE dans les deux lectures. C'est ce qui permet de monter la version sans
  * ecrire une seule ligne de migration.
  *
+ * **6** — les sons et les dialogues. Ils existaient, ils marchaient, et ils
+ * n'etaient PAS dans le fichier : un projet enregistre se rouvrait muet, et un
+ * export ne contenait pas un octet de son. C'est exactement la faute que la
+ * version 3 avait corrigee pour les dessins, refaite pour le son — et elle
+ * s'est glissee sans que rien ne la signale, parce qu'aucune verification ne
+ * demandait « et cela traverse-t-il l'enregistrement ». La regle vaut pour
+ * tout ce qu'un jeu contient, sans exception : ce qui n'est pas dans le
+ * fichier n'existe pas.
+ *
  * **4** — les especes. Une carte et une scene disaient OU se trouvent les
  * creatures, jamais ce qu'elles sont : leur vie, leur vitesse et leur
  * intention vivaient dans le code du moteur. Un projet relu redevenait une
@@ -70,7 +81,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 5
+export const VERSION_FORMAT = 6
 
 export interface ProjetSerialise {
   version: number
@@ -96,6 +107,31 @@ export interface ProjetSerialise {
    * fonction, et un nom se porte dans les six langages.
    */
   especes: Espece[]
+  /**
+   * Les sons, decrits en donnees. Voir `runtime/son.ts`.
+   *
+   * Six nombres par son, pas un fichier d'onde : c'est ce qui permet a un
+   * projet de tenir dans un seul fichier lisible, et a un diff de montrer
+   * qu'une frequence a change.
+   */
+  sons: Son[]
+  /**
+   * Les suites de repliques, par nom.
+   *
+   * Le texte d'un jeu est du CONTENU, au meme titre qu'une carte. Le laisser
+   * dans le code oblige a recompiler pour corriger une faute d'orthographe, et
+   * interdit toute traduction.
+   */
+  dialogues: { nom: string; repliques: Replique[] }[]
+  /**
+   * Le plan de touches : action vers codes de touches.
+   *
+   * Il est dans le fichier pour la meme raison que le reste : un joueur
+   * gaucher, une personne qui ne peut pas atteindre la barre d'espace, un
+   * clavier qui n'est pas azerty. Un plan fige dans le code rend le jeu
+   * injouable pour une partie des gens, en silence.
+   */
+  touches: Record<string, string[]>
 }
 
 /**
@@ -290,6 +326,9 @@ export function serialiserProjet(
     mode: 'orthogonale', regard: 'dessus', largeurTuile: 16, hauteurTuile: 16, hauteurBloc: 0,
   },
   especes: Espece[] = [],
+  sons: Son[] = [],
+  dialogues: { nom: string; repliques: Replique[] }[] = [],
+  touches: Record<string, string[]> = {},
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -302,6 +341,12 @@ export function serialiserProjet(
     planches: planches.map((p) => ({ ...p, cle: { ...p.cle }, dessins: p.dessins.map((d) => [...d]) })),
     projection: { ...projection },
     especes: especes.map((e) => ({ ...e, boite: { ...e.boite }, plateforme: { ...e.plateforme } })),
+    sons: sons.map((q) => ({ ...q })),
+    dialogues: dialogues.map((d) => ({
+      nom: d.nom,
+      repliques: d.repliques.map((r) => ({ ...r, choix: r.choix.map((c) => ({ ...c })) })),
+    })),
+    touches: Object.fromEntries(Object.entries(touches).map(([a, k]) => [a, [...k]])),
   }
 }
 

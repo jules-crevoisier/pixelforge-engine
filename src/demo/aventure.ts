@@ -120,6 +120,23 @@ export class Aventure {
   /** Le pas courant, pour que le sonneur sache ce qu'il a deja joue. */
   private pasCourant = 0
 
+  /**
+   * L'arret et la secousse d'un impact, en millisecondes et en pixels.
+   *
+   * Ils sont REGLABLES et non fixes, parce qu'un coup d'epee et une mort ne
+   * pesent pas pareil : le meme arret pour les deux rend l'un mou et l'autre
+   * excessif. Les valeurs par defaut sont courtes — deux images pour un coup,
+   * six pour une mort. Au-dela, l'arret cesse d'etre un accent et devient une
+   * saccade.
+   */
+  gelCoupMs = 34
+  gelMortMs = 100
+  secousseCoup = 2
+  secousseMort = 5
+
+  /** Ce qui secoue la camera. Absent : personne ne secoue rien. */
+  private jeu: { geler(ms: number): void; secouer(a: number, ms: number): void } | null = null
+
   /** Les gerbes, decrites en donnees comme le reste. */
   gerbes: Record<string, Emission> = {
     // Le coup part vers le haut et retombe : c'est ce qui se lit comme un
@@ -255,6 +272,11 @@ export class Aventure {
         const corps = this.heros.enfants.find((e) => e.type === 'corps')
         if (corps) c.bouger(corps as never, impact.pousseeX * 0.06, impact.pousseeY * 0.06)
         this.sonneur.evenement(this.pasCourant, this.heros.id, impact.fatal ? 'mort' : 'touche')
+        // Un coup RECU pese plus qu'un coup donne : c'est celui-la qu'on doit
+        // sentir, sous peine de se faire toucher sans comprendre pourquoi.
+        this.jeu?.geler(impact.fatal ? this.gelMortMs : this.gelCoupMs)
+        this.jeu?.secouer(impact.fatal ? this.secousseMort : this.secousseCoup,
+          impact.fatal ? 320 : 160)
         this.particules.emettre(
           this.gerbes[impact.fatal ? 'mort' : 'coup'], this.heros.x, this.heros.y - TUILE / 2,
         )
@@ -271,6 +293,10 @@ export class Aventure {
           vie ? vie.x : this.heros.x, (vie ? vie.y : this.heros.y) - TUILE / 2,
         )
         this.sonneur.evenement(this.pasCourant, impact.cible, impact.fatal ? 'abattu' : 'coup')
+        // Un coup DONNE gele moins : l'accent doit se sentir sans couper
+        // l'elan de qui frappe trois fois de suite.
+        this.jeu?.geler(impact.fatal ? this.gelCoupMs * 2 : this.gelCoupMs)
+        if (impact.fatal) this.jeu?.secouer(this.secousseCoup, 140)
         if (impact.fatal && this.peuplement.tuer(impact.cible)) this.abattus++
       }
     }
@@ -378,6 +404,10 @@ export class Aventure {
    * sol, et le joueur ne ferait pas le lien.
    */
   installerEcran(jeu: Jeu): void {
+    // C'est ici qu'on apprend a qui parler pour geler et secouer. L'aventure
+    // n'a pas de reference au jeu autrement, et lui en donner une dans le
+    // constructeur obligerait a construire les deux dans un ordre precis.
+    this.jeu = jeu
     jeu.apresDessin = (ctx: CanvasRenderingContext2D, ecran: Ecran): void => {
       // Les etincelles AVANT l'interface : elles appartiennent au monde, donc
       // elles passent sous les coeurs et suivent la camera. Les dessiner par

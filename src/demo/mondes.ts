@@ -30,8 +30,8 @@ import { Aventure } from './aventure.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
 import { MODELES_DEMO, SYMBOLES_DEMO } from './salles-demo.ts'
 import { SONS_DEMO, brancherAudio } from './sons-demo.ts'
-import { rendre as rendreSon } from '../runtime/son.ts'
-import { Dialogue, replique } from '../runtime/dialogue.ts'
+import { rendre as rendreSon, type Son as SonJeu } from '../runtime/son.ts'
+import { Dialogue, replique, type Replique as RepliqueJeu } from '../runtime/dialogue.ts'
 import { Menu, entree } from '../runtime/menu.ts'
 import { dessinerDialogue, dessinerMenu, ecrireCentre } from '../runtime/rendu-texte.ts'
 import { assemblerEtage } from '../niveau/assemblage.ts'
@@ -70,6 +70,15 @@ export interface Monde {
   readonly animations: Clip[]
   /** Le catalogue des especes, pour que l'export et l'editeur les connaissent. */
   readonly especes: EspeceJeu[]
+  /**
+   * Les sons et les dialogues du monde.
+   *
+   * Ils sont ici pour la meme raison que les planches : ce qui n'est pas dans
+   * le fichier de projet n'existe pas. Un monde qui garde ses sons dans son
+   * code se rouvre muet, et s'exporte muet.
+   */
+  readonly sons?: SonJeu[]
+  readonly dialogues?: { nom: string; repliques: RepliqueJeu[] }[]
   /**
    * Le peuplement, quand le monde en a un.
    *
@@ -163,6 +172,7 @@ export function mondeDonjon(): Monde {
       decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
     especes: ESPECES_DEMO,
+    sons: SONS_DEMO,
     peuplement,
     tuilePinceau: 0,
     installer(jeu) {
@@ -397,21 +407,28 @@ export function mondeCaverne(): Monde {
    * un doublon : personne ne lit une barre d'etat en commencant a jouer.
    */
   const dialogue = new Dialogue({ largeur: 320 - 8 - 10, vitesse: 42, lignes: 3 })
-  const ouvrirAccueil = (): void => {
-    dialogue.ouvrir([
-      replique('Cette caverne éprouve le contrôleur : le ressaut, les fosses,'
-        + ' et le puits qui se remonte de paroi en paroi.', { qui: 'Pixl' }),
-      replique('Espace pour sauter, Maj pour le dash. Bas + Espace descend'
-        + ' d’une passerelle. On saute sur la tête des gelées.', { qui: 'Pixl' }),
-      replique('Tu veux essayer ?', {
-        qui: 'Pixl',
-        choix: [
-          { texte: 'Oui, j’y vais', valeur: 'oui' },
-          { texte: 'Redis-moi ça', valeur: 'encore' },
-        ],
-      }),
-    ])
-  }
+  /**
+   * Le mot d'accueil, en DONNEES.
+   *
+   * Il pourrait etre ecrit dans le script juste en dessous ; il serait alors
+   * hors du fichier de projet, donc absent d'un export, et une faute
+   * d'orthographe demanderait de recompiler. Le texte d'un jeu est du contenu,
+   * exactement comme une carte.
+   */
+  const ACCUEIL: RepliqueJeu[] = [
+    replique('Cette caverne éprouve le contrôleur : le ressaut, les fosses,'
+      + ' et le puits qui se remonte de paroi en paroi.', { qui: 'Pixl' }),
+    replique('Espace pour sauter, Maj pour le dash. Bas + Espace descend'
+      + ' d’une passerelle. On saute sur la tête des gelées.', { qui: 'Pixl' }),
+    replique('Tu veux essayer ?', {
+      qui: 'Pixl',
+      choix: [
+        { texte: 'Oui, j’y vais', valeur: 'oui' },
+        { texte: 'Redis-moi ça', valeur: 'encore' },
+      ],
+    }),
+  ]
+  const ouvrirAccueil = (): void => { dialogue.ouvrir(ACCUEIL) }
   const pause = new Pause(() => { aventure.reinitialiser(); ouvrirAccueil() })
 
   /** Ce que le plan pose : balises, plateformes, caisses, creatures. */
@@ -443,6 +460,8 @@ export function mondeCaverne(): Monde {
       decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
     especes: ESPECES_DEMO,
+    sons: SONS_DEMO,
+    dialogues: [{ nom: 'accueil', repliques: ACCUEIL }],
     peuplement,
     tuilePinceau: TUILE_FOND,
     installer(jeu) {
@@ -664,6 +683,7 @@ export function mondeCitadelle(): Monde {
       decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
     especes: ESPECES_DEMO,
+    sons: SONS_DEMO,
     peuplement,
     tuilePinceau: ISO_MUR,
     installer(jeu) {
@@ -824,6 +844,7 @@ export function mondeEtage(graine = 1): Monde {
       decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
     especes: ESPECES_DEMO,
+    sons: SONS_DEMO,
     peuplement: aventure.peuplement,
     tuilePinceau: 0,
     installer(jeu) {

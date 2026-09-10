@@ -1,4 +1,7 @@
-import type { ProjetSerialise } from '../export/format.ts'
+import type { ProjetSerialise, PlancheSerialisee } from '../export/format.ts'
+import type { Son } from '../runtime/son.ts'
+import { FORMES, rendre as rendreSon } from '../runtime/son.ts'
+import type { AnimationSerialisee } from '../export/format.ts'
 import { COMPORTEMENTS, type Comportement, type Espece } from '../runtime/entites.ts'
 import {
   PROJECTIONS, projetNeuf, redimensionnerProjet, ajouterCalqueProjet,
@@ -32,6 +35,24 @@ export interface CrochetsProjet {
   appliquer(p: ProjetSerialise, quoi: string): void
   /** Dit quelque chose dans la barre du panneau. */
   dire(message: string): void
+  /**
+   * Les planches du monde EN COURS, modifiables sur place.
+   *
+   * Dessiner ne passe pas par la reconstruction du projet, contrairement aux
+   * gestes de structure : on peint un pixel soixante fois par seconde en
+   * glissant la souris, et reconstruire le monde a chaque pixel serait
+   * inutilisable. On modifie donc la planche vivante, et l'appelant refait
+   * l'atlas — ce qui est cent fois moins cher.
+   */
+  planches(): PlancheSerialisee[]
+  /** A appeler quand une planche a change : refait l'atlas et redessine. */
+  planchesChangees(): void
+  /** Les clips du monde en cours, modifiables sur place. */
+  animations(): AnimationSerialisee[]
+  /** Les sons du monde en cours. */
+  sons(): Son[]
+  /** Fait entendre un son. */
+  ecouter(s: Son): void
 }
 
 const bouton = (texte: string, titre: string, action: () => void): HTMLButtonElement => {
@@ -91,6 +112,21 @@ export class PanneauProjet {
   private crochets: CrochetsProjet
   /** L'espece en cours d'edition, par son identifiant. Vide : une neuve. */
   private especeEditee = ''
+  /**
+   * L'onglet ouvert.
+   *
+   * Un panneau de sept sections empilees demande de defiler pour trouver
+   * quoi que ce soit, et l'on finit par ne plus se servir des trois du bas.
+   * Des onglets rendent chaque section atteignable en un clic — au prix d'un
+   * clic de plus pour celle qu'on regardait.
+   */
+  private onglet: 'carte' | 'dessin' | 'animations' | 'sons' | 'especes' = 'carte'
+  /** La planche et la case qu'on dessine. */
+  private plancheEditee = 0
+  private caseEditee = 0
+  private lettreEditee = ''
+  private clipEdite = ''
+  private sonEdite = ''
 
   constructor(
     elements: {
@@ -130,10 +166,27 @@ export class PanneauProjet {
     if (!this.ouvert) return
     const p = this.crochets.projet()
     this.corps.textContent = ''
-    this.blocCarte(p)
-    this.blocCalques(p)
-    this.blocEspeces(p)
-    this.blocNeuf()
+    this.onglets()
+    if (this.onglet === 'carte') { this.blocCarte(p); this.blocCalques(p); this.blocNeuf() }
+    else if (this.onglet === 'especes') this.blocEspeces(p)
+    else if (this.onglet === 'dessin') this.blocDessin()
+    else if (this.onglet === 'animations') this.blocAnimations()
+    else this.blocSons()
+  }
+
+  private onglets(): void {
+    const barre = document.createElement('div')
+    barre.className = 'onglets'
+    const items: [typeof this.onglet, string][] = [
+      ['carte', 'Carte'], ['dessin', 'Dessin'], ['animations', 'Animations'],
+      ['sons', 'Sons'], ['especes', 'Espèces'],
+    ]
+    for (const [id, nom] of items) {
+      const b = bouton(nom, nom, () => { this.onglet = id; this.montrer() })
+      if (this.onglet === id) b.classList.add('actif')
+      barre.appendChild(b)
+    }
+    this.corps.appendChild(barre)
   }
 
   /**
@@ -361,6 +414,357 @@ export class PanneauProjet {
         this.appliquer(poserEspeceProjet(this.frais(), identifiant, champs),
           `Espèce « ${champs.nom} » ${source ? 'modifiée' : 'créée'}`)
       }))
+    d.appendChild(actions)
+  }
+
+  /**
+   * L'atelier de dessin : peindre une case de planche, pixel par pixel.
+   *
+   * ## Pourquoi il ne passe pas par la reconstruction du projet
+   *
+   * Tous les autres gestes du panneau transforment le fichier et relisent le
+   * monde. Celui-ci ne peut pas : on peint soixante pixels par seconde en
+   * glissant la souris, et reconstruire la scene, les atlas et le peuplement a
+   * chaque pixel rendrait le pinceau inutilisable. On modifie donc la planche
+   * VIVANTE et l'on refait l'atlas — ce qui est cent fois moins cher, et sans
+   * risque : une planche ne porte aucune reference vers autre chose.
+   *
+   * ## Pourquoi une lettre et non une couleur
+   *
+   * Un dessin est une grille de LETTRES, et la cle dit quelle couleur chaque
+   * lettre porte. Peindre une couleur directement obligerait a inventer une
+   * lettre a chaque teinte, et la planche gagnerait quarante lettres pour
+   * quarante nuances de gris. On peint donc une lettre de la cle — ce qui
+   * garantit au passage qu'un dessin ne peut pas sortir de la palette.
+   */
+  private blocDessin(): void {
+    const planches = this.crochets.planches()
+    const d = bloc(this.corps, 'Dessin')
+    if (planches.length === 0) { d.append('Ce projet n’a pas de planche.'); return }
+    this.plancheEditee = Math.min(this.plancheEditee, planches.length - 1)
+    const planche = planches[this.plancheEditee]
+    this.caseEditee = Math.min(this.caseEditee, Math.max(0, planche.dessins.length - 1))
+    const lettres = Object.keys(planche.cle)
+    if (!lettres.includes(this.lettreEditee)) this.lettreEditee = lettres[0] ?? '.'
+
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const quelle = choix(g, 'Planche',
+      planches.map((q, i) => ({ valeur: String(i), nom: q.nom })), String(this.plancheEditee))
+    quelle.addEventListener('change', () => {
+      this.plancheEditee = Number(quelle.value)
+      this.caseEditee = 0
+      this.montrer()
+    })
+    const quelleCase = champ(g, 'Case', this.caseEditee, 'number')
+    quelleCase.addEventListener('change', () => {
+      this.caseEditee = Math.max(0, Math.min(planche.dessins.length - 1, Number(quelleCase.value)))
+      this.montrer()
+    })
+    d.appendChild(g)
+
+    // Les couleurs de la planche. Le point est toujours le vide, et il figure
+    // en premier : c'est la gomme, et une gomme qu'on cherche est une gomme
+    // qu'on n'emploie pas.
+    const nuancier = document.createElement('div')
+    nuancier.className = 'nuancier'
+    const poser = (l: string): void => { this.lettreEditee = l; this.montrer() }
+    for (const l of ['.', ...lettres.filter((q) => q !== '.')]) {
+      const b = document.createElement('button')
+      b.className = `pastille${l === this.lettreEditee ? ' actif' : ''}`
+      b.title = l === '.' ? 'Vide (gomme)' : `${l} · ${planche.cle[l]}`
+      b.style.background = l === '.' ? 'transparent' : (planche.cle[l] ?? '#000')
+      if (l === '.') b.textContent = '⌫'
+      b.addEventListener('click', () => poser(l))
+      nuancier.appendChild(b)
+    }
+    d.appendChild(nuancier)
+
+    // La grille de pixels. Un canevas et non des boutons : une case de
+    // trente-deux sur trente-deux ferait mille boutons, et le navigateur
+    // ralentit bien avant qu'on ait fini de dessiner.
+    const dessin = planche.dessins[this.caseEditee] ?? []
+    const hauteur = dessin.length
+    const largeur = dessin[0]?.length ?? 0
+    const zoom = Math.max(4, Math.min(16, Math.floor(260 / Math.max(1, largeur))))
+    const toile = document.createElement('canvas')
+    toile.className = 'toile'
+    toile.width = largeur * zoom
+    toile.height = hauteur * zoom
+    const ctx = toile.getContext('2d')
+    const repeindre = (): void => {
+      if (!ctx) return
+      ctx.imageSmoothingEnabled = false
+      for (let y = 0; y < hauteur; y++) {
+        for (let x = 0; x < largeur; x++) {
+          const l = dessin[y][x]
+          // Le damier sous le vide : sans lui, une case vide et une case noire
+          // se ressemblent, et l'on peint du noir en croyant gommer.
+          ctx.fillStyle = l === '.'
+            ? ((x + y) % 2 === 0 ? '#20242e' : '#171a22')
+            : (planche.cle[l] ?? '#ff00ff')
+          ctx.fillRect(x * zoom, y * zoom, zoom, zoom)
+        }
+      }
+    }
+    repeindre()
+
+    let peint = false
+    const viser = (e: PointerEvent): void => {
+      const b = toile.getBoundingClientRect()
+      const x = Math.floor(((e.clientX - b.left) / b.width) * largeur)
+      const y = Math.floor(((e.clientY - b.top) / b.height) * hauteur)
+      if (x < 0 || y < 0 || x >= largeur || y >= hauteur) return
+      const lettre = e.buttons === 2 ? '.' : this.lettreEditee
+      const ligne = dessin[y]
+      if (ligne[x] === lettre) return
+      dessin[y] = ligne.slice(0, x) + lettre + ligne.slice(x + 1)
+      repeindre()
+      this.crochets.planchesChangees()
+    }
+    toile.addEventListener('contextmenu', (e) => e.preventDefault())
+    toile.addEventListener('pointerdown', (e) => {
+      peint = true
+      toile.setPointerCapture(e.pointerId)
+      viser(e)
+    })
+    toile.addEventListener('pointermove', (e) => { if (peint) viser(e) })
+    toile.addEventListener('pointerup', () => { peint = false })
+    d.appendChild(toile)
+
+    const note = document.createElement('p')
+    note.className = 'ligne menu'
+    note.textContent = `${largeur}×${hauteur} px · case ${this.caseEditee} sur `
+      + `${planche.dessins.length} · clic droit pour effacer`
+    d.appendChild(note)
+
+    // Ajouter une couleur a la planche. Sans cela on ne peut dessiner qu'avec
+    // ce que quelqu'un d'autre a choisi.
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    const teinte = document.createElement('input')
+    teinte.type = 'color'
+    teinte.value = '#7fd4a8'
+    actions.append(
+      teinte,
+      bouton('+ Couleur', 'Ajoute une teinte à la clé de cette planche', () => {
+        // La lettre est la premiere libre : les lettres sont un DETAIL de
+        // rangement, et demander laquelle employer serait demander de choisir
+        // ce dont on se moque.
+        const prises = new Set(Object.keys(planche.cle))
+        const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        const libre = [...alphabet].find((c) => !prises.has(c))
+        if (!libre) { this.dire('Cette planche n’a plus de lettre libre.'); return }
+        planche.cle[libre] = teinte.value
+        this.lettreEditee = libre
+        this.crochets.planchesChangees()
+        this.montrer()
+        this.dire(`Couleur « ${libre} » ajoutée : ${teinte.value}`)
+      }),
+      bouton('+ Case', 'Ajoute une case vide à la fin de la planche', () => {
+        planche.dessins.push(Array.from({ length: hauteur }, () => '.'.repeat(largeur)))
+        this.caseEditee = planche.dessins.length - 1
+        this.crochets.planchesChangees()
+        this.montrer()
+      }),
+    )
+    d.appendChild(actions)
+  }
+
+  /**
+   * Les animations : des rangs, des durees, une boucle, des evenements.
+   *
+   * ## Pourquoi on montre les EVENEMENTS
+   *
+   * C'est ce qui distingue ce monteur d'un simple diaporama. Un evenement dit
+   * « le pied touche ici » ou « le coup porte la » ; c'est lui qui declenche
+   * un son ou une frappe, et c'est la seule facon d'accorder le geste au
+   * dessin. Les cacher ferait regler les sons en millisecondes, ce que tout le
+   * moteur existe pour eviter.
+   */
+  private blocAnimations(): void {
+    const clips = this.crochets.animations()
+    const d = bloc(this.corps, 'Animations')
+    const liste = document.createElement('div')
+    liste.className = 'liste'
+    for (const c of clips) {
+      const ligne = document.createElement('div')
+      ligne.className = `ligne${c.nom === this.clipEdite ? ' actif' : ''}`
+      const nom = document.createElement('span')
+      nom.className = 'nom'
+      const duree = c.images.reduce((t, i) => t + i.duree, 0)
+      nom.textContent = `${c.nom} · ${c.images.length} images · ${duree} ms · ${c.boucle}`
+      ligne.append(nom, bouton('✎', 'Monter cette animation',
+        () => { this.clipEdite = c.nom; this.montrer() }))
+      liste.appendChild(ligne)
+    }
+    d.appendChild(liste)
+    const clip = clips.find((c) => c.nom === this.clipEdite)
+    if (!clip) {
+      const note = document.createElement('p')
+      note.className = 'ligne menu'
+      note.textContent = 'Choisissez une animation pour la monter.'
+      d.appendChild(note)
+      return
+    }
+
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const boucle = choix(g, 'Bouclage', [
+      { valeur: 'boucle', nom: 'boucle' },
+      { valeur: 'aller-retour', nom: 'aller-retour' },
+      { valeur: 'unique', nom: 'unique' },
+    ], clip.boucle)
+    boucle.addEventListener('change', () => {
+      clip.boucle = boucle.value as typeof clip.boucle
+      this.dire(`« ${clip.nom} » : ${clip.boucle}`)
+    })
+    d.appendChild(g)
+
+    const images = document.createElement('div')
+    images.className = 'liste'
+    clip.images.forEach((im, i) => {
+      const ligne = document.createElement('div')
+      ligne.className = 'ligne'
+      const rang = document.createElement('span')
+      rang.className = 'menu'
+      rang.textContent = `#${i}`
+      const index = document.createElement('input')
+      index.type = 'number'
+      index.value = String(im.index)
+      index.title = 'Case de la planche'
+      index.style.width = '54px'
+      index.addEventListener('change', () => { im.index = Number(index.value) })
+      const ms = document.createElement('input')
+      ms.type = 'number'
+      ms.value = String(im.duree)
+      ms.title = 'Durée en millisecondes'
+      ms.style.width = '62px'
+      ms.addEventListener('change', () => { im.duree = Math.max(1, Number(ms.value)) })
+      const ev = clip.evenements.find((q) => q.image === i)
+      const nomEv = document.createElement('input')
+      nomEv.value = ev?.nom ?? ''
+      nomEv.placeholder = 'événement'
+      nomEv.title = 'Ce que cette image déclenche : un son, une frappe'
+      nomEv.addEventListener('change', () => {
+        const autres = clip.evenements.filter((q) => q.image !== i)
+        clip.evenements.length = 0
+        clip.evenements.push(...autres)
+        if (nomEv.value.trim()) clip.evenements.push({ image: i, nom: nomEv.value.trim() })
+        this.dire(nomEv.value.trim()
+          ? `Image ${i} déclenche « ${nomEv.value.trim() }»`
+          : `Image ${i} ne déclenche plus rien`)
+      })
+      const oter = bouton('✕', 'Retirer cette image', () => {
+        clip.images.splice(i, 1)
+        // Les evenements designent un RANG : retirer une image decale ceux
+        // d'apres. Ne pas les decaler ferait sonner le pas a la mauvaise image
+        // sans que rien ne le signale.
+        clip.evenements = clip.evenements
+          .filter((q) => q.image !== i)
+          .map((q) => (q.image > i ? { ...q, image: q.image - 1 } : q))
+        this.montrer()
+      })
+      ligne.append(rang, index, ms, nomEv, oter)
+      images.appendChild(ligne)
+    })
+    d.appendChild(images)
+
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(
+      bouton('+ Image', 'Ajoute une image à la fin', () => {
+        const derniere = clip.images[clip.images.length - 1]
+        clip.images.push({
+          index: derniere?.index ?? 0, duree: derniere?.duree ?? 120,
+          decalageX: 0, decalageY: 0,
+        })
+        this.montrer()
+      }),
+    )
+    d.appendChild(actions)
+  }
+
+  /**
+   * Les sons : six nombres, et un bouton pour ecouter.
+   *
+   * ## Pourquoi l'ecoute immediate n'est pas un agrement
+   *
+   * Un son ne se regle pas par le raisonnement. On change une frequence de
+   * cinquante hertz, on ecoute, on recommence — c'est la seule methode, et
+   * sans le bouton il faudrait relancer le jeu et provoquer l'evenement pour
+   * entendre chaque essai. Le reglage deviendrait si penible que personne ne
+   * toucherait aux sons livres.
+   */
+  private blocSons(): void {
+    const sons = this.crochets.sons()
+    const d = bloc(this.corps, 'Sons')
+    const liste = document.createElement('div')
+    liste.className = 'liste'
+    for (const q of sons) {
+      const ligne = document.createElement('div')
+      ligne.className = `ligne${q.nom === this.sonEdite ? ' actif' : ''}`
+      const nom = document.createElement('span')
+      nom.className = 'nom'
+      nom.textContent = `${q.nom} · ${q.forme} · ${q.duree} ms`
+      ligne.append(
+        nom,
+        bouton('▶', 'Écouter', () => this.crochets.ecouter(q)),
+        bouton('✎', 'Régler', () => { this.sonEdite = q.nom; this.montrer() }),
+      )
+      liste.appendChild(ligne)
+    }
+    d.appendChild(liste)
+
+    const s = sons.find((q) => q.nom === this.sonEdite)
+    if (!s) {
+      const note = document.createElement('p')
+      note.className = 'ligne menu'
+      note.textContent = 'Choisissez un son pour le régler.'
+      d.appendChild(note)
+      return
+    }
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const forme = choix(g, 'Forme',
+      FORMES.map((f) => ({ valeur: f, nom: f })), s.forme)
+    const nombres: [string, keyof Son, number][] = [
+      ['Fréquence (Hz)', 'frequence', 1],
+      ['Fréquence finale', 'frequenceFin', 1],
+      ['Durée (ms)', 'duree', 1],
+      ['Volume (0 à 1)', 'volume', 0.01],
+      ['Attaque (ms)', 'attaque', 1],
+      ['Chute (ms)', 'chute', 1],
+      ['Paliers (demi-tons)', 'paliers', 1],
+    ]
+    const champsNombres = nombres.map(([etiquette, cle, pas]) => {
+      const i = champ(g, etiquette, s[cle] as number, 'number')
+      i.step = String(pas)
+      return [cle, i] as const
+    })
+    d.appendChild(g)
+
+    const appliquer = (): void => {
+      s.forme = forme.value as Son['forme']
+      for (const [cle, i] of champsNombres) {
+        const v = Number(i.value)
+        if (Number.isFinite(v)) (s as unknown as Record<string, number>)[cle] = v
+      }
+    }
+    forme.addEventListener('change', appliquer)
+    for (const [, i] of champsNombres) i.addEventListener('change', appliquer)
+
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(
+      bouton('▶ Écouter', 'Régler un son sans l’entendre est impossible', () => {
+        appliquer()
+        this.crochets.ecouter(s)
+        const e = rendreSon(s, 8000)
+        this.dire(`« ${s.nom} » · ${e.length} échantillons · pointe `
+          + `${Math.max(...e).toFixed(2)}`)
+      }),
+    )
     d.appendChild(actions)
   }
 

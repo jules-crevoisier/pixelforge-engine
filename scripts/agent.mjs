@@ -75,7 +75,7 @@ function lancer(nom, commande, arguments_) {
 
 const epreuves = []
 epreuves.push(lancer('build', 'npm', ['run', '-s', 'build']))
-for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau', 'banc:habillage']) {
+for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau', 'banc:habillage', 'banc:charge']) {
   epreuves.push(lancer(b, 'npm', ['run', '-s', b]))
 }
 /**
@@ -268,6 +268,41 @@ const OBJECTIFS = [
       { nom: 'Le vrai moteur se rembobine, pas seulement un jouet',
         symboles: ['SimulationJeu', 'prendreScene', 'rendreScene'],
         indices: ['vrai moteur', 'vrai jeu'], preuves: 3 },
+      { nom: 'Plusieurs personnages dirigeables, chacun ses touches',
+        symboles: ['entreesDe'], indices: ['personnages', 'touches'], preuves: 2 },
+    ],
+  },
+  {
+    jeu: 'Ce qu’on affirme sans l’avoir mesuré',
+    criteres: [
+      { nom: 'La cadence est mesurée, pas promise',
+        symboles: ['BUDGET_MS', 'mesurer'],
+        indices: ['budget', 'creatures tiennent', 'image entiere'], preuves: 3 },
+      { nom: 'Le coût croît linéairement avec le nombre d’entités',
+        symboles: ['PART_SIMULATION'], indices: ['proportionnellement'], preuves: 1 },
+      { nom: 'Un rembobinage tient dans une image',
+        symboles: [], indices: ['instantane coute', 'rembobinage de seize'], preuves: 2 },
+      { nom: 'Un étage s’engendre sans attente',
+        symboles: [], indices: ['etage s’engendre'], preuves: 1 },
+    ],
+  },
+  {
+    jeu: 'Ce qu’un jeu de plateforme doit avoir',
+    criteres: [
+      { nom: 'Des pentes qu’on monte en marchant',
+        symboles: ['PENTE_DROITE', 'sommetPente', 'hauteurSol'],
+        indices: ['pente', 'cote en marchant', 'cote en la suivant'], preuves: 5 },
+      { nom: 'Le hit-stop : un coup qui porte au lieu de traverser',
+        symboles: ['geler', 'gelRestant'], indices: ['gel', 'hit-stop'], preuves: 2 },
+      { nom: 'Une secousse de caméra entière et reproductible',
+        symboles: ['secouer', 'decalageSecousse'], indices: ['secousse', 'secoue'], preuves: 2 },
+      { nom: 'Manette, tactile et touches remappables',
+        symboles: ['lireManettes', 'brancherTactile', 'planCourant'],
+        indices: ['manette', 'tactile', 'remappable', 'plan de touches'], preuves: 3 },
+      { nom: 'Dessiner, monter et régler dans l’éditeur',
+        symboles: ['blocDessin', 'blocAnimations', 'blocSons'],
+        indices: ['atelier de dessin', 'peint des pixels', 'image a une animation',
+          'regle un son', 'couleur a la planche'], preuves: 5 },
     ],
   },
   {
@@ -289,6 +324,9 @@ const OBJECTIFS = [
       { nom: 'Sauvegarde de la PARTIE, distincte du projet',
         symboles: ['Sauvegarde', 'VERSION_SAUVEGARDE', 'partieNeuve'],
         indices: ['partie', 'sauvegarde', 'emplacement'], preuves: 5 },
+      { nom: 'Et tout cela traverse l’enregistrement du projet',
+        symboles: ['sons: Son[]', 'dialogues:'],
+        indices: ['sons partent', 'dialogues aussi', 'texte du jeu'], preuves: 3 },
       { nom: 'Menus : curseur qui boucle, entrées inertes',
         symboles: ['Menu', 'entree'], indices: ['menu', 'pause', 'curseur'], preuves: 4 },
     ],

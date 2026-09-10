@@ -549,6 +549,132 @@ console.log('\n--- les corps mobiles : porter, bloquer, pietiner ---')
   }
 }
 
+
+console.log('\n--- les pentes ---')
+{
+  const { sommetPente, toucheSolide } = await import('../src/runtime/collision.ts')
+  const { rect } = await import('../src/noyau/pixel.ts')
+  const { hauteurSol, PENTE_DROITE, PENTE_GAUCHE, SOLIDE } =
+    await import('../src/tuiles/tilemap.ts')
+
+  // La regle de base : a quarante-cinq degres, la hauteur du sol vaut la
+  // position dans la case. Une soustraction, et deux cases voisines se
+  // raccordent au pixel pres.
+  check('une pente montante donne un sol qui monte d’un pixel par colonne',
+    hauteurSol(PENTE_DROITE, 0, 8) === 7 && hauteurSol(PENTE_DROITE, 7, 8) === 0,
+    'de 7 à 0 sur huit colonnes')
+  check('et la pente inverse descend d’autant',
+    hauteurSol(PENTE_GAUCHE, 0, 8) === 0 && hauteurSol(PENTE_GAUCHE, 7, 8) === 7)
+  check('un solide a son sol tout en haut de la case', hauteurSol(SOLIDE, 3, 8) === 0)
+  check('et le vide n’a pas de sol', hauteurSol(0, 3, 8) === 8, 'la hauteur vaut la tuile entière')
+
+  /*
+   * Le plan des pentes.
+   *
+   * `/` monte vers la droite, `%` monte vers la gauche — et non la barre
+   * inverse, qui demanderait d'echapper des echappements dans un fichier qui
+   * decrit deja des dessins. Un plan qu'on ne peut pas lire est un plan qui
+   * ment sur ce qu'il teste.
+   *
+   * On part du plat, on monte, on tient un palier, on redescend, on reprend le
+   * plat.
+   */
+  const planPente = [
+    '..............',
+    '..............',
+    '..............',
+    '..............',
+    '......./###%..',
+    '.../###....#..',
+    '##############',
+  ]
+  const grillePente = {
+    tuile: T,
+    largeur: planPente[0].length,
+    hauteur: planPente.length,
+    solide: (cx, cy) => planPente[cy][cx] === '#',
+    matiere: (cx, cy) => {
+      const c = planPente[cy][cx]
+      if (c === '#') return 1
+      if (c === '/') return PENTE_DROITE
+      if (c === '%') return PENTE_GAUCHE
+      return 0
+    },
+  }
+  check('le plan des pentes est bien rectangulaire',
+    planPente.every((l) => l.length === planPente[0].length),
+    `${planPente[0].length} colonnes`)
+
+  check('une pente n’arrête pas comme un mur',
+    !toucheSolide(grillePente, rect(3 * T + 2, 5 * T + 2, 4, 4)),
+    'sinon on se cogne dans le bas de la côte au lieu de la monter')
+  {
+    const sous = sommetPente(grillePente, rect(3 * T, 5 * T - 4, 6, 8))
+    check('mais elle porte : on trouve son sommet sous les pieds',
+      sous !== null && sous >= 5 * T && sous < 6 * T, `sommet à ${sous}`)
+  }
+
+  // La mesure qui compte : on court a droite, et l'on doit se retrouver PLUS
+  // HAUT qu'on n'est parti, sans avoir saute une seule fois.
+  {
+    const c = new Plateformeur()
+    const corps = { x: 1 * T + 4, y: 6 * T, boite: { ...BOITE } }
+    const depart = corps.y
+    let plusHaut = corps.y
+    for (let i = 0; i < 200; i++) {
+      c.avancer(grillePente, corps, DT, 1, false, false)
+      plusHaut = Math.min(plusHaut, corps.y)
+    }
+    check('on monte une côte en marchant, sans sauter',
+      plusHaut <= depart - T, `de ${depart} à ${plusHaut}, soit ${depart - plusHaut} px`)
+    check('et l’on reste au sol tout du long',
+      c.diagnostic().auSol, `état ${c.diagnostic().etat}`)
+  }
+
+  // Le revers : un vrai mur doit toujours arreter. Une regle qui fait monter
+  // les pentes et les murs fait escalader la carte entiere.
+  {
+    const planMur = ['......', '......', '......', '#....#', '######']
+    const g = {
+      tuile: T, largeur: 6, hauteur: 5,
+      solide: (cx, cy) => planMur[cy][cx] === '#',
+      matiere: (cx, cy) => (planMur[cy][cx] === '#' ? 1 : 0),
+    }
+    const c = new Plateformeur()
+    const corps = poser(g, 3 * T, 3 * T, 'au sol entre deux murs')
+    for (let i = 0; i < 200; i++) c.avancer(g, corps, DT, 1, false, false)
+    check('un mur, lui, arrête toujours',
+      corps.x + BOITE.x + BOITE.l <= 5 * T,
+      `arrêté à ${corps.x + BOITE.x + BOITE.l}, le mur commence à ${5 * T}`)
+  }
+
+  /*
+   * Descendre : on doit SUIVRE la pente, pas la quitter en petits sauts.
+   *
+   * On mesure l'ECART aux pieds et non le nombre d'images en l'air. « En
+   * l'air » compte aussi l'image ou l'on est un pixel au-dessus de la
+   * surface, ce qui ne se voit pas ; ce qui se voit, c'est un personnage qui
+   * flotte quatre pixels au-dessus de la cote qu'il descend. La mesure doit
+   * porter sur ce qu'on peut constater.
+   */
+  {
+    const c = new Plateformeur()
+    const corps = { x: 10 * T, y: 4 * T, boite: { ...BOITE } }
+    for (let i = 0; i < 60; i++) c.avancer(grillePente, corps, DT, 0, false, false)
+    const posee = corps.y
+    let pireEcart = 0
+    for (let i = 0; i < 120; i++) {
+      c.avancer(grillePente, corps, DT, 1, false, false)
+      const sol = sommetPente(grillePente, rect(corps.x + BOITE.x, corps.y + BOITE.y, BOITE.l, BOITE.h))
+      if (sol === null) continue
+      pireEcart = Math.max(pireEcart, sol - (corps.y + BOITE.y + BOITE.h))
+    }
+    check('on descend une côte en la suivant, sans décoller',
+      corps.y > posee && pireEcart <= REGLAGES_DEFAUT.montee,
+      `descendu de ${corps.y - posee} px, jamais plus de ${pireEcart} px au-dessus de la pente`)
+  }
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)
