@@ -107,6 +107,48 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   ok('et elle disparaît avec l\'outil', !(await p.isVisible('#paletteGrille')))
 }
 
+// Défaire et refaire
+{
+  await p.selectOption('#monde', 'donjon')
+  await p.waitForTimeout(280)
+  await p.click('[data-outil="terrain"]')
+  const c = await p.$eval('#vue', e => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  const solides = () => p.evaluate(() => window.pfe.edition.compter().solides)
+  const avant = await solides()
+  await p.mouse.click(c[0] + c[2] * 0.5, c[1] + c[3] * 0.6)
+  await p.waitForTimeout(120)
+  const peint = await solides()
+  ok('peindre change la carte', peint !== avant, `${avant} -> ${peint}`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(120)
+  ok('Ctrl+Z rend la carte a son etat d\'avant', (await solides()) === avant,
+    await p.textContent('#verdict'))
+
+  await p.keyboard.press('Control+Shift+z')
+  await p.waitForTimeout(120)
+  ok('Ctrl+Maj+Z refait le geste', (await solides()) === peint,
+    await p.textContent('#verdict'))
+
+  // Une entite posee se defait aussi.
+  const compter = () => p.evaluate(() => {
+    let n = 0
+    const f = (x) => { if (x.espece) n++; x.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(150)
+  const e0 = await compter()
+  await p.mouse.click(c[0] + c[2] * 0.35, c[1] + c[3] * 0.35)
+  await p.waitForTimeout(120)
+  const e1 = await compter()
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(120)
+  ok('une entite posee se defait', e1 === e0 + 1 && (await compter()) === e0,
+    `${e0} -> ${e1} -> ${await compter()}`)
+}
+
 // L'atelier
 await p.click('#basculeAtelier'); await p.waitForTimeout(150)
 ok('l\'atelier s\'ouvre', await p.isVisible('#scriptSource'))

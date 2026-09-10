@@ -593,6 +593,69 @@ console.log('\n--- la citadelle tient debout ---')
     'sinon le heros traverserait le decor sans que rien ne le signale')
 }
 
+console.log('\n--- defaire et refaire ---')
+
+{
+  const { Historique, differences, gesteDeChangements, GESTES_GARDES } =
+    await import('../src/editeur/historique.ts')
+
+  // La difference, et non l'action : poser du terrain repeint aussi les huit
+  // voisins et met a jour la collision. Rejouer l'inverse d'une action
+  // oublierait les consequences qu'on n'a pas pensees.
+  {
+    const vivant = new Int32Array([1, 2, 3, 4])
+    const photo = vivant.slice()
+    vivant[1] = 9
+    vivant[3] = 7
+    const d = differences(vivant, photo)
+    check('la comparaison ne garde que ce qui a bouge',
+      d.length === 2 && d[0].index === 1 && d[0].avant === 2 && d[0].apres === 9,
+      `${d.length} cases sur 4`)
+
+    const g = gesteDeChangements('essai', d)
+    g.defaire()
+    check('defaire remet exactement l\'etat d\'avant',
+      [...vivant].join(',') === '1,2,3,4', [...vivant].join(','))
+    g.refaire()
+    check('et refaire remet celui d\'apres',
+      [...vivant].join(',') === '1,9,3,7', [...vivant].join(','))
+  }
+
+  // Un geste qui ne change rien ne doit pas encombrer l'historique.
+  {
+    const a = new Uint8Array([5, 5])
+    check('un geste sans effet ne laisse aucune trace',
+      differences(a, a.slice()).length === 0)
+  }
+
+  // Repartir dans une autre direction efface le futur : garder l'ancienne
+  // branche donnerait un « refaire » qui rejoue ce qui n'a plus de sens.
+  {
+    const h = new Historique()
+    const journal = []
+    const geste = (n) => ({ nom: n, defaire: () => journal.push(`-${n}`), refaire: () => journal.push(`+${n}`) })
+    h.poser(geste('a'))
+    h.poser(geste('b'))
+    h.defaire()
+    check('on peut defaire puis refaire', h.peutRefaire && h.nomRefaire === 'b')
+    h.poser(geste('c'))
+    check('mais un geste neuf efface le futur', !h.peutRefaire,
+      'sinon « refaire » rejoue une branche abandonnee')
+    check('et le journal dit ce qui s\'est passe', journal.join(' ') === '-b', journal.join(' '))
+  }
+
+  // Une seance longue ne doit pas garder deux heures de photographies.
+  {
+    const h = new Historique()
+    for (let i = 0; i < GESTES_GARDES + 20; i++) {
+      h.poser({ nom: `g${i}`, defaire: () => {}, refaire: () => {} })
+    }
+    check('l\'historique est borne', h.taille === GESTES_GARDES,
+      `${h.taille} gestes gardes sur ${GESTES_GARDES + 20} poses`)
+    check('et c\'est le plus ancien qui part', h.nomDefaire === `g${GESTES_GARDES + 19}`)
+  }
+}
+
 console.log('\n--- l\'atelier de scripts ---')
 
 {

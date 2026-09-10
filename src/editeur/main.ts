@@ -3,6 +3,7 @@ import { Palette, depuisHex } from '../noyau/palette.ts'
 import { atlasDepuisLettres } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil } from './edition.ts'
+import type { Noeud } from '../scene/noeud.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
@@ -139,21 +140,27 @@ function installer(nouveau: Monde): void {
       const dedans = peuplement.quiTouche(cx * t, cy * t, t, t)
       const n = dedans[dedans.length - 1] ?? peuplement.sous(cx * t + t / 2, cy * t + t - 1)
       if (n) {
+        const parent = parentDe(monde.racine, n) ?? monde.racine
         // On passe par la scene si `tuer` ne connait pas l'entite : elle peut
         // n'avoir jamais ete adoptee — posee pendant que le jeu est arrete.
         if (!peuplement.tuer(n.id)) retirerDe(monde.racine, n)
+        edition.historique.poser(gesteEntite('retrait d’entité', parent, n))
       }
       majEtat()
+      majHistorique()
       return
     }
     if (!edition.etat.espece) return
     // Les pieds au bas de la case : c'est la convention d'ancrage de tout le
     // moteur, et c'est ce qui aligne l'entite sur le sol qu'elle foule.
-    peuplement.poser(edition.etat.espece, cx * t + t / 2, cy * t + t)
+    const pose = peuplement.poser(edition.etat.espece, cx * t + t / 2, cy * t + t)
+    if (pose) edition.historique.poser(gesteEntite('entité posée', monde.racine, pose, true))
     majEtat()
+    majHistorique()
   }
 
   choisirOutil(outilPrecedent)
+  majHistorique()
 
   jeu.cadrer()
   jeu.dessiner()
@@ -360,7 +367,60 @@ canevas.addEventListener('pointermove', (e) => {
   edition.bouger(e.clientX, e.clientY)
   dessinerCollision()
 })
-canevas.addEventListener('pointerup', () => { edition.finir(); majEtat() })
+canevas.addEventListener('pointerup', () => { edition.finir(); majEtat(); majHistorique() })
+
+/* ------------------------------------------------------------------ */
+/* Defaire et refaire                                                  */
+/* ------------------------------------------------------------------ */
+
+const boutonDefaire = document.getElementById('defaire') as HTMLButtonElement
+const boutonRefaire = document.getElementById('refaire') as HTMLButtonElement
+
+function majHistorique(): void {
+  boutonDefaire.disabled = !edition.historique.peutDefaire
+  boutonRefaire.disabled = !edition.historique.peutRefaire
+  boutonDefaire.title = edition.historique.peutDefaire
+    ? `Défaire : ${edition.historique.nomDefaire} (Ctrl+Z)` : 'Rien à défaire'
+  boutonRefaire.title = edition.historique.peutRefaire
+    ? `Refaire : ${edition.historique.nomRefaire} (Ctrl+Maj+Z)` : 'Rien à refaire'
+}
+
+function defaire(): void {
+  const nom = edition.historique.defaire()
+  jeu.dessiner()
+  dessinerCollision()
+  majEtat()
+  majHistorique()
+  // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
+  // faire compte plus que le compte des cases, pendant une seconde.
+  if (nom) verdict.textContent = `défait : ${nom}`
+}
+
+function refaire(): void {
+  const nom = edition.historique.refaire()
+  jeu.dessiner()
+  dessinerCollision()
+  majEtat()
+  majHistorique()
+  // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
+  // faire compte plus que le compte des cases, pendant une seconde.
+  if (nom) verdict.textContent = `refait : ${nom}`
+}
+
+boutonDefaire.addEventListener('click', defaire)
+boutonRefaire.addEventListener('click', refaire)
+
+window.addEventListener('keydown', (e) => {
+  // Pas pendant qu'on ecrit un script : Ctrl+Z appartient alors au champ de
+  // texte, et le lui prendre ferait perdre ce qu'on vient de taper.
+  const dansUnChamp = (e.target as HTMLElement)?.tagName === 'TEXTAREA'
+    || (e.target as HTMLElement)?.tagName === 'INPUT'
+  if (dansUnChamp) return
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
+  e.preventDefault()
+  if (e.shiftKey) refaire()
+  else defaire()
+})
 
 /**
  * La grille de collision, par-dessus le decor.
@@ -399,6 +459,34 @@ function majEtat(): void {
   const entites = compterEntites(monde.racine)
   verdict.textContent = `${palette.taille} couleurs · ${c.terrain} posées`
     + ` · ${c.solides} solides${entites ? ` · ${entites} entité(s)` : ''}`
+}
+
+/**
+ * Poser ou retirer une entite, en un geste qu'on peut defaire.
+ *
+ * Le noeud lui-meme est garde, pas une description : le remettre en place doit
+ * rendre la MEME entite, avec son identifiant. Un noeud recree porterait un
+ * autre identifiant, et tout ce qui y renvoyait — une vitalite, un script —
+ * pointerait dans le vide.
+ */
+function gesteEntite(nom: string, parent: Noeud, n: Noeud, pose = false) {
+  const ajouter = (): void => { if (!parent.enfants.includes(n)) parent.enfants.push(n) }
+  const oter = (): void => { retirerDe(monde.racine, n) }
+  return {
+    nom,
+    defaire: () => { if (pose) oter(); else ajouter() },
+    refaire: () => { if (pose) ajouter(); else oter() },
+  }
+}
+
+/** Le parent d'un noeud dans la scene, ou null. */
+function parentDe(racine: Noeud, cible: Noeud): Noeud | null {
+  for (const e of racine.enfants) {
+    if (e === cible) return racine
+    const r = parentDe(e, cible)
+    if (r) return r
+  }
+  return null
 }
 
 /** Les noeuds de la scene qui portent une espece. */

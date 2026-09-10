@@ -2,6 +2,9 @@ import type { Jeu } from '../runtime/jeu.ts'
 import type { Carte, Calque } from '../tuiles/tilemap.ts'
 import { VIDE } from '../tuiles/tilemap.ts'
 import { mondeVersCase } from '../noyau/projection.ts'
+import {
+  Historique, differences, gesteDeChangements, type Changement,
+} from './historique.ts'
 
 /**
  * Le mode edition : peindre le decor pendant que la scene est arretee.
@@ -64,6 +67,16 @@ export class Edition {
    * entites de simplement ne pas brancher ce crochet.
    */
   surEntite: ((cx: number, cy: number, retirer: boolean) => void) | null = null
+
+  /** Ce qu'on peut defaire. Partage avec l'editeur, qui y pose ses gestes. */
+  readonly historique = new Historique()
+
+  /** L'etat de la carte avant le geste en cours, ou null. */
+  private photo: {
+    cases: Int32Array[]
+    presence: (Uint8Array | null)[]
+    solides: Uint8Array
+  } | null = null
   private jeu: Jeu
   private carte: Carte
   private peint = false
@@ -104,6 +117,37 @@ export class Edition {
     this.finir()
   }
 
+  /**
+   * Photographie la carte avant un geste.
+   *
+   * Tout, et non le calque touche : le pinceau de terrain change la collision
+   * en meme temps que le dessin, et un jour il changera autre chose. Copier
+   * tout coute quelques kilo-octets et rend le defaire complet par
+   * construction, au lieu de le rendre complet par vigilance.
+   */
+  private photographier(): void {
+    this.photo = {
+      cases: this.carte.calques.map((c) => c.cases.slice()),
+      presence: this.carte.calques.map((c) => (c.presence ? c.presence.slice() : null)),
+      solides: this.carte.solides.slice(),
+    }
+  }
+
+  /** Compare a la photographie et enregistre le geste, s'il a change quelque chose. */
+  private enregistrer(nom: string): void {
+    if (!this.photo) return
+    const changements: Changement[] = []
+    this.carte.calques.forEach((c, i) => {
+      changements.push(...differences(c.cases, this.photo!.cases[i]))
+      const p = this.photo!.presence[i]
+      if (c.presence && p) changements.push(...differences(c.presence, p))
+    })
+    changements.push(...differences(this.carte.solides, this.photo.solides))
+    this.photo = null
+    if (changements.length === 0) return
+    this.historique.poser(gesteDeChangements(nom, changements, () => this.jeu.dessiner()))
+  }
+
   commencer(pageX: number, pageY: number, bouton: number): void {
     if (this.etat.outil === 'main' || bouton === 1) {
       this.glisseCamera = { x: pageX, y: pageY, camX: this.jeu.camera.x, camY: this.jeu.camera.y }
@@ -112,6 +156,7 @@ export class Edition {
     const c = this.caseSous(pageX, pageY)
     if (!c) return
     this.peint = true
+    if (this.etat.outil !== 'entite') this.photographier()
     // Le bouton droit retire, comme partout ailleurs. Et sur un terrain deja
     // present, le premier appui decide : on retire. Sans cette regle, un
     // glissement sur une zone melangee pose et retire alternativement.
@@ -145,6 +190,7 @@ export class Edition {
   }
 
   finir(): void {
+    if (this.peint) this.enregistrer(NOM_GESTE[this.etat.outil] ?? this.etat.outil)
     this.peint = false
     this.glisseCamera = null
     this.dernierePosition = null
@@ -225,4 +271,12 @@ function calqueEditable(carte: Carte): Calque | null {
   return carte.calques.find((c) => c.terrain)
     ?? carte.calques[carte.calques.length - 1]
     ?? null
+}
+
+/** Ce que l'historique montrera pour chaque outil. */
+const NOM_GESTE: Record<string, string> = {
+  terrain: 'terrain',
+  gomme: 'gomme',
+  collision: 'collision',
+  tuile: 'tuile',
 }

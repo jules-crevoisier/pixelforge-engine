@@ -115,6 +115,23 @@ d'un appel de fonction, un projet relu n'avait personne à diriger. Maintenant u
 étage enregistré se rouvre avec ses vingt-trois entités, elles bougent encore,
 et l'on peut y jouer. C'est ce que le banc vérifie, sans navigateur.
 
+### Défaire, et pourquoi on enregistre la différence
+
+On pourrait enregistrer « pinceau de terrain en 12,7 » et rejouer l'inverse.
+C'est plus économe, et c'est un piège : poser du terrain repeint aussi les huit
+voisins, met à jour la collision, et un jour fera autre chose encore. Chaque
+nouvelle conséquence devrait être ajoutée à l'inverse, et la première oubliée
+laisse un « défaire » qui ne défait pas tout — le pire des défauts, parce qu'on
+ne s'en aperçoit que trois gestes plus tard.
+
+L'éditeur photographie donc la carte avant le geste, compare après, et garde les
+cases qui ont changé. Quelques kilo-octets par coup de pinceau, et la garantie
+est totale **par construction** au lieu d'être totale par vigilance.
+
+Une entité posée garde son nœud, pas une description : la remettre en place doit
+rendre la **même** entité, avec son identifiant. Un nœud recréé en porterait un
+autre, et tout ce qui y renvoyait pointerait dans le vide.
+
 ## Le scripting, dans l'éditeur
 
 ![L'atelier de scripts](docs/atelier.png)
@@ -181,6 +198,7 @@ seconde.
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
 - édition : terrain, gomme, collision, tuile précise, entités, déplacement de la
   vue — et le pinceau vise le bon losange en isométrique, pas la case d'à côté
+- défaire et refaire (Ctrl+Z, Ctrl+Maj+Z), y compris sur les entités posées
 - projet enregistré et relu dans un dossier local, planches et projection comprises
 - scripting embarqué : écrire le comportement d'un nœud dans l'éditeur, à chaud
 - entités en données : catalogue d'espèces, intentions nommées, placement à la
@@ -296,9 +314,9 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 122 vérifications : mondes, animations, combat, étages, scripts, projets
+npm run banc:mondes     # 131 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   # 66 vérifications : chargeurs, accord entre langages, paquets
-npm run fumee           # 27 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           # 31 vérifications de l'éditeur, dans un vrai navigateur
 npm run build
 ```
 
