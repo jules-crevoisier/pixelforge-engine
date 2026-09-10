@@ -666,6 +666,19 @@ voirCollision.addEventListener('change', () => {
 // Le menu contextuel du navigateur volerait le clic droit, qui sert a retirer.
 canevas.addEventListener('contextmenu', (e) => e.preventDefault())
 
+/*
+ * La molette regle le cadre d'edition. C'est le PREMIER geste que tout le
+ * monde essaie devant une carte — avant meme de chercher un bouton — et un
+ * editeur qui ne repond pas a la molette a l'air fige. Ctrl+molette est
+ * laisse au navigateur : c'est le zoom d'accessibilite, il ne nous
+ * appartient pas.
+ */
+canevas.addEventListener('wheel', (e) => {
+  if (jeu.tourne || e.ctrlKey) return
+  e.preventDefault()
+  decalerCadre(e.deltaY > 0 ? 1 : -1)
+}, { passive: false })
+
 canevas.addEventListener('pointerdown', (e) => {
   if (jeu.tourne) return
   canevas.setPointerCapture(e.pointerId)
@@ -1032,8 +1045,8 @@ joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
 <p><kbd>1</kbd>…<kbd>7</kbd> les outils du dock · <kbd>Ctrl</kbd>+<kbd>S</kbd>
 enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd> défaire ·
 <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire · <kbd>+</kbd> /
-<kbd>−</kbd> le cadre d’édition · molette du milieu ou outil <b>Main</b> pour
-déplacer la vue.</p>
+<kbd>−</kbd> ou la <b>molette</b> pour le cadre d’édition · molette du milieu
+ou outil <b>Main</b> pour déplacer la vue.</p>
 `
 
 {
