@@ -173,6 +173,11 @@ export class Jeu {
 
   /** Un pas de simulation. Public, pour qu'un banc puisse le declencher. */
   avancer(): void {
+    // Les entrees apprennent OU L'ON EN EST avant que quiconque ne les lise.
+    // C'est la seule horloge qu'elles connaissent : un compte de pas, donc une
+    // partie qui se rejoue a l'identique.
+    this.entrees.pasMs = this.boucle.pasMs
+    this.entrees.auPas(this.boucle.pas)
     const ctx = this.contexte()
     for (const [nom, script] of this.scripts) {
       const n = trouverParNom(this.racine, nom)

@@ -432,6 +432,45 @@
       ]
     },
     {
+      "nom": "banc:reseau",
+      "code": 0,
+      "reussies": 31,
+      "total": 31,
+      "noms": [
+        "aucune horloge murale dans le code des entrées",
+        "un appui reste vu comme récent pendant sa fenêtre",
+        "et neuf pas plus tard aussi",
+        "mais plus au dixième",
+        "deux exécutions des mêmes touches donnent exactement la même suite",
+        "un état imposé remplace le clavier",
+        "et ses appuis se consomment une seule fois",
+        "rendre la main au clavier efface l’état imposé",
+        "capturer puis imposer rend le même état",
+        "la même partie jouée deux fois donne la même trace",
+        "et la bande enregistrée la rejoue au pixel près",
+        "une bande altérée, elle, diverge",
+        "un accumulateur restauré rend le même pas entier",
+        "et sans la fraction, il ne le rendrait pas",
+        "un contrôleur restauré au milieu d’un saut refait exactement le même vol",
+        "sans latence, les deux machines s’accordent sur le dernier pas confirmé",
+        "avec 100 ms de latence et de la gigue, elles s’accordent quand même",
+        "et il a bien fallu rembobiner",
+        "avec 10 % de pertes, elles s’accordent encore",
+        "et avec 30 % de pertes aussi",
+        "sans redondance, les mêmes pertes font diverger pour de bon",
+        "sans rembobinage, la même partie diverge",
+        "deux états différents rendent deux empreintes différentes",
+        "et deux états identiques la même",
+        "un retard local volontaire réduit le nombre de pas refaits",
+        "le vrai jeu joué deux fois donne la même partie",
+        "un instantané rendu redonne exactement l’état visible qu’il portait",
+        "rembobiner cent vingt pas du vrai jeu refait exactement la même suite",
+        "un instantané amputé de l’état vivant, lui, ne refait pas la même suite",
+        "le vrai moteur, à deux, sur un lien qui retarde et qui perd",
+        "et il a fallu rembobiner pour y arriver"
+      ]
+    },
+    {
       "nom": "fumee",
       "code": 0,
       "reussies": 55,
@@ -495,7 +534,7 @@
       ]
     }
   ],
-  "verifications": 446,
+  "verifications": 477,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -515,7 +554,7 @@
         {
           "nom": "Saut mural et glissade",
           "tenu": true,
-          "preuves": 11
+          "preuves": 12
         },
         {
           "nom": "Correction de coin",
@@ -651,12 +690,12 @@
         {
           "nom": "Défaire et refaire, y compris sur les entités",
           "tenu": true,
-          "preuves": 7
+          "preuves": 11
         },
         {
           "nom": "Un projet se ferme, se rouvre, se joue",
           "tenu": true,
-          "preuves": 14
+          "preuves": 15
         },
         {
           "nom": "Une aide qui dit dans quel ordre s’y prendre",
@@ -672,8 +711,8 @@
     },
     {
       "jeu": "Le multijoueur, et ce qu’il exige d’abord",
-      "tenus": 1,
-      "total": 4,
+      "tenus": 5,
+      "total": 5,
       "criteres": [
         {
           "nom": "Simulation à pas fixe, hasard reproductible",
@@ -682,18 +721,23 @@
         },
         {
           "nom": "Entrées déterministes : aucune horloge murale dans la simulation",
-          "tenu": false,
-          "preuves": 7
+          "tenu": true,
+          "preuves": 10
         },
         {
           "nom": "Instantané et rejeu de l’état d’un pas",
-          "tenu": false,
-          "preuves": 0
+          "tenu": true,
+          "preuves": 9
         },
         {
-          "nom": "Transport réseau, et remise en phase",
-          "tenu": false,
-          "preuves": 0
+          "nom": "Transport réseau, avec latence, gigue et pertes",
+          "tenu": true,
+          "preuves": 6
+        },
+        {
+          "nom": "Le vrai moteur se rembobine, pas seulement un jouet",
+          "tenu": true,
+          "preuves": 3
         }
       ]
     },
@@ -720,7 +764,7 @@
         {
           "nom": "Sauvegarde de la PARTIE, distincte du projet",
           "tenu": false,
-          "preuves": 0
+          "preuves": 3
         },
         {
           "nom": "Écran-titre et menus",
@@ -763,13 +807,17 @@
     "agrandir garde ce qui était dessiné, au même endroit",
     "au bord, « le terrain se prolonge » donne le masque plein",
     "aucune creature ne guette le point de depart",
+    "aucune horloge murale dans le code des entrées",
     "aucune pose du cycle ne decolle du sol",
+    "avec 10 % de pertes, elles s’accordent encore",
+    "avec 100 ms de latence et de la gigue, elles s’accordent quand même",
     "avec coyote, sauter trois images apres le bord marche encore",
     "avec les salles dessinées, aucune salle n'est close non plus",
     "avec son effectif, et la plus employee en tete",
     "avec tampon, un appui avant l'atterrissage declenche le saut",
     "bas : contact et passage ne se ressemblent pas",
     "bas plus saut fait descendre de la plateforme",
+    "capturer puis imposer rend le même état",
     "caverne : l'arret le repose au depart",
     "caverne : le heros bouge",
     "caverne : le pinceau change la collision",
@@ -802,7 +850,9 @@
     "dessiner une tuile ne la rend pas solide par magie",
     "deux archives du meme contenu sont identiques octet pour octet",
     "deux coups coup sur coup ne comptent que pour un",
+    "deux exécutions des mêmes touches donnent exactement la même suite",
     "deux rectangles jointifs ne se chevauchent pas",
+    "deux états différents rendent deux empreintes différentes",
     "donjon : l'arret le repose au depart",
     "donjon : la carte relue est identique, tuile par tuile",
     "donjon : la collision aussi",
@@ -820,6 +870,7 @@
     "en isometrique, « droite » au clavier va vers la droite a l'ecran",
     "en marchant case par case, aucune salle n'est injoignable",
     "et Jouer rend le cadre du jeu",
+    "et avec 30 % de pertes aussi",
     "et c'est le plus ancien qui part",
     "et ce qui était peint est toujours là",
     "et chaque entree porte sa signature locale",
@@ -827,12 +878,15 @@
     "et derriere le mur de la case au sud-est",
     "et deux graines voisines rendent deux etages differents",
     "et deux étages ne reçoivent pas la même suite de salles",
+    "et deux états identiques la même",
     "et elle a bien disparu ensuite",
     "et elle contient toutes les cases",
     "et elle disparaît avec l'outil",
     "et elle s'en retire quand on la retire de la scene",
     "et elles ne se recouvrent pas non plus",
     "et elles posent leurs créatures elles-mêmes",
+    "et il a bien fallu rembobiner",
+    "et il a fallu rembobiner pour y arriver",
     "et il garde sa place dessus sur tout l'aller-retour",
     "et il monte",
     "et il ne mange pas la creature qu'il vient d'ecraser",
@@ -843,6 +897,7 @@
     "et l'on réapparaît au point de reprise",
     "et l'on se pose dessus en redescendant",
     "et la balise reste : on peut y revenir",
+    "et la bande enregistrée la rejoue au pixel près",
     "et la barre d'état dit ce qu'elle contient",
     "et la couleur de palette la plus proche, pour decider vite",
     "et la meme ne tombe pas dans un monde vu de dessus",
@@ -865,6 +920,7 @@
     "et l’on change leur ordre",
     "et n'y remet pas les champs communs",
     "et ne se sert pas deux fois",
+    "et neuf pas plus tard aussi",
     "et on la déplace en la traînant",
     "et on la traverse en sautant par en dessous",
     "et protege un instant",
@@ -878,8 +934,10 @@
     "et sa duree suit",
     "et sa place dans le monde",
     "et sa vitesse de chute est remise à zéro tant qu’elle est posée",
+    "et sans la fraction, il ne le rendrait pas",
     "et sans sauter des parois, il ne se remonte pas",
     "et se referme",
+    "et ses appuis se consomment une seule fois",
     "et un caractere illisible ne fait pas tomber la lecture",
     "et un mort ne se fait plus toucher",
     "et une carte ne descend pas sous quatre cases",
@@ -935,6 +993,7 @@
     "la meme graine rend le meme etage",
     "la mort est annoncee une seule fois",
     "la même graine choisit les mêmes salles, aux mêmes places",
+    "la même partie jouée deux fois donne la même trace",
     "la palette d'entités montre les espèces",
     "la palette de matières montre les drapeaux",
     "la palette de tuiles montre la planche",
@@ -996,6 +1055,8 @@
     "le saut mural pousse dans le sens oppose au mur",
     "le vide devient zero et la premiere tuile devient un",
     "le vide se relit VIDE, et non tuile zero",
+    "le vrai jeu joué deux fois donne la même partie",
+    "le vrai moteur, à deux, sur un lien qui retarde et qui perd",
     "les cases s'ecrivent une rangee par ligne",
     "les cellules sans salle restent pleines",
     "les corps mobiles du niveau sont inscrits dans le jeu",
@@ -1018,6 +1079,7 @@
     "mais le petit saut reste un vrai saut",
     "mais pas en dessous de ce qui se voit",
     "mais pas quand la vie est deja pleine",
+    "mais plus au dixième",
     "mais seulement apres son temps d'anticipation",
     "mais tomber a cote d'une creature ne la pietine pas",
     "mais un coup apres la fenetre passe",
@@ -1053,6 +1115,8 @@
     "puis l'on reapparait au point de reprise, en vie",
     "redemander le clip en cours ne le recommence pas",
     "relacher le bouton coupe la montee",
+    "rembobiner cent vingt pas du vrai jeu refait exactement la même suite",
+    "rendre la main au clavier efface l’état imposé",
     "reposer le même identifiant modifie au lieu de dupliquer",
     "retirer du terrain remet du vide",
     "retirer une espèce retire les entités posées qui la portaient",
@@ -1063,9 +1127,12 @@
     "sans correction, il se cogne au coin et s'arrete au plafond",
     "sans coyote, le meme geste rate",
     "sans la conversion, elle irait en biais",
+    "sans latence, les deux machines s’accordent sur le dernier pas confirmé",
     "sans le filet, elle la ferait tomber des le premier pas",
     "sans le registre, la meme chute va jusqu'au sol",
     "sans rebond, le deuxieme dash en l'air est refuse",
+    "sans redondance, les mêmes pertes font diverger pour de bon",
+    "sans rembobinage, la même partie diverge",
     "sans suite, il tient sa derniere image",
     "sans tampon, l'appui tombe dans le vide",
     "sans toucher au cadre du jeu",
@@ -1078,9 +1145,11 @@
     "traverser une creature en montant ne la pietine pas",
     "trois mille pas d'entrees hasardeuses ne font jamais entrer dans un mur",
     "un CRC qui engloberait la longueur serait different",
+    "un accumulateur restauré rend le même pas entier",
     "un aller-retour hexadecimal ne perd rien",
     "un ancien fichier fait de zeros et de uns se relit tel quel",
     "un appui relache n'est plus tenu",
+    "un appui reste vu comme récent pendant sa fenêtre",
     "un assemblage sans tuiles précisées encombre quand même ses salles",
     "un bloc dans la croix des portes fait refuser le modèle",
     "un calque de terrain neuf a bien son terrain",
@@ -1094,6 +1163,7 @@
     "un coin avec ses deux cotes compte",
     "un coin avec un seul de ses cotes ne compte pas non plus",
     "un coin seul, sans ses deux cotes, ne compte pas",
+    "un contrôleur restauré au milieu d’un saut refait exactement le même vol",
     "un corps bloque en haut ne monte pas",
     "un corps dans le mur touche",
     "un corps dans le vide ne touche rien",
@@ -1106,6 +1176,8 @@
     "un déplacement se défait",
     "un etage enregistre emporte ses creatures",
     "un geste sans effet ne laisse aucune trace",
+    "un instantané amputé de l’état vivant, lui, ne refait pas la même suite",
+    "un instantané rendu redonne exactement l’état visible qu’il portait",
     "un lecteur qui saute au bon dessin, lui, en perd",
     "un masque deja reduit ne bouge plus",
     "un modèle dissymétrique donne bien quatre salles différentes une fois retourné",
@@ -1122,6 +1194,7 @@
     "un projet parti de rien se joue vraiment",
     "un projet sans niveau est signale",
     "un retard enorme est plafonne, pas rattrape",
+    "un retard local volontaire réduit le nombre de pas refaits",
     "un saut decale de trois pixels passe quand meme le trou",
     "un saut tenu monte a la hauteur reglee",
     "un script juste modifie son noeud",
@@ -1130,7 +1203,9 @@
     "un second dash en l'air est refuse",
     "un seul coin, lui, en laisse tomber",
     "un seul coup touche DEUX cibles, une fois chacune",
+    "un état imposé remplace le clavier",
     "une action se consomme",
+    "une bande altérée, elle, diverge",
     "une boucle bornee, elle, passe",
     "une boucle sans sortie est refusee",
     "une carte exportee puis reimportee est identique",

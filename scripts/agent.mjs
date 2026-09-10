@@ -75,7 +75,7 @@ function lancer(nom, commande, arguments_) {
 
 const epreuves = []
 epreuves.push(lancer('build', 'npm', ['run', '-s', 'build']))
-for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages']) {
+for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau']) {
   epreuves.push(lancer(b, 'npm', ['run', '-s', b]))
 }
 if (!rapide) epreuves.push(lancer('fumee', 'npm', ['run', '-s', 'fumee']))
@@ -250,9 +250,14 @@ const OBJECTIFS = [
         interdits: [{ fichier: 'src/runtime/entree.ts', motif: 'performance.now' }],
         indices: ['entree', 'appui'], preuves: 2 },
       { nom: 'Instantané et rejeu de l’état d’un pas',
-        symboles: ['instantane', 'rejouer'], indices: ['instantane', 'rejeu'], preuves: 2 },
-      { nom: 'Transport réseau, et remise en phase',
-        symboles: ['Transport'], indices: ['reseau', 'latence'], preuves: 2 },
+        symboles: ['instantane', 'restaurer', 'SimulationJeu'],
+        indices: ['instantane', 'rejou', 'rembobin', 'bande'], preuves: 5 },
+      { nom: 'Transport réseau, avec latence, gigue et pertes',
+        symboles: ['LienLocal', 'redondance'],
+        indices: ['latence', 'pertes', 'lien'], preuves: 3 },
+      { nom: 'Le vrai moteur se rembobine, pas seulement un jouet',
+        symboles: ['SimulationJeu', 'prendreScene', 'rendreScene'],
+        indices: ['vrai moteur', 'vrai jeu'], preuves: 3 },
     ],
   },
   {
@@ -295,8 +300,12 @@ function evaluer(c) {
   // critere qu'on ne peut enoncer qu'en negatif reste un critere.
   for (const i of c.interdits ?? []) {
     const source = texte.get(i.fichier)
-    if (source === undefined) manquants.push(`fichier absent : ${i.fichier}`)
-    else if (source.includes(i.motif)) manquants.push(`« ${i.motif} » subsiste dans ${i.fichier}`)
+    if (source === undefined) { manquants.push(`fichier absent : ${i.fichier}`); continue }
+    // Sans les commentaires. Une sonde qu'un commentaire fait basculer punit
+    // la documentation : expliquer ce qu'on a retire du code suffirait alors a
+    // faire croire que c'est encore la.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    if (code.includes(i.motif)) manquants.push(`« ${i.motif} » subsiste dans ${i.fichier}`)
   }
   const trouvees = new Set()
   for (const i of c.indices) {
@@ -374,17 +383,28 @@ if (precedent) {
   const communes = new Set(
     (precedent.epreuves ?? []).map((e) => e.nom).filter((n) => epreuves.some((e) => e.nom === n)),
   )
-  const ignorees = [...new Set([
-    ...(precedent.epreuves ?? []).map((e) => e.nom),
-    ...epreuves.map((e) => e.nom),
-  ])].filter((n) => !communes.has(n))
-  if (ignorees.length) {
+  // Une epreuve PERDUE et une epreuve AJOUTEE ne se valent pas. Perdue, on ne
+  // sait plus rien de ce qu'elle couvrait et l'on ne peut plus comparer les
+  // criteres. Ajoutee, on en sait davantage — il n'y a aucune raison de
+  // refuser la comparaison, et refuser rendrait le premier passage suivant
+  // muet a chaque fois qu'on ecrit un banc de plus.
+  const perduesEpreuves = (precedent.epreuves ?? []).map((e) => e.nom)
+    .filter((n) => !epreuves.some((e) => e.nom === n))
+  const neuvesEpreuves = epreuves.map((e) => e.nom)
+    .filter((n) => !(precedent.epreuves ?? []).some((e) => e.nom === n))
+  if (neuvesEpreuves.length) {
     mouvements.push({
-      genre: 'neuf',
-      quoi: `épreuve absente d’un des deux passages, non comparée : ${ignorees.join(', ')}`,
+      genre: 'neuf', quoi: `épreuve nouvelle : ${neuvesEpreuves.join(', ')}`, detail: [],
+    })
+  }
+  if (perduesEpreuves.length) {
+    mouvements.push({
+      genre: 'perdu',
+      quoi: `épreuve DISPARUE, plus rien n’en est comparé : ${perduesEpreuves.join(', ')}`,
       detail: [],
     })
   }
+  const ignorees = perduesEpreuves
   const nomsDe = (source) => new Set(
     (source.epreuves ?? []).filter((e) => communes.has(e.nom)).flatMap((e) => e.noms ?? []),
   )
@@ -406,7 +426,7 @@ if (precedent) {
   if (ignorees.length) {
     mouvements.push({
       genre: 'neuf',
-      quoi: 'passage partiel : les critères ne sont pas comparés au dernier relevé',
+      quoi: 'passage incomplet : les critères ne sont pas comparés au dernier relevé',
       detail: ['relancez sans --rapide pour savoir ce qui a bougé'],
     })
   } else {

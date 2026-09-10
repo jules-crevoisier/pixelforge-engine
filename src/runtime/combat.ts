@@ -126,6 +126,38 @@ export class Combat {
   retirer(id: string): void { this.vies.delete(id) }
 
   /**
+   * Tout l'etat du combat : les vitalites ET les frappes en cours.
+   *
+   * Les frappes ne durent qu'une image dans la plupart des cas, et l'on serait
+   * tente de les oublier. Une frappe d'epee dure six images, et elle porte la
+   * liste de ce qu'elle a DEJA touche : perdre cette liste dans un
+   * rembobinage ferait blesser deux fois avec le meme coup, exactement le
+   * defaut que la regle « un coup ne touche qu'une fois » existe pour eviter.
+   */
+  instantane(): unknown {
+    return {
+      compteur: this.compteur,
+      vies: [...this.vies].map(([id, v]) => [id, { ...v, boite: { ...v.boite } }]),
+      frappes: this.frappes.map((f) => ({ ...f, touches: [...f.touches] })),
+    }
+  }
+
+  restaurer(e: unknown): void {
+    const s = e as {
+      compteur: number
+      vies: [string, Vitalite][]
+      frappes: (Omit<Frappe, 'touches'> & { touches: string[] })[]
+    }
+    this.compteur = s.compteur
+    this.vies.clear()
+    for (const [id, v] of s.vies) this.vies.set(id, { ...v, boite: { ...v.boite } })
+    this.frappes.length = 0
+    for (const f of s.frappes) {
+      this.frappes.push({ ...f, boite: { ...f.boite }, touches: new Set(f.touches) })
+    }
+  }
+
+  /**
    * Declenche une frappe.
    *
    * La boite est donnee en pixels du monde et ne bouge plus. Une frappe qui

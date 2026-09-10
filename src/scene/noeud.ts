@@ -183,4 +183,26 @@ export class Mouvements {
     return a
   }
   oublier(id: string): void { this.table.delete(id) }
+
+  /**
+   * Les fractions en attente de chaque corps.
+   *
+   * Elles font partie de l'etat du jeu au meme titre qu'une position, et c'est
+   * le genre de chose qu'on oublie : elles valent moins d'un pixel, elles ne
+   * se voient pas, et elles vivent a cote de la scene plutot que dedans. Un
+   * rembobinage qui les perd fait diverger des le premier pas refait — ce que
+   * le banc du reseau a dit avant que personne n'y pense.
+   */
+  instantane(): [string, [number, number]][] {
+    return [...this.table].map(([id, a]) => [id, a.instantane()])
+  }
+
+  restaurer(e: [string, [number, number]][]): void {
+    this.table.clear()
+    for (const [id, v] of e) {
+      const a = new Accumulateur()
+      a.restaurer(v)
+      this.table.set(id, a)
+    }
+  }
 }

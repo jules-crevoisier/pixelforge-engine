@@ -445,6 +445,9 @@ seconde.
 - machines à états par espèce : bascules de distance, durées, état suivant
 - déclencheurs attachés à une image d'animation : frapper, tirer
 - projectiles, qui sont des entités comme les autres
+- entrées déterministes : la même partie rejouée donne la même partie
+- instantané et rembobinage du moteur entier, résurrections comprises
+- rollback à deux, avec latence, gigue et pertes — éprouvé sur le vrai moteur
 - génération d'étages en salles, reproductible depuis une graine
 - salles dessinées à la main, tirées et retournées par le générateur, refusées
   au démarrage si elles barrent le passage entre leurs portes
@@ -563,6 +566,96 @@ npm run fumee           # 35 vérifications de l'éditeur, dans un vrai navigate
 npm run build
 ```
 
+## Le multijoueur : jouer sans attendre les autres
+
+Les entrées du joueur d'en face arrivent en retard. On peut soit **attendre** —
+et le jeu accuse la latence à chaque appui, ce qui est insupportable dans un jeu
+de plateforme — soit **avancer en devinant, puis se corriger**. La seconde voie
+est celle de tous les jeux de combat depuis vingt ans, et elle porte un nom :
+rollback.
+
+### Rien n'était possible tant qu'une horloge traînait
+
+`Entrees` datait chaque appui avec `performance.now()`. La règle était juste et
+le résultat n'était pas **reproductible** : deux exécutions des mêmes touches,
+sur la même machine, ne rendaient pas la même partie. Tout le reste du moteur
+était déterministe — pas fixe, hasard tiré d'une graine — et cette seule lecture
+d'horloge suffisait à tout ruiner : ni rejeu, ni vérification d'un record, ni la
+moindre forme de rembobinage.
+
+Un appui est maintenant daté par le **numéro du pas** où il a eu lieu. Les
+réglages restent en millisecondes — c'est l'unité qui se compare à l'œil — et se
+convertissent en pas à la lecture. On y perd une chose, et c'est correct : deux
+appuis de la même touche dans un seul pas ne se distinguent plus. Un jeu à pas
+fixe ne pouvait de toute façon pas les voir ; l'horloge donnait l'illusion du
+contraire.
+
+### Ce que le rembobinage a exigé
+
+Revenir en arrière suppose de savoir rendre un état **exactement** comme il
+était. Chaque système sait maintenant se photographier — le contrôleur, le
+lecteur d'animation, le combat, le peuplement, les corps mobiles. Trois choses
+qu'on aurait oubliées, et que le banc a nommées :
+
+- **Les fractions de pixel.** Elles valent moins d'un pixel, elles ne se voient
+  pas — et c'est exactement pourquoi il faut les garder. Un rembobinage qui les
+  perd repart avec un demi-pixel d'écart, et deux machines n'arrivent pas au
+  même pixel un dixième de seconde plus tard. Elles vivent en plus **à côté** de
+  la scène, dans les accumulateurs de déplacement, ce qui les rend deux fois
+  plus faciles à oublier.
+- **La résurrection.** Une créature tuée au pas 130 doit revenir si l'on
+  rembobine au pas 120. Une première version gardait seulement les positions et
+  laissait la scène décider qui existe : ça paraissait prudent, et ça rendait le
+  rembobinage tout simplement faux.
+- **Les frappes en vol.** Un coup d'épée dure six images et porte la liste de ce
+  qu'il a déjà touché. Perdre cette liste ferait blesser deux fois avec le même
+  coup — précisément le défaut que la règle « un coup ne touche qu'une fois »
+  existe pour éviter.
+
+### Deux défauts du rembobinage lui-même
+
+**Le retard local retardait ce qu'on joue, pas ce qu'on annonce.** Jouer ses
+propres touches deux images plus tard ne sert à rien si le message part quand
+même au dernier moment : il arrive toujours en retard, et le réglage ne change
+rigoureusement rien. Le banc l'a dit sans ambiguïté — cent huit pas refaits avec,
+cent huit sans. En annonçant *maintenant* ce qu'on jouera *dans deux pas*, l'autre
+reçoit avant d'en avoir besoin : cent huit pas refaits deviennent **zéro**.
+
+**La correction abandonnait dès que le premier pas suspect s'avérait juste.** On
+retenait le plus ancien pas dont une entrée était *arrivée* — ce qui n'est pas le
+plus ancien pas dont une entrée était *fausse*. Quand l'entrée reçue confirmait
+la prédiction, ce qui arrive tout le temps puisque c'est le principe, on
+concluait « rien à refaire » et on abandonnait au passage les corrections des pas
+suivants arrivées dans le même lot. Les deux machines divergeaient alors pour de
+bon, en silence.
+
+### Un rembobinage ne répare pas une perte
+
+Si le paquet qui portait le pas 412 n'arrive jamais, aucune correction ne
+rattrapera une information détruite. Chaque message porte donc les **huit
+derniers pas** : perdre un paquet devient sans conséquence dès que le suivant
+arrive. Le coût est ridicule — une entrée tient dans deux petits entiers.
+
+Le banc mesure les deux versants : avec redondance et 30 % de pertes, les deux
+machines s'accordent ; sans elle, les mêmes pertes les font diverger pour de bon.
+
+### Ce que le banc vérifie, et sur quoi
+
+Le rembobinage a d'abord été écrit contre une **simulation-jouet** : deux
+curseurs qui avancent. C'était le bon choix — un échec y est lisible. Ce n'est
+pas une preuve que le *moteur* se rembobine, alors le banc le fait aussi sur le
+vrai jeu : un héros avec sa vitesse, son coyote, son tampon de saut, sa fraction
+de pixel, son animation en cours, sa vitalité, des gelées qui patrouillent et
+qu'on écrase. Cent vingt pas rembobinés, refaits à l'identique — et un instantané
+volontairement amputé qui, lui, doit échouer.
+
+    le vrai moteur, à deux, sur un lien qui retarde et qui perd
+      accord au pas 294 · 46 messages perdus, 30 rembobinages
+
+Ce qui manque encore, et qui se dit : un seul jeu d'entrées est actif par pas,
+donc un seul personnage dirigeable dans cette version. Faire lire à chaque entité
+*ses* entrées est un changement du contexte de jeu, pas du rembobinage.
+
 ## L'agent qui évalue, et qui reboucle
 
     npm run agent            # tout, navigateur compris
@@ -622,15 +715,14 @@ pire défaut d'une mesure.
     The Binding of Isaac — salles engendrées       7/7
     Dead Cells — combat et corps                   6/6
     Faire un jeu sans lire le moteur               8/8
-    Le multijoueur, et ce qu'il exige d'abord      1/4
+    Le multijoueur, et ce qu'il exige d'abord      5/5
     Ce qu'un jeu a en plus de son gameplay         0/5
-                                          446 vérifications
+                                          477 vérifications
 
-Les deux dernières lignes viennent d'être ajoutées, et c'est délibéré : quand
-la grille est entièrement verte, elle ne mesure plus rien. Elle dit maintenant
-ce qui manque — le déterminisme des entrées, l'instantané, le réseau, le son,
-les particules, le dialogue, la sauvegarde de partie, les menus — et elle le
-dira jusqu'à ce que ce soit fait.
+La dernière ligne dit ce qui manque — le son, les particules, le dialogue, la
+sauvegarde de partie, les menus — et elle le dira jusqu'à ce que ce soit fait.
+C'est délibéré : quand la grille est entièrement verte, elle ne mesure plus
+rien.
 
 Le relevé complet est dans [`docs/evaluation.md`](docs/evaluation.md).
 

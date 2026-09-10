@@ -102,6 +102,18 @@ export class Accumulateur {
   bloquerX(): void { this.resteX = 0 }
   bloquerY(): void { this.resteY = 0 }
   remettre(): void { this.resteX = 0; this.resteY = 0 }
+
+  /**
+   * La fraction en attente. Elle FAIT partie de l'etat du jeu.
+   *
+   * On serait tente de ne pas la garder dans un instantane : elle vaut moins
+   * d'un pixel, elle ne se voit pas. C'est justement pourquoi il faut la
+   * garder — un rembobinage qui la perd repart avec un demi-pixel d'ecart, et
+   * deux machines qui simulent le meme pas n'arrivent pas au meme pixel un
+   * dixieme de seconde plus tard. Une divergence invisible est une divergence.
+   */
+  instantane(): [number, number] { return [this.resteX, this.resteY] }
+  restaurer(e: [number, number]): void { this.resteX = e[0]; this.resteY = e[1] }
 }
 
 /**

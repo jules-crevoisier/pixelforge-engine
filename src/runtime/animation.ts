@@ -130,6 +130,24 @@ export class Lecteur {
   get nom(): string | null { return this.courant?.nom ?? null }
   get termine(): boolean { return this.fini }
 
+  /**
+   * L'etat de lecture, en trois nombres. Voir `reseau/instantane.ts`.
+   *
+   * Le clip lui-meme n'y figure pas : c'est une DONNEE, partagee et jamais
+   * modifiee. Le copier a chaque instantane multiplierait par cent le cout
+   * d'un rembobinage pour recopier ce qui ne change pas.
+   */
+  instantane(): [string, number, number, number] {
+    return [this.courant?.nom ?? '', this.rang, this.reste, this.fini ? 1 : 0]
+  }
+
+  restaurer(e: [string, number, number, number]): void {
+    this.courant = e[0] ? this.clips.get(e[0]) ?? null : null
+    this.rang = e[1]
+    this.reste = e[2]
+    this.fini = e[3] === 1
+  }
+
   /** L'image de planche a dessiner. -1 si aucun clip n'est en cours. */
   get image(): number {
     if (!this.courant) return -1

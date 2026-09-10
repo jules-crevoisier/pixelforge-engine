@@ -212,6 +212,36 @@ export class Plateformeur {
     }
   }
 
+  /**
+   * Tout l'etat mouvant du controleur, dans un tableau de nombres.
+   *
+   * Un tableau et non un objet : un rembobinage en prend un par pas garde, et
+   * un objet de dix-huit champs coute dix-huit allocations la ou un tableau en
+   * coute une. L'ORDRE fait partie du contrat, et `restaurer` le lit dans le
+   * meme ordre — deux listes cote a cote, qu'on relit ensemble.
+   */
+  instantane(): number[] {
+    const a = this.acc.instantane()
+    return [
+      this.vx, this.vy, a[0], a[1],
+      this.auSol ? 1 : 0, this.murCote, this.coyoteRestant, this.tamponRestant,
+      this.tientSaut ? 1 : 0, this.blocageMur, this.tempsDash, this.recupDash,
+      this.dirDash.x, this.dirDash.y, this.dashDispo ? 1 : 0,
+      this.coinCorrige ? 1 : 0, this.sautsUtilises, this.traversee,
+    ]
+  }
+
+  restaurer(e: number[]): void {
+    this.vx = e[0]; this.vy = e[1]
+    this.acc.restaurer([e[2], e[3]])
+    this.auSol = e[4] === 1; this.murCote = e[5]
+    this.coyoteRestant = e[6]; this.tamponRestant = e[7]
+    this.tientSaut = e[8] === 1; this.blocageMur = e[9]
+    this.tempsDash = e[10]; this.recupDash = e[11]
+    this.dirDash = { x: e[12], y: e[13] }; this.dashDispo = e[14] === 1
+    this.coinCorrige = e[15] === 1; this.sautsUtilises = e[16]; this.traversee = e[17]
+  }
+
   /** Remet le controleur a neuf, sans changer les reglages. */
   reinitialiser(): void {
     this.vx = 0; this.vy = 0

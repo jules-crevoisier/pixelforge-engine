@@ -932,6 +932,71 @@ export class Peuplement {
     return [...this.vivantes.values()].map((v) => ({ x: v.noeud.x, y: v.noeud.y, espece: v.espece.id }))
   }
 
+  /**
+   * L'etat vivant du peuplement, celui qui ne s'ecrit pas dans un fichier.
+   *
+   * ## Pourquoi il ne contient pas les noeuds
+   *
+   * Un noeud appartient a la SCENE, et la scene est instantanee a part —
+   * autrement chaque entite serait copiee deux fois, et les deux copies
+   * finiraient par diverger. Ici on ne garde que ce que le peuplement sait et
+   * que personne d'autre ne sait : le cap d'une patrouille, le compteur d'un
+   * bond, l'etat d'une machine, la position de lecture d'une animation, la
+   * phase d'un porteur.
+   *
+   * ## Pourquoi le controleur de plateforme en fait partie
+   *
+   * C'est LUI qui porte la vitesse, le coyote, le tampon et la fraction de
+   * pixel en attente. Un rembobinage qui les perd fait repartir le heros
+   * immobile au milieu d'un saut — et le joueur voit sauter son personnage
+   * sans avoir rien fait.
+   */
+  instantane(): unknown {
+    return [...this.vivantes].map(([id, v]) => [id, {
+      cap: v.cap,
+      attente: v.attente,
+      etat: v.etat?.nom ?? '',
+      depuis: v.depuis,
+      vx: v.vx,
+      vy: v.vy,
+      restant: v.restant,
+      phase: v.phase,
+      pietinee: v.pietinee,
+      regard: { ...v.regard },
+      lecteur: v.lecteur.instantane(),
+      plateformeur: v.plateformeur ? v.plateformeur.instantane() : null,
+    }])
+  }
+
+  restaurer(e: unknown): void {
+    const liste = e as [string, {
+      cap: number; attente: number; etat: string; depuis: number
+      vx: number; vy: number; restant: number; phase: number; pietinee: boolean
+      regard: { x: number; y: number }
+      lecteur: [string, number, number, number]
+      plateformeur: number[] | null
+    }][]
+    for (const [id, q] of liste) {
+      const v = this.vivantes.get(id)
+      // Une entite absente est normale : l'instantane peut venir d'un pas ou
+      // elle vivait encore. On l'ignore au lieu de la recreer — la scene, elle,
+      // sait qui existe, et c'est elle qui fait autorite.
+      if (!v) continue
+      v.cap = q.cap
+      v.attente = q.attente
+      v.etat = q.etat ? (v.espece.etats.find((x) => x.nom === q.etat) ?? v.etat) : null
+      v.depuis = q.depuis
+      v.vx = q.vx
+      v.vy = q.vy
+      v.restant = q.restant
+      v.phase = q.phase
+      v.pietinee = q.pietinee
+      v.regard = { ...q.regard }
+      v.lecteur.restaurer(q.lecteur)
+      if (v.plateformeur && q.plateformeur) v.plateformeur.restaurer(q.plateformeur)
+    }
+  }
+
   /** Oublie tout l'etat vivant, sans toucher a la scene. */
   oublier(): void {
     for (const id of this.vivantes.keys()) this.combat.retirer(id)

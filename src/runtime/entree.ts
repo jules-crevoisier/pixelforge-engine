@@ -18,6 +18,26 @@
  * Le jeu demande « est-ce que le joueur veut aller a droite », pas « est-ce
  * que la fleche droite est enfoncee ». Sans cette couche, changer les touches
  * ou ajouter la manette demande de reprendre tout le code du jeu.
+ *
+ * ## Pourquoi la memoire se compte en PAS et non en millisecondes
+ *
+ * Elle se comptait en millisecondes, lues sur `performance.now()`. La regle
+ * etait juste et le resultat n'etait pas REPRODUCTIBLE : deux executions des
+ * memes touches, sur la meme machine, ne rendaient pas la meme partie, parce
+ * que l'horloge murale ne retombe jamais sur les memes valeurs. Tout le reste
+ * du moteur est deterministe — le pas est fixe, le hasard vient d'une graine —
+ * et cette seule lecture d'horloge suffisait a tout ruiner : ni rejeu, ni
+ * verification d'une partie, ni la moindre forme de multijoueur a rembobinage.
+ *
+ * Un appui est donc date par le NUMERO DU PAS ou il a eu lieu. La boucle dit
+ * a chaque pas ou l'on en est ; entre deux pas, les evenements du clavier
+ * s'inscrivent au pas courant. Les reglages restent exprimes en millisecondes
+ * — c'est l'unite qui se compare a l'oeil — et se convertissent en pas au
+ * moment de la lecture.
+ *
+ * On y perd une chose, et c'est correct : deux appuis de la meme touche dans
+ * un seul pas ne se distinguent plus. Un jeu a pas fixe ne pouvait de toute
+ * facon pas les voir ; l'horloge donnait l'illusion du contraire.
  */
 
 /** Duree, en millisecondes, pendant laquelle un appui reste « recent ». */
@@ -25,13 +45,60 @@ export const MEMOIRE_MS = 150
 
 export type Action = string
 
+/**
+ * L'etat des entrees a un pas donne, sous une forme qui se transmet.
+ *
+ * Deux masques de bits sur une liste d'actions ORDONNEE : ce qui est tenu, et
+ * ce qui vient d'etre presse. Deux entiers suffisent donc a decrire un pas de
+ * jeu, ce qui est exactement ce qu'un rembobinage doit garder pour chaque pas
+ * et ce qu'un reseau doit transmettre.
+ *
+ * L'ordre des actions fait partie du format : deux programmes qui ne
+ * l'accordent pas liraient « saut » la ou l'autre a ecrit « dash ». Il est
+ * donc fixe ici, et l'on n'ajoute qu'A LA FIN.
+ */
+export const ACTIONS_ORDRE: Action[] = [
+  'gauche', 'droite', 'haut', 'bas', 'action', 'saut', 'dash', 'annuler',
+]
+
+export interface EtatEntrees {
+  /** Bit par action de `ACTIONS_ORDRE` : l'action est maintenue. */
+  tenues: number
+  /** Bit par action : l'action vient d'etre pressee a ce pas. */
+  appuis: number
+}
+
+export const ETAT_VIDE: EtatEntrees = { tenues: 0, appuis: 0 }
+
 export class Entrees {
   private enfoncees = new Set<string>()
-  private datesAppui = new Map<string, number>()
-  private datesRelache = new Map<string, number>()
+  /** Touche -> numero du pas ou elle a ete pressee. Jamais une heure. */
+  private pasAppui = new Map<string, number>()
+  private pasRelache = new Map<string, number>()
   /** Action -> touches qui la declenchent. */
   private plan = new Map<Action, string[]>()
   private detacher: (() => void) | null = null
+
+  /**
+   * Le pas de simulation courant. C'est la seule horloge de ce fichier.
+   *
+   * Il vaut -1 avant le premier pas : zero ferait passer un appui jamais
+   * survenu pour un appui du pas zero, et le premier saut partirait tout seul.
+   */
+  private pasCourant = -1
+  /** Duree d'un pas, pour convertir les reglages exprimes en millisecondes. */
+  pasMs = 1000 / 60
+  /**
+   * L'etat impose, quand il y en a un. Le clavier est alors ignore.
+   *
+   * C'est par la que passent le rejeu d'une partie enregistree et la
+   * resimulation d'un rembobinage : le meme code de jeu tourne, et il ne sait
+   * pas d'ou viennent les entrees. S'il le savait, il faudrait deux chemins —
+   * et le deuxieme ne serait eprouve qu'a moitie.
+   */
+  private impose: EtatEntrees | null = null
+  /** Les appuis deja consommes a ce pas, quand l'etat est impose. */
+  private consommes = 0
 
   constructor(plan?: Record<Action, string[]>) {
     this.definirPlan(plan ?? {
@@ -63,12 +130,15 @@ export class Entrees {
       // une suite d'appuis, sinon un menu defile a la vitesse du clavier.
       if ((e as KeyboardEvent).repeat) return
       this.enfoncees.add(k)
-      this.datesAppui.set(k, performance.now())
+      // Au pas COURANT : l'evenement arrive entre deux pas, et c'est le pas en
+      // cours qui doit le voir. L'inscrire au pas suivant retarderait chaque
+      // appui d'une image, ce qui se sent immediatement au saut.
+      this.pasAppui.set(k, this.pasCourant)
     }
     const haut = (e: Event): void => {
       const k = (e as KeyboardEvent).code
       this.enfoncees.delete(k)
-      this.datesRelache.set(k, performance.now())
+      this.pasRelache.set(k, this.pasCourant)
     }
     // Une fenetre qui perd le focus garde ses touches enfoncees pour toujours :
     // on revient sur le jeu et le personnage court tout seul.
@@ -89,20 +159,59 @@ export class Entrees {
 
   private touches(a: Action): string[] { return this.plan.get(a) ?? [] }
 
+  /** Le rang d'une action dans le format transmissible, ou -1. */
+  private rang(a: Action): number { return ACTIONS_ORDRE.indexOf(a) }
+
+  /**
+   * Avance d'un pas. C'est la boucle qui l'appelle, et elle seule.
+   *
+   * Elle est le seul endroit ou le temps existe pour ce fichier, et le temps
+   * y est un compte de pas.
+   */
+  auPas(n: number): void {
+    this.pasCourant = n
+    this.consommes = 0
+  }
+
+  get pas(): number { return this.pasCourant }
+
+  /** La fenetre de memoire, en pas. Au moins un : sinon elle n'existe pas. */
+  private memoireEnPas(ms: number): number {
+    if (ms < 0) return -1
+    return Math.max(0, Math.round(ms / this.pasMs))
+  }
+
   /** L'action est-elle maintenue en ce moment ? */
   tenue(a: Action): boolean {
+    if (this.impose) {
+      const r = this.rang(a)
+      return r >= 0 && (this.impose.tenues & (1 << r)) !== 0
+    }
     return this.touches(a).some((k) => this.enfoncees.has(k))
   }
 
   /** L'action a-t-elle ete demandee dans la fenetre de memoire ? */
   vientDePresser(a: Action, memoire = MEMOIRE_MS): boolean {
-    const t = performance.now()
-    return this.touches(a).some((k) => t - (this.datesAppui.get(k) ?? -1e9) <= memoire)
+    if (this.impose) {
+      const r = this.rang(a)
+      return r >= 0 && (this.impose.appuis & (1 << r)) !== 0
+        && (this.consommes & (1 << r)) === 0
+    }
+    const fenetre = this.memoireEnPas(memoire)
+    if (fenetre < 0) return false
+    return this.touches(a).some((k) => {
+      const p = this.pasAppui.get(k)
+      return p !== undefined && this.pasCourant - p <= fenetre
+    })
   }
 
   vientDeRelacher(a: Action, memoire = MEMOIRE_MS): boolean {
-    const t = performance.now()
-    return this.touches(a).some((k) => t - (this.datesRelache.get(k) ?? -1e9) <= memoire)
+    const fenetre = this.memoireEnPas(memoire)
+    if (fenetre < 0) return false
+    return this.touches(a).some((k) => {
+      const p = this.pasRelache.get(k)
+      return p !== undefined && this.pasCourant - p <= fenetre
+    })
   }
 
   /**
@@ -114,8 +223,52 @@ export class Entrees {
    */
   consommer(a: Action, memoire = MEMOIRE_MS): boolean {
     if (!this.vientDePresser(a, memoire)) return false
-    for (const k of this.touches(a)) this.datesAppui.delete(k)
+    if (this.impose) {
+      const r = this.rang(a)
+      if (r >= 0) this.consommes |= 1 << r
+      return true
+    }
+    for (const k of this.touches(a)) this.pasAppui.delete(k)
     return true
+  }
+
+  /**
+   * L'etat de ce pas, sous forme transmissible.
+   *
+   * Un appui compte comme « presse a ce pas » s'il est tombe dans la fenetre
+   * de memoire ET n'a pas encore ete consomme. C'est exactement ce que le jeu
+   * verrait ; capturer autre chose ferait diverger le rejeu de la partie qu'il
+   * pretend rejouer.
+   */
+  capturer(memoire = MEMOIRE_MS): EtatEntrees {
+    let tenues = 0
+    let appuis = 0
+    ACTIONS_ORDRE.forEach((a, r) => {
+      if (this.tenue(a)) tenues |= 1 << r
+      if (this.vientDePresser(a, memoire)) appuis |= 1 << r
+    })
+    return { tenues, appuis }
+  }
+
+  /**
+   * Impose l'etat des entrees, ou rend la main au clavier avec `null`.
+   *
+   * Le jeu ne sait pas qu'il est pilote : c'est ce qui garantit qu'une partie
+   * rejouee suit exactement le meme chemin qu'une partie jouee.
+   */
+  imposer(e: EtatEntrees | null): void {
+    this.impose = e ? { ...e } : null
+    this.consommes = 0
+  }
+
+  get estImpose(): boolean { return this.impose !== null }
+
+  /** Oublie tout : touches enfoncees, appuis, relachements. */
+  vider(): void {
+    this.enfoncees.clear()
+    this.pasAppui.clear()
+    this.pasRelache.clear()
+    this.consommes = 0
   }
 
   /** Direction demandee, en -1, 0 ou 1 sur chaque axe. */
@@ -129,10 +282,10 @@ export class Entrees {
   /** Pour les bancs : simule un appui sans clavier. */
   simulerAppui(code: string): void {
     this.enfoncees.add(code)
-    this.datesAppui.set(code, performance.now())
+    this.pasAppui.set(code, this.pasCourant)
   }
   simulerRelache(code: string): void {
     this.enfoncees.delete(code)
-    this.datesRelache.set(code, performance.now())
+    this.pasRelache.set(code, this.pasCourant)
   }
 }

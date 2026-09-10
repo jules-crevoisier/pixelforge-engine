@@ -72,6 +72,12 @@ export class CorpsMobiles {
   retirer(id: string): boolean { return this.liste.delete(id) }
   vider(): void { this.liste.clear() }
 
+  instantane(): CorpsMobile[] { return this.tous.map((c) => ({ ...c })) }
+  restaurer(e: CorpsMobile[]): void {
+    this.liste.clear()
+    for (const c of e) this.liste.set(c.id, { ...c })
+  }
+
   /**
    * Les drapeaux reunis des corps qui recouvrent ce rectangle.
    *
