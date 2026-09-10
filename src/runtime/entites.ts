@@ -47,10 +47,57 @@ import { Plateformeur, lireEntrees, type ReglagesPlateforme } from './plateforme
  */
 export type Comportement =
   | 'immobile' | 'patrouille' | 'poursuite' | 'bond' | 'joueur' | 'plateformeur'
+  | 'projectile'
 
 export const COMPORTEMENTS: Comportement[] = [
   'immobile', 'patrouille', 'poursuite', 'bond', 'joueur', 'plateformeur',
+  'projectile',
 ]
+
+/**
+ * Un etat d'une espece : ce qu'elle fait, et pendant combien de temps.
+ *
+ * ## Pourquoi une machine a etats, et pas une intention de plus
+ *
+ * Une seule intention par espece suffit a une gelee. Elle ne suffit a rien
+ * d'autre : un ennemi qui compte doit ANNONCER son coup — se ramasser, frapper,
+ * se decouvrir. Ces trois temps sont ce qui rend un combat lisible ; sans eux,
+ * un ennemi qui touche est un ennemi injuste, et le joueur n'apprend rien.
+ *
+ * ## Pourquoi le declencheur passe par un evenement d'animation
+ *
+ * « Le coup porte a la troisieme image » ne peut pas s'ecrire en
+ * millisecondes : changer la duree d'un dessin decalerait le coup, et personne
+ * ne ferait le lien. Le clip porte deja ses evenements — le lecteur les REND
+ * depuis le premier jour, et personne ne les consommait. L'etat dit ce que
+ * l'evenement declenche, et le dessin reste maitre du moment.
+ */
+export interface EtatEspece {
+  nom: string
+  /** Clip joue pendant cet etat. */
+  clip: string
+  /** Ce que l'entite fait pendant ce temps. */
+  intention: Comportement
+  /** Millisecondes avant de passer a `suivant`. Zero : on y reste. */
+  duree: number
+  suivant: string
+  /** Passe a cet etat des que la cible est plus proche que `distance`. */
+  siProche?: { distance: number; vers: string }
+  /** Passe a cet etat des que la cible est plus loin que `distance`. */
+  siLoin?: { distance: number; vers: string }
+  /**
+   * Ce qu'un evenement du clip declenche.
+   *
+   * `frappe` pose une boite devant l'entite ; `tir` lance une autre espece.
+   * Les deux au meme evenement sont permis — un coup d'epee qui projette une
+   * onde est exactement cela.
+   */
+  declencheurs?: {
+    evenement: string
+    frappe?: { degats: number; portee: number; epaisseur: number; dureeMs: number; poussee: number }
+    tir?: { espece: string; vitesse: number; nombre?: number; ecart?: number }
+  }[]
+}
 
 export interface Boite { x: number; y: number; l: number; h: number }
 
@@ -112,6 +159,23 @@ export interface Espece {
   clipsDiriges: boolean
   /** Reglages du controleur, pour un comportement de plateforme. */
   plateforme: Partial<ReglagesPlateforme>
+  /**
+   * Les etats, s'il y en a. Vide : l'espece n'a que son intention.
+   *
+   * Une liste et non une carte : l'ordre compte pour la lecture humaine — on
+   * ecrit repos, guet, coup, recuperation dans cet ordre-la — et le nom suffit
+   * a retrouver l'etat.
+   */
+  etats: EtatEspece[]
+  /** L'etat de depart. Vide : le premier de la liste. */
+  etatInitial: string
+  /**
+   * Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme.
+   *
+   * C'est ce qui fait qu'un projectile ne traverse pas la carte entiere quand
+   * il ne rencontre rien.
+   */
+  duree: number
 }
 
 export function espece(id: string, p: Partial<Espece> = {}): Espece {
@@ -134,6 +198,9 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
     invulnerabiliteMs: p.invulnerabiliteMs ?? 220,
     clipsDiriges: p.clipsDiriges ?? false,
     plateforme: p.plateforme ?? {},
+    etats: p.etats ?? [],
+    etatInitial: p.etatInitial ?? '',
+    duree: p.duree ?? 0,
   }
 }
 
@@ -169,6 +236,15 @@ interface Vivante {
   plateformeur: Plateformeur | null
   /** Derniere direction regardee, en unites d'ecran. */
   regard: { x: number; y: number }
+  /** L'etat courant, quand l'espece en a. */
+  etat: EtatEspece | null
+  /** Millisecondes passees dans cet etat. */
+  depuis: number
+  /** Vitesse propre, en pixels par seconde. Sert aux projectiles. */
+  vx: number
+  vy: number
+  /** Millisecondes de vie restantes, ou l'infini. */
+  restant: number
 }
 
 /**
@@ -255,6 +331,41 @@ export class Peuplement {
     return c?.images[0]?.index ?? 0
   }
 
+  /**
+   * Lance une entite avec une vitesse propre. C'est ainsi qu'on tire.
+   *
+   * Le projectile n'appartient pas a son auteur : il est pose dans le monde et
+   * y vit sa vie. Un projectile enfant de celui qui l'a tire suivrait son
+   * tireur — on tire, on recule, et le tir recule avec soi.
+   */
+  lancer(
+    idEspece: string, x: number, y: number, dx: number, dy: number, camp?: Camp,
+  ): NoeudSprite | null {
+    const e = this.catalogue.get(idEspece)
+    if (!e) return null
+    const n = this.poser(idEspece, x, y)
+    if (!n) return null
+    const v = this.vivantes.get(n.id)
+    if (!v) {
+      // Pas encore adopte : on synchronise pour lui donner sa vitesse tout de
+      // suite. Attendre le pas suivant ferait partir le tir avec un retard
+      // d'une image, ce qui se voit sur une salve.
+      this.synchroniser()
+    }
+    const vivante = this.vivantes.get(n.id)
+    if (vivante) {
+      const norme = Math.hypot(dx, dy) || 1
+      vivante.vx = (dx / norme) * e.vitesse
+      vivante.vy = (dy / norme) * e.vitesse
+      vivante.regard = { x: Math.sign(dx), y: Math.sign(dy) }
+      if (camp) {
+        const vie = this.combat.vies.get(n.id)
+        if (vie) vie.camp = camp
+      }
+    }
+    return n
+  }
+
   /** Pose une entite dans la scene. Rend son noeud, ou null si l'espece est inconnue. */
   poser(idEspece: string, x: number, y: number): NoeudSprite | null {
     const n = this.creerNoeudEntite(idEspece, x, y)
@@ -303,12 +414,21 @@ export class Peuplement {
       max: e.pv, camp: e.camp, boite: e.boite, x: n.x, y: n.y,
       invulnerabiliteMs: e.invulnerabiliteMs,
     })
+    const etat = e.etats.length
+      ? (e.etats.find((q) => q.nom === e.etatInitial) ?? e.etats[0])
+      : null
+    if (etat) lecteur.jouer(etat.clip)
     this.vivantes.set(n.id, {
       espece: e, noeud: n, corps, lecteur, cap: 1, attente: 0,
       plateformeur: e.comportement === 'plateformeur'
         ? new Plateformeur(e.plateforme)
         : null,
       regard: { x: 0, y: 1 },
+      etat,
+      depuis: 0,
+      vx: 0,
+      vy: 0,
+      restant: e.duree > 0 ? e.duree : Infinity,
     })
   }
 
@@ -343,6 +463,7 @@ export class Peuplement {
     c: ContexteJeu, cible: { x: number; y: number }, dtMs: number,
   ): { id: string; nom: string }[] {
     const evenements: { id: string; nom: string }[] = []
+    const aRetirer: string[] = []
     for (const v of this.vivantes.values()) {
       const vie = this.combat.vies.get(v.noeud.id)
       // Un mort n'agit pas, ne frappe pas, et ne se fait pas frapper. Le
@@ -358,7 +479,17 @@ export class Peuplement {
         || v.espece.comportement === 'plateformeur'
       if (!dirigee && distance > RAYON_ACTIVITE) continue
 
-      agir(v, c, dx, dy, distance, dtMs, this.projection, this.tuile)
+      // La machine a etats d'abord : elle peut changer l'intention avant que
+      // l'entite n'agisse, et un etat qui durerait une image de trop ferait
+      // frapper apres coup.
+      if (v.etat) this.avancerEtat(v, distance, dtMs)
+
+      // La duree de vie : un projectile qui ne rencontre rien doit finir.
+      v.restant -= dtMs
+      if (v.restant <= 0) { aRetirer.push(v.noeud.id); continue }
+
+      const fini = agir(v, c, dx, dy, distance, dtMs, this.projection, this.tuile)
+      if (fini) { aRetirer.push(v.noeud.id); continue }
 
       vie.x = v.noeud.x
       vie.y = v.noeud.y
@@ -370,6 +501,9 @@ export class Peuplement {
         : 1
       for (const nom of v.lecteur.avancer(dtMs * (v.plateformeur ? Math.max(facteur, 0.0001) : 1))) {
         evenements.push({ id: v.noeud.id, nom })
+        // C'est ici que « le coup porte a la troisieme image » devient vrai :
+        // le dessin dit quand, l'etat dit quoi.
+        this.declencher(v, nom, dx, dy)
       }
       v.noeud.image = v.lecteur.image
 
@@ -398,7 +532,74 @@ export class Peuplement {
         ), v.espece.degats, 1, 150, dx, dy)
       }
     }
+    for (const id of aRetirer) this.tuer(id)
     return evenements
+  }
+
+  /**
+   * Fait vivre la machine a etats d'une entite.
+   *
+   * Les conditions de distance passent AVANT la duree : un ennemi qui remarque
+   * sa cible doit sortir de son guet tout de suite, pas a la fin du cycle
+   * d'animation en cours.
+   */
+  private avancerEtat(v: Vivante, distance: number, dtMs: number): void {
+    const e = v.etat as EtatEspece
+    v.depuis += dtMs
+    let vers: string | null = null
+    if (e.siProche && distance < e.siProche.distance) vers = e.siProche.vers
+    else if (e.siLoin && distance > e.siLoin.distance) vers = e.siLoin.vers
+    else if (e.duree > 0 && v.depuis >= e.duree) vers = e.suivant
+    if (!vers || vers === e.nom) return
+    const suivant = v.espece.etats.find((q) => q.nom === vers)
+    if (!suivant) return
+    v.etat = suivant
+    v.depuis = 0
+    // `forcer` : on redemande peut-etre le meme clip pour un autre etat, et il
+    // doit repartir de sa premiere image — c'est tout l'interet d'un temps
+    // d'anticipation.
+    v.lecteur.jouer(suivant.clip, true)
+  }
+
+  /** Ce qu'un evenement d'animation declenche dans l'etat courant. */
+  private declencher(v: Vivante, evenement: string, dx: number, dy: number): void {
+    const d = v.etat?.declencheurs?.filter((q) => q.evenement === evenement)
+    if (!d || d.length === 0) return
+    const n = Math.hypot(dx, dy) || 1
+    const ux = dx / n
+    const uy = dy / n
+    for (const q of d) {
+      if (q.frappe) {
+        const f = q.frappe
+        const b = v.espece.boite
+        const centreY = v.noeud.y + b.y + b.h / 2
+        // La boite part du CORPS et s'etend vers l'avant : posee a distance,
+        // elle raterait ce qui est colle — c'est-a-dire ce qui vient de mordre.
+        const horizontal = Math.abs(ux) >= Math.abs(uy)
+        const sens = horizontal ? (Math.sign(ux) || 1) : (Math.sign(uy) || 1)
+        const boite = horizontal
+          ? rect(sens > 0 ? v.noeud.x : v.noeud.x - f.portee,
+            centreY - f.epaisseur / 2, f.portee, f.epaisseur)
+          : rect(v.noeud.x - f.epaisseur / 2,
+            sens > 0 ? centreY : centreY - f.portee, f.epaisseur, f.portee)
+        this.combat.frapper(v.espece.camp, boite, f.degats, f.dureeMs, f.poussee,
+          horizontal ? sens : 0, horizontal ? 0 : sens)
+      }
+      if (q.tir) {
+        const t = q.tir
+        const combien = Math.max(1, t.nombre ?? 1)
+        const ecart = ((t.ecart ?? 0) * Math.PI) / 180
+        const base = Math.atan2(uy, ux)
+        for (let k = 0; k < combien; k++) {
+          // La salve s'ouvre autour de la direction visee, symetriquement :
+          // un eventail qui part d'un cote donnerait un tir qui rate quand on
+          // vise juste.
+          const a = base + (k - (combien - 1) / 2) * ecart
+          this.lancer(t.espece, v.noeud.x, v.noeud.y + v.espece.boite.y + v.espece.boite.h / 2,
+            Math.cos(a), Math.sin(a), v.espece.camp)
+        }
+      }
+    }
   }
 
   /** Retire une entite : noeud, vitalite et etat vivant d'un seul geste. */
@@ -500,25 +701,29 @@ export function retirerDe(racine: Noeud, cible: Noeud): boolean {
 function agir(
   v: Vivante, c: ContexteJeu, dx: number, dy: number, distance: number, dtMs: number,
   projection: Projection, tuile: number,
-): void {
+): boolean {
   const e = v.espece
   const remarque = e.vigilance > 0 && distance < e.vigilance
+  // L'intention de l'ETAT l'emporte sur celle de l'espece : c'est tout
+  // l'interet d'avoir des etats. Sans etats, l'espece decide seule.
+  const intention = v.etat ? v.etat.intention : e.comportement
 
-  if (e.comportement === 'joueur') { dirigerVuDeDessus(v, c, projection, tuile); return }
-  if (e.comportement === 'plateformeur') { dirigerDeCote(v, c); return }
-  if (e.comportement === 'immobile') return
+  if (intention === 'projectile') return avancerProjectile(v, c)
+  if (intention === 'joueur') { dirigerVuDeDessus(v, c, projection, tuile); return false }
+  if (intention === 'plateformeur') { dirigerDeCote(v, c); return false }
+  if (intention === 'immobile') return false
 
-  if (e.comportement === 'poursuite' || (remarque && e.comportement === 'patrouille')) {
-    if (!remarque && e.comportement === 'poursuite' && e.vigilance > 0) {
+  if (intention === 'poursuite' || (remarque && intention === 'patrouille')) {
+    if (!remarque && intention === 'poursuite' && e.vigilance > 0) {
       patrouiller(v, c)
-      return
+      return false
     }
     const n = distance || 1
     c.bouger(v.corps, (dx / n) * e.vitesse * c.dt, (dy / n) * e.vitesse * c.dt)
-    return
+    return false
   }
 
-  if (e.comportement === 'bond') {
+  if (intention === 'bond') {
     // Le compteur descend en permanence. Au-dessus de zero elle se repose, en
     // dessous elle bondit ; passe le temps du bond, il remonte. Un seul nombre
     // pour les deux phases, donc aucun etat a garder coherent.
@@ -531,10 +736,24 @@ function agir(
       if (r.bloque) v.cap = -v.cap
       if (v.attente <= -DUREE_BOND) v.attente = DUREE_REPOS
     }
-    return
+    return false
   }
 
   patrouiller(v, c)
+  return false
+}
+
+/**
+ * Un projectile : il va tout droit, et meurt sur ce qu'il touche.
+ *
+ * Il meurt sur le DECOR et non sur ce qu'il blesse : c'est sa frappe de
+ * contact qui s'en charge, et faire mourir le tir a l'impact demanderait au
+ * projectile de savoir qui il a touche — donc de dupliquer le systeme de
+ * combat pour un cas particulier.
+ */
+function avancerProjectile(v: Vivante, c: ContexteJeu): boolean {
+  const fait = c.bouger(v.corps, v.vx * c.dt, v.vy * c.dt)
+  return fait.bloque
 }
 
 function patrouiller(v: Vivante, c: ContexteJeu): void {

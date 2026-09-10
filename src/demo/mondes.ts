@@ -605,8 +605,10 @@ export function mondeEtage(graine = 1): Monde {
           // Poser une creature, c'est ajouter un NOEUD a la scene. Elle part
           // donc dans le fichier de projet avec tout le reste, et l'editeur
           // peut en poser d'autres par le meme chemin.
-          const tirage = h.entier(10)
-          const quoi = tirage === 0 ? 'coeur' : (tirage < 4 ? 'chauve-souris' : 'gelee')
+          const tirage = h.entier(12)
+          const quoi = tirage === 0 ? 'coeur'
+            : tirage < 3 ? 'tourelle'
+              : tirage < 6 ? 'chauve-souris' : 'gelee'
           aventure.peuplement.poser(quoi, cx * TUILE + TUILE / 2, cy * TUILE + TUILE)
           pose = true
         }

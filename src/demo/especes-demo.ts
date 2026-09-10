@@ -1,6 +1,9 @@
 import { espece, type Espece } from '../runtime/entites.ts'
 import { clipRegulier, type Clip } from '../runtime/animation.ts'
-import { GELEE, CHAUVE_SOURIS, TAILLADE, COEUR_PLEIN, BALISE } from './art-creatures.ts'
+import {
+  GELEE, CHAUVE_SOURIS, TAILLADE, COEUR_PLEIN, BALISE,
+  TOURELLE_REPOS, TOURELLE_ANTICIPE, TOURELLE_TIRE, LARME,
+} from './art-creatures.ts'
 import { DIR_BAS, DIR_HAUT, DIR_DROITE, TEMPS_REPOS, TEMPS_MARCHE, imageHeros } from './art.ts'
 
 /**
@@ -64,6 +67,68 @@ export const ESPECES_DEMO: Espece[] = [
     comportement: 'poursuite',
     vigilance: 400,
     boite: { x: -5, y: -12, l: 10, h: 8 },
+  }),
+  espece('tourelle', {
+    nom: 'Tourelle',
+    clip: 'tourelle-repos',
+    pv: 3,
+    vitesse: 0,
+    // Elle ne blesse pas au contact : c'est son TIR qui blesse. Une tourelle
+    // qui fait mal quand on la touche punit deux fois pour un seul defaut.
+    degats: 0,
+    vigilance: 150,
+    comportement: 'immobile',
+    boite: { x: -6, y: -14, l: 12, h: 14 },
+    etatInitial: 'guet',
+    // Guet, anticipation, tir, repos. Les quatre temps d'un ennemi lisible :
+    // sans l'anticipation, le tir est imparable et l'on n'apprend rien.
+    etats: [
+      {
+        nom: 'guet',
+        clip: 'tourelle-repos',
+        intention: 'immobile',
+        duree: 0,
+        suivant: 'guet',
+        siProche: { distance: 150, vers: 'anticipe' },
+      },
+      {
+        nom: 'anticipe',
+        clip: 'tourelle-anticipe',
+        intention: 'immobile',
+        duree: 420,
+        suivant: 'tire',
+      },
+      {
+        nom: 'tire',
+        clip: 'tourelle-tire',
+        intention: 'immobile',
+        duree: 300,
+        suivant: 'repos',
+        // Le declencheur se pose sur un EVENEMENT du clip. Changer la duree
+        // d'un dessin ne decale donc pas le tir.
+        declencheurs: [{ evenement: 'tir', tir: { espece: 'larme', vitesse: 130 } }],
+      },
+      {
+        nom: 'repos',
+        clip: 'tourelle-repos',
+        intention: 'immobile',
+        duree: 900,
+        suivant: 'guet',
+      },
+    ],
+  }),
+  espece('larme', {
+    nom: 'Larme',
+    clip: 'larme',
+    pv: 1,
+    vitesse: 130,
+    degats: 1,
+    comportement: 'projectile',
+    // Elle finit par tomber : un tir qui ne rencontre rien traverserait
+    // l'etage entier et continuerait de blesser deux salles plus loin.
+    duree: 1600,
+    boite: { x: -3, y: -11, l: 6, h: 6 },
+    invulnerabiliteMs: 0,
   }),
   espece('balise', {
     nom: 'Balise de reprise',
@@ -140,5 +205,19 @@ export function clipsCreatures(): Clip[] {
     // La balise clignote doucement : allumee, eteinte, allumee. Un point de
     // reprise immobile se confond avec le decor.
     clipRegulier('balise', BALISE, 520, { boucle: 'aller-retour' }),
+    clipRegulier('tourelle-repos', [TOURELLE_REPOS], 1000),
+    clipRegulier('tourelle-anticipe', [TOURELLE_ANTICIPE], 1000),
+    // Deux images, et l'evenement sur la SECONDE : un evenement pose sur la
+    // premiere ne se declenche jamais, puisqu'on y arrive en demarrant le clip
+    // et non en le faisant avancer.
+    // « unique » et non « boucle » : un geste qui ne se fait qu'une fois doit
+    // avoir une animation qui ne se rejoue pas. En boucle, l'evenement repasse
+    // et la tourelle tirait deux fois par cycle — une salve qu'on n'avait pas
+    // demandee, et qu'on aurait fini par prendre pour une intention.
+    clipRegulier('tourelle-tire', [TOURELLE_ANTICIPE, TOURELLE_TIRE], 90, {
+      boucle: 'unique',
+      evenements: [{ image: 1, nom: 'tir' }],
+    }),
+    clipRegulier('larme', [LARME], 1000),
   ]
 }

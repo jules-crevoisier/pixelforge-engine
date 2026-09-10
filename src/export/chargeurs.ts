@@ -182,6 +182,33 @@ export interface Espece {
    * Ce qui n'y figure pas garde la valeur par defaut du moteur.
    */
   plateforme: Record<string, number>
+  /**
+   * Les etats, quand l'espece en a. Un ennemi qui compte ANNONCE son coup :
+   * il se ramasse, il frappe, il se decouvre. Ces trois temps sont ce qui rend
+   * un combat lisible.
+   *
+   * Un declencheur se pose sur un EVENEMENT du clip, pas sur un temps : « le
+   * coup porte a la troisieme image » ne peut pas s'ecrire en millisecondes.
+   */
+  etats: EtatEspece[]
+  etatInitial: string
+  /** Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme. */
+  duree: number
+}
+
+export interface EtatEspece {
+  nom: string
+  clip: string
+  intention: string
+  duree: number
+  suivant: string
+  siProche?: { distance: number; vers: string }
+  siLoin?: { distance: number; vers: string }
+  declencheurs?: {
+    evenement: string
+    frappe?: { degats: number; portee: number; epaisseur: number; dureeMs: number; poussee: number }
+    tir?: { espece: string; vitesse: number; nombre?: number; ecart?: number }
+  }[]
 }
 
 export interface Projet {
@@ -528,6 +555,21 @@ namespace PixelForge
         public int invulnerabiliteMs;
         public bool clipsDiriges;
         public Dictionary<string, float> plateforme;
+        public List<EtatEspece> etats;
+        public string etatInitial;
+        /// <summary>Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme.</summary>
+        public int duree;
+    }
+
+    /// <summary>Un etat d'une espece : ce qu'elle fait, et pendant combien de temps.</summary>
+    [Serializable]
+    public class EtatEspece
+    {
+        public string nom;
+        public string clip;
+        public string intention;
+        public int duree;
+        public string suivant;
     }
 
     /// <summary>Comment le monde se montre. Le mode et le regard sont independants.</summary>
@@ -1077,6 +1119,23 @@ pub struct Espece {
     pub invulnerabilite_ms: i64,
     pub clips_diriges: bool,
     pub plateforme: std::collections::HashMap<String, f64>,
+    pub etats: Vec<EtatEspece>,
+    pub etat_initial: String,
+    /// Duree de vie, en millisecondes. Zero : elle ne meurt pas d'elle-meme.
+    pub duree: i64,
+}
+
+/// Un etat d'une espece. Un declencheur se pose sur un EVENEMENT du clip et
+/// non sur un temps : « le coup porte a la troisieme image » ne peut pas
+/// s'ecrire en millisecondes.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EtatEspece {
+    pub nom: String,
+    pub clip: String,
+    pub intention: String,
+    pub duree: i64,
+    pub suivant: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1485,6 +1544,16 @@ class Espece:
     invulnerabiliteMs: int = 220
     clipsDiriges: bool = False
     plateforme: dict[str, float] = field(default_factory=dict)
+    etats: list[dict[str, Any]] = field(default_factory=list)
+    etatInitial: str = ""
+    duree: int = 0
+
+    def etat(self, nom: str) -> dict[str, Any] | None:
+        """L'etat portant ce nom, ou None."""
+        for e in self.etats:
+            if e.get("nom") == nom:
+                return e
+        return None
 
 
 @dataclass

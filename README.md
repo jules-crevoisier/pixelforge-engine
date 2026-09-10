@@ -142,14 +142,51 @@ tout le reste.
 
 Une espèce est entièrement en données : sa vie, sa vitesse, ses dégâts, sa
 boîte, ce qu'elle rend quand on la ramasse, et son **intention** sous forme de
-nom — `immobile`, `patrouille`, `poursuite`, `bond`, `joueur`, `plateformeur`.
-Un fichier ne peut pas contenir de fonction ; un nom, si, et il se porte dans
-les six langages.
+nom — `immobile`, `patrouille`, `poursuite`, `bond`, `joueur`, `plateformeur`,
+`projectile`. Un fichier ne peut pas contenir de fonction ; un nom, si, et il se
+porte dans les six langages.
 
 Le **héros en est une**, et ce n'est pas une coquetterie : tant qu'il naissait
 d'un appel de fonction, un projet relu n'avait personne à diriger. Maintenant un
 étage enregistré se rouvre avec ses vingt-trois entités, elles bougent encore,
 et l'on peut y jouer. C'est ce que le banc vérifie, sans navigateur.
+
+### Une machine à états par espèce
+
+Une intention seule ne fait pas un ennemi. « Poursuite » décrit un tas de
+gélée ; ça ne décrit pas une tourelle, qui guette, vise, tire, puis souffle.
+Une espèce peut donc porter des **états** nommés : chacun a son clip, son
+intention, sa durée, l'état qui suit, et deux bascules de distance —
+`siProche` et `siLoin`. La tourelle est quatre lignes de données : `guet`
+bascule vers `anticipe` en deçà de 90 px, `anticipe` dure 250 ms puis passe à
+`tire`, `tire` passe à `repos`, `repos` revient au `guet`.
+
+L'état d'anticipation n'est pas un détail de mise en scène : **c'est lui qui
+rend l'ennemi juste**. Un tir sans préavis ne se lit pas, donc ne s'évite pas,
+donc le joueur accuse le jeu au lieu de s'accuser lui-même. Un quart de seconde
+de posture visible change une mort injuste en erreur reconnue.
+
+### Le coup part de l'image, pas du chronomètre
+
+Un état peut porter des **déclencheurs**, et un déclencheur est attaché à un
+**événement d'animation**, jamais à un nombre de millisecondes. « Le coup porte
+à la troisième image » ne peut pas s'écrire en millisecondes sans mentir : la
+durée change dès qu'on retouche le clip, et le réglage se déphase en silence.
+Attaché à l'image, il reste vrai après la retouche. Et comme les événements de
+clip survivent à une image de jeu longue, le tir ne se perd pas quand la page
+hésite.
+
+Un déclencheur fait une **frappe** — dégâts, portée, épaisseur, durée, poussée —
+ou un **tir**, qui lance une autre espèce. Un projectile n'est rien de plus
+qu'une entité de plus : sa propre espèce, sa vitesse, sa durée de vie, et il
+meurt au premier mur. Il traverse donc les mêmes sauvegardes, le même export,
+les mêmes six langages que le reste — au lieu d'être un système à part qu'il
+faudrait porter une deuxième fois.
+
+Le clip de tir est en **boucle unique**. Il a d'abord été laissé en boucle, et
+la tourelle tirait deux fois par cycle : l'événement repassait avant la fin de
+l'état. C'est le genre de bogue qu'un banc attrape et qu'une relecture ne voit
+pas.
 
 ### Défaire, et pourquoi on enregistre la différence
 
@@ -243,6 +280,9 @@ seconde.
 - entités en données : catalogue d'espèces, intentions nommées, placement à la
   souris, et le héros lui-même est une entité
 - combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
+- machines à états par espèce : bascules de distance, durées, état suivant
+- déclencheurs attachés à une image d'animation : frapper, tirer
+- projectiles, qui sont des entités comme les autres
 - génération d'étages en salles, reproductible depuis une graine
 - caméra verrouillée sur la salle, avec glissement à vitesse constante
 - export d'un projet Godot 4 ou d'un dossier Unity, en une archive

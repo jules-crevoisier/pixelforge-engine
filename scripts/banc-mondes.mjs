@@ -950,6 +950,65 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
       'le ramasser pour rien serait le perdre')
   }
 
+  // La machine a etats : guet, anticipation, tir, repos. C'est l'anticipation
+  // qui rend un ennemi lisible — sans elle, le tir est imparable.
+  {
+    const e = monter()
+    // Loin : elle ne doit pas quitter son guet.
+    const loin = e.av.peuplement.poser('tourelle', 100 + 200, 100)
+    for (let i = 0; i < 120; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    const larmesLoin = e.av.peuplement.positions().filter((q) => q.espece === 'larme').length
+    check('une tourelle hors de portee reste au guet',
+      larmesLoin === 0, `${larmesLoin} tir(s) — elle ne devrait pas voir la cible`)
+    e.av.peuplement.tuer(loin.id)
+
+    // Pres : guet -> anticipe -> tire. Le tir ne part qu'apres l'anticipation.
+    const pres = e.av.peuplement.poser('tourelle', 100 + 90, 100)
+    let premierTir = -1
+    for (let i = 0; i < 200; i++) {
+      e.av.avancer(e.ctx, { x: 1, y: 0 })
+      if (premierTir < 0 && e.av.peuplement.positions().some((q) => q.espece === 'larme')) {
+        premierTir = i
+      }
+    }
+    check('une tourelle a portee finit par tirer', premierTir > 0, `au pas ${premierTir}`)
+    // 420 ms d'anticipation, soit vingt-cinq pas de soixantieme. Le tir ne
+    // doit pas partir avant : c'est tout ce qui le rend evitable.
+    check('mais seulement apres son temps d\'anticipation',
+      premierTir >= 24,
+      `${premierTir} pas — l'anticipation en vaut 25, et sans elle le tir est imparable`)
+    void pres
+  }
+
+  // Un projectile va tout droit, blesse, et finit par disparaitre.
+  {
+    const e = monter()
+    const l = e.av.peuplement.lancer('larme', 200, 100, -1, 0, 'ennemi')
+    const x0 = l.x
+    for (let i = 0; i < 20; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('un projectile lance avance dans sa direction',
+      l.x < x0 - 20, `de ${x0} a ${Math.round(l.x)}`)
+
+    // Il finit par mourir de vieillesse : sans cela il traverserait l'etage et
+    // blesserait deux salles plus loin.
+    for (let i = 0; i < 200; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('et il ne vit pas eternellement',
+      e.av.peuplement.positions().every((q) => q.espece !== 'larme'),
+      '1600 ms de duree de vie')
+  }
+
+  // Un projectile blesse ce qu'il traverse, et son camp seulement l'epargne.
+  {
+    const e = monter()
+    e.av.peuplement.lancer('larme', 100 + 30, 100, -1, 0, 'ennemi')
+    let touche = false
+    for (let i = 0; i < 60 && !touche; i++) {
+      e.av.avancer(e.ctx, { x: 1, y: 0 })
+      if (e.av.pv < 3) touche = true
+    }
+    check('un projectile ennemi blesse le heros', touche, `${e.av.pv} pv`)
+  }
+
   // La distance d'activite : une creature loin ne bouge pas et ne frappe pas.
   {
     const e = monter()

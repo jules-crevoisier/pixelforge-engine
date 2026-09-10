@@ -222,12 +222,59 @@ const fanion = (allume: boolean): string[] => {
 const BALISE_ETEINTE = fanion(false)
 const BALISE_ALLUMEE = fanion(true)
 
+/**
+ * La tourelle : trois temps, et c'est tout l'interet.
+ *
+ * Au repos elle est fermee. Elle s'OUVRE avant de tirer — c'est le temps
+ * d'anticipation, celui qui rend le tir evitable. Puis elle tire, bouche
+ * beante. Un ennemi qui frappe sans annoncer est un ennemi injuste : le joueur
+ * n'apprend rien, il encaisse.
+ */
+function tourelle(ouverture: number): string[] {
+  const g = vide()
+  ellipse(g, TUILE / 2, 10, 6, 5.5, 'B', 'b')
+  // Le socle, pour qu'elle ne flotte pas.
+  for (let x = 4; x < 12; x++) { g[TUILE - 2][x] = 'b'; g[TUILE - 1][x] = 'o' }
+  // La bouche s'elargit avec l'ouverture, et s'eclaire.
+  const demi = Math.max(1, Math.round(ouverture * 3))
+  for (let y = 10 - demi; y <= 10 + demi; y++) {
+    for (let x = 8 - demi; x <= 8 + demi; x++) {
+      if (y < 0 || y >= TUILE || x < 0 || x >= TUILE) continue
+      if (g[y][x] === '.') continue
+      g[y][x] = ouverture > 0.6 ? 'R' : (ouverture > 0.2 ? 'r' : 'a')
+    }
+  }
+  return enDessin(g)
+}
+
+/** La larme : ce que la tourelle envoie. */
+const LARME_DESSIN = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '.......oo.......',
+  '......osso......',
+  '.....ossSSo.....',
+  '.....osSSSo.....',
+  '......oSSo......',
+  '.......oo.......',
+  '................',
+  '................',
+  '................',
+  '................',
+]
+
 export const PLANCHE_CREATURES: string[][] = [
   gelee(0), gelee(0.22), gelee(0), gelee(-0.18),
   CHAUVE_HAUTE, CHAUVE_BASSE,
   COEUR, COEUR_VIDE,
   taillade(0), taillade(1),
   BALISE_ETEINTE, BALISE_ALLUMEE,
+  tourelle(0), tourelle(0.5), tourelle(1),
+  LARME_DESSIN,
 ]
 
 export const GELEE = [0, 1, 2, 3]
@@ -236,4 +283,8 @@ export const COEUR_PLEIN = 6
 export const COEUR_PERDU = 7
 export const TAILLADE = [8, 9]
 export const BALISE = [10, 11]
+export const TOURELLE_REPOS = 12
+export const TOURELLE_ANTICIPE = 13
+export const TOURELLE_TIRE = 14
+export const LARME = 15
 export const COLONNES_CREATURES = 6
