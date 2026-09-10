@@ -479,6 +479,95 @@ const caverne = mondeCaverne()
   check('le depart n\'est pas dans un mur, et repose sur du sol',
     !dansMur && surSol, `case ${Math.floor(d.x / TUILE)},${Math.floor(d.y / TUILE)}`)
 
+  /*
+   * LES COTES DE LA CAVERNE SE MARCHENT VRAIMENT.
+   *
+   * Une pente qui se calcule bien dans un plan de banc et qui ne se monte pas
+   * dans le vrai niveau ne sert a rien — et c'est exactement le genre de chose
+   * qu'on ne decouvre qu'en jouant. On part du sol a gauche des cotes, on
+   * court a droite, et l'on demande trois choses : etre monte, etre
+   * redescendu, et n'avoir jamais quitte le sol.
+   */
+  {
+    const { estPente, hauteurSol, PENTE_DROITE, PENTE_GAUCHE, PENTE_DEMI, PENTE_HAUTE } =
+      await import('../src/tuiles/tilemap.ts')
+
+    /*
+     * LE DESSIN ET LA COLLISION NE PEUVENT PAS SE CONTREDIRE.
+     *
+     * Les tuiles de pente sont dessinees depuis `hauteurSol`, celle-la meme
+     * dont se sert le controleur. On le VERIFIE quand meme : le jour ou
+     * quelqu'un retouche une rampe a la main pour l'embellir, le personnage
+     * marchera un pixel au-dessus de la roche ou s'y enfoncera, et rien ne
+     * dira lequel des deux a tort.
+     *
+     * On mesure le premier pixel opaque de chaque colonne du dessin, et on le
+     * compare a la hauteur du sol.
+     */
+    const { PLANCHE_CAVERNE, TUILE_PENTE_D } = await import('../src/demo/art-cote.ts')
+    const FORMES = [
+      PENTE_DROITE, PENTE_GAUCHE,
+      PENTE_DROITE | PENTE_DEMI, PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+      PENTE_GAUCHE | PENTE_DEMI, PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+    ]
+    const ecartsDessin = []
+    FORMES.forEach((forme, k) => {
+      const dessin = PLANCHE_CAVERNE[TUILE_PENTE_D + k]
+      for (let x = 0; x < TUILE; x++) {
+        let haut = TUILE
+        for (let y = 0; y < TUILE && haut === TUILE; y++) if (dessin[y][x] !== 'f') haut = y
+        if (haut !== hauteurSol(forme, x, TUILE)) ecartsDessin.push(`${k}@${x}`)
+      }
+    })
+    check('le dessin d’une côte suit EXACTEMENT sa collision, colonne par colonne',
+      ecartsDessin.length === 0,
+      ecartsDessin.length
+        ? `${ecartsDessin.length} colonnes fausses, ex. forme ${ecartsDessin[0]}`
+        : `${FORMES.length * TUILE} colonnes — le dessin est calculé depuis la collision`)
+
+    const pentes = [...carte.solides].filter(estPente).length
+    check('la caverne porte les six formes de côte',
+      pentes === 6 && new Set([...carte.solides].filter(estPente)).size === 6,
+      `${pentes} cases de pente — sans cela, les pentes existent sans que personne les voie`)
+
+    // La rangee des cotes, trouvee et non ecrite en dur : deplacer le plan
+    // d'une ligne ne doit pas rendre ce controle faux sans le dire.
+    let premiere = -1
+    for (let i = 0; i < carte.solides.length && premiere < 0; i++) {
+      if (estPente(carte.solides[i])) premiere = i
+    }
+    const rangee = Math.floor(premiere / carte.largeur)
+    const colonne = premiere % carte.largeur
+    let derniere = premiere
+    for (let i = 0; i < carte.solides.length; i++) {
+      if (estPente(carte.solides[i])) derniere = i
+    }
+    const finColonne = derniere % carte.largeur
+    const depart = { x: (colonne - 3) * TUILE, y: (rangee + 1) * TUILE }
+    // On s'arrete AU BOUT de la derniere cote : deux cases plus loin, la
+    // passerelle s'arrete et le heros tombe dans la salle du dessous — une
+    // chute normale, que compter comme un decollage accuserait les pentes de
+    // ce que fait le niveau. La mesure porte sur les cotes, et sur elles
+    // seules.
+    const finX = (finColonne + 1) * TUILE
+    const r = simuler(depart, () => ({ dirX: 1 }), 900)
+    const parcours = []
+    for (const t of r.trace) { parcours.push(t); if (t.x >= finX) break }
+    const sommet = Math.min(...parcours.map((t) => t.y ?? 0), depart.y)
+    const plusHaut = parcours.reduce((m, t, i) => (t.y < parcours[m].y ? i : m), 0)
+    const enLAir = parcours.filter((t) => !t.auSol).length
+    check('on gravit les côtes de la caverne en courant, sans sauter',
+      sommet <= depart.y - TUILE,
+      `de ${depart.y} à ${sommet}, soit ${depart.y - sommet} px — la tuile fait ${TUILE}`)
+    check('et l’on redescend de l’autre côté',
+      parcours[parcours.length - 1].y > parcours[plusHaut].y
+      && parcours[parcours.length - 1].x >= finX,
+      `sommet ${parcours[plusHaut].y}, arrivée ${parcours[parcours.length - 1].y}`)
+    check('sans jamais quitter le sol de toute la traversée',
+      enLAir === 0,
+      `${enLAir} image(s) en l’air sur ${parcours.length} — décoller sur une côte fait sautiller`)
+  }
+
   // Les corps solides POSES dans le niveau ne doivent pas le fermer.
   //
   // Une caisse est du contenu, pas un mur : le banc l'a appris en jouant, ou

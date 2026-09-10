@@ -1,4 +1,7 @@
-import { Carte, VIDE, SOLIDE, BLESSANTE, PLATEFORME } from '../tuiles/tilemap.ts'
+import {
+  Carte, VIDE, SOLIDE, BLESSANTE, PLATEFORME,
+  PENTE_DROITE, PENTE_GAUCHE, PENTE_DEMI, PENTE_HAUTE,
+} from '../tuiles/tilemap.ts'
 import { creerNoeud, type Noeud, type NoeudSprite, type NoeudCorps } from '../scene/noeud.ts'
 import type { Vue } from '../runtime/ecran.ts'
 import type { Jeu, ContexteJeu } from '../runtime/jeu.ts'
@@ -15,6 +18,8 @@ import type { Clip } from '../runtime/animation.ts'
 import {
   CLE_CAVERNE, PLANCHE_CAVERNE, TUILE_FOND, TUILE_LANTERNE,
   TUILE_POINTES, TUILE_PASSERELLE,
+  TUILE_PENTE_D, TUILE_PENTE_G,
+  TUILE_DEMI_D_BAS, TUILE_DEMI_D_HAUT, TUILE_DEMI_G_BAS, TUILE_DEMI_G_HAUT,
 } from './art-cote.ts'
 import {
   CLE_ISO, PLANCHE_ISO, LARGEUR_ISO, HAUTEUR_ISO, HAUTEUR_DESSIN_ISO,
@@ -242,7 +247,7 @@ const PLAN_CAVERNE = [
   '#.........................................#',
   '#.......#######################...........#',
   '#.........................................#',
-  '#....L....!.........###...................#',
+  '#....L....!.........###..../###%..pP##Qq..#',
   '#...####################################..#',
   '#......................................#..#',
   '#......................................#..#',
@@ -262,6 +267,28 @@ const PLAN_CAVERNE = [
   '###########################################',
   '###########################################',
 ]
+
+/**
+ * Les cotes du plan : le caractere, sa tuile et sa matiere.
+ *
+ * `/` et `%` montent a quarante-cinq degres — la barre inverse demanderait
+ * d'echapper un echappement dans un fichier qui decrit deja des dessins.
+ * `p` puis `P` sont les deux cases d'une demi-pente montant a droite ; `Q`
+ * puis `q` celles d'une demi-pente montant a gauche, dans l'ordre ou on les
+ * rencontre en allant vers la droite.
+ *
+ * Les lettres sont choisies pour ne rencontrer aucune de celles qui posent une
+ * entite : `g` designe une gelee, et une cote qui fait apparaitre une creature
+ * est le genre de surprise qu'on met une heure a comprendre.
+ */
+const COTES_CAVERNE: Record<string, { tuile: number; matiere: number }> = {
+  '/': { tuile: TUILE_PENTE_D, matiere: PENTE_DROITE },
+  '%': { tuile: TUILE_PENTE_G, matiere: PENTE_GAUCHE },
+  p: { tuile: TUILE_DEMI_D_BAS, matiere: PENTE_DROITE | PENTE_DEMI },
+  P: { tuile: TUILE_DEMI_D_HAUT, matiere: PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE },
+  Q: { tuile: TUILE_DEMI_G_HAUT, matiere: PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE },
+  q: { tuile: TUILE_DEMI_G_BAS, matiere: PENTE_GAUCHE | PENTE_DEMI },
+}
 
 /**
  * Ce que les lettres du plan posent comme entites.
@@ -441,6 +468,23 @@ export function mondeCaverne(): Monde {
       if (c === '=') {
         decor.cases[i] = TUILE_PASSERELLE
         carte.solides[i] = PLATEFORME
+      }
+      /*
+       * Les cotes.
+       *
+       * Elles vont sur le calque des pieges et non sur la roche : la roche est
+       * un calque de TERRAIN, dont chaque case se recalcule depuis ses
+       * voisines. Une pente n'a pas de voisinage — sa forme lui appartient —
+       * et la poser sur le terrain la ferait remplacer par un bloc au premier
+       * coup de pinceau d'a cote.
+       *
+       * Une pente n'est PAS solide : marquee solide, elle bloque comme un mur
+       * et l'on se cogne dans le bas de la cote au lieu de la monter.
+       */
+      const cote = COTES_CAVERNE[c]
+      if (cote) {
+        decor.cases[i] = cote.tuile
+        carte.solides[i] = cote.matiere
       }
       if (c === '@') depart = { x: x * TUILE + TUILE / 2, y: y * TUILE + TUILE }
     }

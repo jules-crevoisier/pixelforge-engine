@@ -573,7 +573,7 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 224 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:mondes     # 229 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   #  87 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
@@ -850,6 +850,8 @@ sont sur sa frontière haute, donc la rangée du dernier pixel du corps est cell
 **au-dessus** de la pente — et la pente devient invisible. On en regarde
 maintenant deux.
 
+![Deux côtes : à quarante-cinq degrés, puis en demi-pentes](docs/pentes.png)
+
 **Les demi-pentes.** Deux cases pour monter d'une : un pixel toutes les deux
 colonnes. Ce n'est pas un arrondi — un demi est exact, et deux cases voisines se
 raccordent toujours au pixel près. Un tiers, un quart seraient le même calcul
@@ -875,6 +877,14 @@ lui-même au lieu d'appeler la fonction qui sait les écrire — deux endroits p
 une valeur, donc un jour où ils divergent. Et la grille tenait dans un tableau
 d'**octets**, alors que les matières comptent maintenant neuf drapeaux : « moitié
 haute » vaut deux cent cinquante-six et y repassait à zéro.
+
+Les six tuiles de côte ne sont pas dessinées à la main : elles sont **calculées
+depuis `hauteurSol`**, la fonction dont se sert le contrôleur. Une rampe dessinée
+et une rampe calculée finissent par différer d'un pixel, et l'on ne sait plus
+laquelle a tort — le personnage marche au-dessus de la roche, ou s'y enfonce.
+Avec une seule source, la question ne peut pas se poser ; un contrôle compare
+quand même les deux, colonne par colonne, pour le jour où quelqu'un retouchera
+une rampe pour l'embellir.
 
 L'alphabet passe à soixante-deux caractères, la grille à seize bits, et les
 valeurs 0 à 31 ne bougent pas — un fichier écrit avant se relit sans une ligne
@@ -1044,7 +1054,7 @@ pire défaut d'une mesure.
     Ce qu'on affirme sans l'avoir mesuré           4/4
     Ce qu'un jeu de plateforme doit avoir          9/9
     Ce qu'un jeu a en plus de son gameplay        13/13
-                                          692 vérifications
+                                          697 vérifications
 
 Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
 libellés jamais en clair, accord des six portages sur les notes et les textes —

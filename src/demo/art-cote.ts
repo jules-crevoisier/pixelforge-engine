@@ -18,6 +18,9 @@ import {
   HAUT_DROITE, BAS_DROITE, BAS_GAUCHE, HAUT_GAUCHE,
 } from '../tuiles/terrain.ts'
 import { TUILE } from './art.ts'
+import {
+  hauteurSol, PENTE_DROITE, PENTE_GAUCHE, PENTE_DEMI, PENTE_HAUTE,
+} from '../tuiles/tilemap.ts'
 
 export const CLE_CAVERNE: Record<string, string> = {
   o: '#0b0a12',
@@ -161,15 +164,62 @@ const PASSERELLE = [
   'ffffffffffffffff',
 ]
 
+/**
+ * Une tuile de pente, dessinee DEPUIS la fonction de collision.
+ *
+ * ## Pourquoi on ne la dessine pas a la main
+ *
+ * Parce que le dessin et la collision ne doivent pas pouvoir mentir l'un sur
+ * l'autre. Une rampe dessinee a la main et une rampe calculee finissent par
+ * differer d'un pixel : le personnage marche un pixel au-dessus de la roche,
+ * ou s'y enfonce, et l'on ne sait pas lequel des deux a tort. En prenant la
+ * hauteur du sol dans `hauteurSol`, celle-la meme dont se sert le controleur,
+ * la question ne peut pas se poser — ils ont la meme source.
+ *
+ * L'herbe se pose sur la premiere rangee pleine de chaque colonne, comme sur
+ * les cases plates : c'est ce qui rattache visuellement une cote au sol.
+ */
+function penteDepuisMatiere(matiere: number): string[] {
+  const g = Array.from({ length: TUILE }, () => Array.from({ length: TUILE }, () => 'f'))
+  for (let x = 0; x < TUILE; x++) {
+    const haut = hauteurSol(matiere, x, TUILE)
+    for (let y = haut; y < TUILE; y++) {
+      // Trois tons du haut vers le bas : l'herbe eclairee, la roche claire,
+      // la roche d'ombre. La meme lumiere que partout ailleurs — elle vient
+      // d'en haut, sans quoi la cote parait collee sur le decor.
+      g[y][x] = y === haut ? 'e' : y === haut + 1 ? 'H' : y < haut + 4 ? 'c' : 'r'
+    }
+  }
+  return g.map((l) => l.join(''))
+}
+
+/** Les six formes, dans l'ordre des constantes ci-dessous. */
+const PENTES = [
+  PENTE_DROITE,
+  PENTE_GAUCHE,
+  PENTE_DROITE | PENTE_DEMI,
+  PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+  PENTE_GAUCHE | PENTE_DEMI,
+  PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+].map(penteDepuisMatiere)
+
 export const PLANCHE_CAVERNE: string[][] = [
   ...MASQUES_BLOB47.map(rocheDepuisMasque),
   FOND,
   LANTERNE,
   POINTES,
   PASSERELLE,
+  ...PENTES,
 ]
 
 export const TUILE_FOND = 47
 export const TUILE_LANTERNE = 48
 export const TUILE_POINTES = 49
 export const TUILE_PASSERELLE = 50
+/** Les six pentes, dans l'ordre de `PENTES`. */
+export const TUILE_PENTE_D = 51
+export const TUILE_PENTE_G = 52
+export const TUILE_DEMI_D_BAS = 53
+export const TUILE_DEMI_D_HAUT = 54
+export const TUILE_DEMI_G_BAS = 55
+export const TUILE_DEMI_G_HAUT = 56
