@@ -573,15 +573,15 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 282 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:mondes     # 298 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   #  91 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           #  86 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           #  93 vérifications de l'éditeur, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
-npm run agent           # la grille : 71 critères, et ce qu'il reste à faire
+npm run agent           # la grille : 73 critères, et ce qu'il reste à faire
 npm run build
 ```
 
@@ -877,6 +877,60 @@ quelqu'un ajoute une ligne au menu et écrit son libellé en clair, parce que
 c'est plus court. Rien ne tombe — le menu s'affiche, en français, dans toutes
 les langues. Un contrôle lit donc la source du menu de pause et refuse toute
 chaîne posée en clair dans une entrée.
+
+### Peindre autrement que case par case
+
+![L'éditeur : l'outil Salle, un tableau posé sur le donjon](docs/editeur.png)
+
+Une carte de quarante sur trente-trois, c'est **mille trois cents clics** — et
+c'était exactement ce que l'éditeur avait à offrir. Le tracé se choisit
+maintenant à côté de l'outil, et il vaut pour l'outil quel qu'il soit :
+
+- **Libre**, case par case, comme avant.
+- **Rect** se tire d'un coin à l'autre et ne pose **rien** avant qu'on lâche.
+  On pourrait peindre au fur et à mesure puis effacer ce qui déborde ; ce
+  serait plus court à écrire et faux à l'usage — un rectangle qu'on retaille
+  laisserait derrière lui tout ce qu'il a effleuré, et le « défaire » ne
+  rendrait pas la carte de départ. Il compte pour **un** geste : douze cases en
+  douze gestes rendraient l'historique inutilisable.
+- **Remplir** couvre la zone d'un seul tenant. Quatre voisins et non huit :
+  deux zones qui ne se touchent que par un coin sont deux zones, et en diagonale
+  le remplissage fuit par le moindre angle dans la pièce d'à côté. Une file et
+  non la récursion — quarante mille cases épuisent la pile du navigateur.
+
+Ce n'est pas trois outils de plus. Un rectangle de mur, un rectangle de
+collision et un rectangle de tuile sont le même geste sur trois matières ; en
+faire des outils séparés donnerait quinze boutons pour trois idées.
+
+Dans les trois cas, **le premier appui décide** : commencer sur une case déjà
+peinte *efface* le rectangle ou la zone. C'est la même règle que le pinceau
+libre, et le premier essai du banc de fumée l'a prise pour un défaut — le
+rectangle avait retiré quinze cases, ce qui était exactement ce qu'on lui
+demandait.
+
+### Découper un niveau en tableaux, à la souris
+
+Les salles étaient dans le format et dans le moteur, et **nulle part dans
+l'éditeur** : on ne pouvait en créer qu'en modifiant le JSON à la main. L'outil
+**Salle** en pose une en tirant un rectangle, et la retire au clic droit. Elle
+n'a pas de sens « à main levée » — c'est un rectangle par définition — donc
+l'outil l'impose plutôt que de laisser choisir un tracé qui ne voudrait rien
+dire. Un simple clic n'en pose pas : une salle d'une case est un clic raté.
+
+Les salles ne passent pas par l'historique du dessin. Les y mêler ferait qu'un
+« défaire » sur un coup de pinceau retirerait une salle posée entre-temps, ce
+que personne n'attend.
+
+Deux salles qui se recouvrent sont signalées **dans la barre d'état**, et non
+par un message passager. Ce n'est pas un événement : c'est un état du niveau,
+qui dure tant qu'on ne l'a pas corrigé. Un message qui disparaît au clic suivant
+l'annoncerait une fois, à quelqu'un qui regarde ailleurs. Le panneau *Projet*
+marque en plus la ligne fautive — la barre dit qu'il y a un problème, le panneau
+dit lequel corriger.
+
+Le nom et les quatre nombres se règlent au clavier dans *Projet* : on **tire**
+une salle à la souris, ce qui est le bon geste pour dessiner un rectangle et le
+mauvais pour le régler à la case près.
 
 ### Un chapitre en tableaux, comme Celeste
 
@@ -1246,13 +1300,13 @@ pire défaut d'une mesure.
     Celeste — plateforme de précision             14/14
     The Binding of Isaac — salles engendrées       7/7
     Dead Cells — combat et corps                   6/6
-    Faire un jeu sans lire le moteur               8/8
+    Faire un jeu sans lire le moteur              10/10
     Le multijoueur, et ce qu'il exige d'abord      6/6
     Ce qu'on affirme sans l'avoir mesuré           4/4
     Ce qu'un jeu de plateforme doit avoir          9/9
     Ce qu'un jeu a en plus de son gameplay        13/13
     Le déployer sans que ça casse en production    4/4
-                                          802 vérifications
+                                          829 vérifications
 
 Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
 libellés jamais en clair, accord des six portages sur les notes et les textes —

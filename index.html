@@ -23,7 +23,13 @@
         <button data-outil="collision">Collision</button>
         <button data-outil="tuile">Tuile</button>
         <button data-outil="entite">Entité</button>
+        <button data-outil="salle">Salle</button>
         <button data-outil="main">Main</button>
+      </div>
+      <div class="outils" id="traces" role="group" aria-label="Tracé">
+        <button data-trace="libre" class="actif" title="À main levée : une case par case survolée">Libre</button>
+        <button data-trace="rectangle" title="Rectangle : on tire d’un coin à l’autre, et rien n’est posé avant de lâcher">Rect</button>
+        <button data-trace="remplir" title="Remplir la zone d’un seul tenant sous le curseur">Remplir</button>
       </div>
       <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
       <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>

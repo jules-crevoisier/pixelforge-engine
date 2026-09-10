@@ -578,6 +578,86 @@ ok('Enregistrer telecharge le projet faute de dossier',
   telecharges.length === 4 && telecharges[3].endsWith('.json'), telecharges.join(', '))
 
 /*
+ * LE RECTANGLE, LE REMPLISSAGE ET LES SALLES, A LA SOURIS.
+ *
+ * Ce sont des GESTES : ils ne se verifient qu'en les faisant. Un banc en Node
+ * eprouve la regle ; celui-ci eprouve que le bouton la declenche, que le
+ * pointeur arrive, et que la carte change.
+ */
+{
+  await p.selectOption('#monde', 'donjon')
+  await p.waitForTimeout(400)
+  const cadre = await p.$eval('#vue', (c) => {
+    const r = c.getBoundingClientRect()
+    return [r.x, r.y, r.width, r.height]
+  })
+  const glisser = async (fx0, fy0, fx1, fy1, bouton = 'left') => {
+    await p.mouse.move(cadre[0] + cadre[2] * fx0, cadre[1] + cadre[3] * fy0)
+    await p.mouse.down({ button: bouton })
+    await p.mouse.move(cadre[0] + cadre[2] * fx1, cadre[1] + cadre[3] * fy1, { steps: 8 })
+    await p.mouse.up({ button: bouton })
+    await p.waitForTimeout(250)
+  }
+  const solides = () => p.evaluate(() => window.pfe.edition.compter().solides)
+
+  await p.click('[data-outil="terrain"]')
+  await p.click('[data-trace="rectangle"]')
+  const avantRect = await solides()
+  await glisser(0.3, 0.3, 0.45, 0.5)
+  const apresRect = await solides()
+  /*
+   * On mesure un CHANGEMENT et non une augmentation.
+   *
+   * Le premier appui decide, comme partout dans l'editeur : commencer sur une
+   * case deja peinte efface le rectangle au lieu de le remplir. C'est la
+   * regle, et le premier essai de ce banc l'a prise pour un defaut — le
+   * rectangle avait retire quinze cases, ce qui etait exactement ce qu'on lui
+   * demandait.
+   */
+  ok('un rectangle tiré à la souris change plusieurs cases d’un geste',
+    Math.abs(apresRect - avantRect) > 4,
+    `${avantRect} → ${apresRect} cases solides — case par case, une carte de 40×33 fait 1320 clics`)
+
+  await p.click('#defaire')
+  await p.waitForTimeout(250)
+  ok('et il se défait d’un seul « défaire »',
+    (await solides()) === avantRect,
+    `retour à ${await solides()}`)
+
+  await p.click('[data-trace="remplir"]')
+  const avantRemp = await solides()
+  await glisser(0.55, 0.35, 0.55, 0.35)
+  const apresRemp = await solides()
+  ok('le remplissage couvre une zone entière d’un clic',
+    Math.abs(apresRemp - avantRemp) > 10,
+    `${avantRemp} → ${apresRemp} cases — dans un sens ou dans l’autre : `
+    + 'cliquer sur une zone peinte l’efface entièrement')
+  await p.click('#defaire')
+  await p.waitForTimeout(250)
+
+  /* Les salles : on en tire une, on la voit, on la retire. */
+  await p.click('[data-outil="salle"]')
+  await p.click('[data-trace="libre"]')
+  const salles = () => p.evaluate(() => (window.pfe.monde.salles ?? []).length)
+  await glisser(0.3, 0.3, 0.6, 0.6)
+  ok('l’outil « Salle » pose un tableau en tirant un rectangle',
+    (await salles()) === 1, `${await salles()} salle(s)`)
+  ok('et la barre d’état en tient le compte',
+    /1 salle/.test(await p.textContent('#verdict')), await p.textContent('#verdict'))
+
+  // Une seconde, qui recouvre la premiere : l'avertissement doit DURER.
+  await glisser(0.35, 0.35, 0.65, 0.65)
+  ok('deux salles qui se recouvrent sont signalées, et ça reste affiché',
+    /recouvrent/.test(await p.textContent('#verdict')),
+    await p.textContent('#verdict'))
+
+  await glisser(0.5, 0.5, 0.5, 0.5, 'right')
+  await glisser(0.4, 0.4, 0.4, 0.4, 'right')
+  ok('et le clic droit les retire', (await salles()) === 0, `${await salles()} salle(s)`)
+  await p.click('[data-outil="terrain"]')
+}
+
+/*
  * LE CHAPITRE EN TABLEAUX, JOUE POUR DE BON.
  *
  * Un decoupage en salles se verifie en Node — les rectangles, les

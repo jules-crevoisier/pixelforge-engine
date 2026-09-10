@@ -247,3 +247,8 @@ button.lien:hover { color: var(--accent); }
   width: 30px; height: 26px; padding: 0; border-radius: 5px;
   border: 1px solid var(--line); background: var(--bg-0);
 }
+
+/* Une salle qui en recouvre une autre : la caméra ne saurait pas laquelle
+   choisir. Le liseré le dit sur la ligne, là où l'on peut corriger. */
+.ligne.faute { border-color: #ff8a8a; }
+.ligne.faute input { border-color: #ff8a8a; }

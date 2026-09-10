@@ -312,6 +312,59 @@ export function modifierCalqueProjet(
   return { ...p, cartes: p.cartes.map((q, i) => (i === 0 ? { ...q, calques } : q)) }
 }
 
+/* ------------------------------------------------------------------ */
+/* Les salles                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Renomme une salle.
+ *
+ * Le nom sert a la RETROUVER — dans le panneau, dans l'instantane du reseau,
+ * dans le fichier. Deux salles du meme nom rendraient « laquelle ? » sans
+ * reponse ; l'appelant verifie avant, et l'on ne double pas la verification
+ * ici : deux endroits qui decident de la meme regle finissent par en decider
+ * deux differentes.
+ */
+export function renommerSalleProjet(
+  p: ProjetSerialise, nom: string, neuf: string,
+): ProjetSerialise {
+  return {
+    ...p,
+    salles: (p.salles ?? []).map((s) => (s.nom === nom ? { ...s, nom: neuf } : s)),
+  }
+}
+
+/**
+ * Regle un des quatre nombres d'une salle.
+ *
+ * Les valeurs sont BORNEES et non refusees : un champ qu'on vide au clavier
+ * rend une chaine vide, donc NaN, et refuser laisserait le champ dans un etat
+ * que rien ne rattrape. Une salle de moins d'une case n'existe pas ; une
+ * salle a coordonnee negative sortirait de la carte et ne contiendrait
+ * jamais personne.
+ */
+export function reglerSalleProjet(
+  p: ProjetSerialise, nom: string,
+  changements: Partial<{ x: number; y: number; largeur: number; hauteur: number }>,
+): ProjetSerialise {
+  const entier = (v: number | undefined, mini: number, defaut: number): number =>
+    (Number.isFinite(v) ? Math.max(mini, Math.round(v as number)) : defaut)
+  return {
+    ...p,
+    salles: (p.salles ?? []).map((s) => (s.nom === nom ? {
+      ...s,
+      x: entier(changements.x, 0, s.x),
+      y: entier(changements.y, 0, s.y),
+      largeur: entier(changements.largeur, 1, s.largeur),
+      hauteur: entier(changements.hauteur, 1, s.hauteur),
+    } : s)),
+  }
+}
+
+export function retirerSalleProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, salles: (p.salles ?? []).filter((s) => s.nom !== nom) }
+}
+
 /**
  * Ajoute ou remplace une espece dans le catalogue.
  *

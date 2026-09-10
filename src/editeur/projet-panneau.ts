@@ -7,7 +7,9 @@ import {
   PROJECTIONS, projetNeuf, redimensionnerProjet, ajouterCalqueProjet,
   retirerCalqueProjet, modifierCalqueProjet, poserEspeceProjet, retirerEspeceProjet,
   changerVueProjet,
+  renommerSalleProjet, reglerSalleProjet, retirerSalleProjet,
 } from './projet-neuf.ts'
+import { chevauchements } from '../niveau/salles.ts'
 
 /**
  * Le panneau Projet : ce qu'on ne peut pas faire au pinceau.
@@ -167,7 +169,9 @@ export class PanneauProjet {
     const p = this.crochets.projet()
     this.corps.textContent = ''
     this.onglets()
-    if (this.onglet === 'carte') { this.blocCarte(p); this.blocCalques(p); this.blocNeuf() }
+    if (this.onglet === 'carte') {
+      this.blocCarte(p); this.blocCalques(p); this.blocSalles(p); this.blocNeuf()
+    }
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
     else if (this.onglet === 'animations') this.blocAnimations()
@@ -251,6 +255,82 @@ export class PanneauProjet {
     note.textContent = `${c.tuile} px par case · projection ${p.projection.mode}, ${p.projection.regard}`
       + ' · un geste de structure ne se défait pas au Ctrl+Z'
     d.appendChild(note)
+  }
+
+  /**
+   * Les salles : les tableaux du niveau.
+   *
+   * ## Pourquoi elles se nomment et se retaillent ICI
+   *
+   * On les TIRE a la souris, ce qui est le bon geste pour dessiner un
+   * rectangle et le mauvais pour le regler au demi-pixel. Le panneau donne
+   * les quatre nombres et le nom : c'est la ou l'on dit « ce tableau fait
+   * exactement un ecran » plutot que de viser a la main.
+   *
+   * ## Pourquoi le recouvrement est marque sur la LIGNE
+   *
+   * Deux salles qui se recouvrent rendent « dans quelle salle suis-je ? »
+   * sans reponse. La barre d'etat le dit deja, mais elle ne dit pas
+   * lesquelles : ici, on voit laquelle corriger.
+   */
+  private blocSalles(p: ProjetSerialise): void {
+    const salles = p.salles ?? []
+    const d = bloc(this.corps, 'Salles')
+    const note = (texte: string): HTMLParagraphElement => {
+      const q = document.createElement('p')
+      q.className = 'dos-vide'
+      q.textContent = texte
+      return q
+    }
+    if (!salles.length) {
+      d.appendChild(note('Aucune salle : le monde est continu, la caméra suit le héros partout. '
+        + 'L’outil « Salle » en pose une en tirant un rectangle.'))
+      return
+    }
+    const croise = new Set(chevauchements(salles).flat())
+    const liste = document.createElement('div')
+    liste.className = 'liste'
+    for (const s of salles) {
+      const ligne = document.createElement('div')
+      ligne.className = `ligne${croise.has(s.nom) ? ' faute' : ''}`
+      const nom = document.createElement('input')
+      nom.value = s.nom
+      nom.style.width = '76px'
+      nom.title = croise.has(s.nom)
+        ? 'Cette salle en recouvre une autre : la caméra ne saurait pas laquelle choisir.'
+        : 'Le nom de la salle. Il sert à la retrouver, et deux salles ne peuvent pas le partager.'
+      nom.addEventListener('change', () => {
+        const voulu = nom.value.trim()
+        // Un nom vide ou deja pris ne se prend pas : c'est par lui qu'on
+        // retrouve une salle.
+        if (!voulu || salles.some((q) => q !== s && q.nom === voulu)) { this.montrer(); return }
+        this.appliquer(renommerSalleProjet(this.frais(), s.nom, voulu), `Salle « ${voulu} »`)
+      })
+      const champ = (clef: 'x' | 'y' | 'largeur' | 'hauteur', titre: string): HTMLInputElement => {
+        const e = document.createElement('input')
+        e.type = 'number'
+        e.value = String(s[clef])
+        e.style.width = '46px'
+        e.title = titre
+        e.addEventListener('change', () => {
+          this.appliquer(
+            reglerSalleProjet(this.frais(), s.nom, { [clef]: Number(e.value) }),
+            `Salle « ${s.nom} » : ${clef} ${e.value}`,
+          )
+        })
+        return e
+      }
+      const oter = bouton('✕', 'Retirer cette salle', () => {
+        this.appliquer(retirerSalleProjet(this.frais(), s.nom), `Salle « ${s.nom} » retirée`)
+      })
+      ligne.append(nom, champ('x', 'Colonne du coin haut-gauche, en cases'),
+        champ('y', 'Rangée du coin haut-gauche, en cases'),
+        champ('largeur', 'Largeur en cases'), champ('hauteur', 'Hauteur en cases'), oter)
+      liste.appendChild(ligne)
+    }
+    d.appendChild(liste)
+    d.appendChild(note('Chaque salle borne la caméra et sert de point de reprise : '
+      + 'mourir y renvoie, pas au départ du niveau.'))
   }
 
   private blocCalques(p: ProjetSerialise): void {

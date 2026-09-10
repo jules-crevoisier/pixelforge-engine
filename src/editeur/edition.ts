@@ -24,10 +24,32 @@ import {
  * pose donc la collision du meme geste, et le mode « collision » permet de la
  * corriger ensuite : un tapis qui ne bloque pas, un trou invisible qui bloque.
  */
-export type Outil = 'terrain' | 'gomme' | 'collision' | 'tuile' | 'entite' | 'main'
+export type Outil =
+  | 'terrain' | 'gomme' | 'collision' | 'tuile' | 'entite' | 'salle' | 'main'
+
+/**
+ * Comment le pinceau depose ce qu'il depose.
+ *
+ * ## Pourquoi ce n'est pas trois outils de plus
+ *
+ * « Rectangle » et « remplir » ne sont pas des outils : ce sont des manieres
+ * d'appliquer CELUI qu'on a choisi. Un rectangle de mur, un rectangle de
+ * collision et un rectangle de tuile sont le meme geste sur trois matieres.
+ * En faire des outils separes obligerait a en creer un par matiere, et la
+ * barre finirait a quinze boutons pour trois idees.
+ */
+export type Trace = 'libre' | 'rectangle' | 'remplir'
 
 export interface EtatEdition {
   outil: Outil
+  /**
+   * Le trace : a main levee, en rectangle, ou par remplissage.
+   *
+   * Il existe parce que peindre un niveau case par case ne se fait pas. Une
+   * carte de quarante sur trente-trois, c'est mille trois cents clics — et
+   * l'editeur avait exactement cela a offrir.
+   */
+  trace: Trace
   /** Le calque de terrain qu'on peint. */
   calque: Calque | null
   /** Affiche la grille de collision par-dessus le decor. */
@@ -63,8 +85,21 @@ export interface EtatEdition {
 export class Edition {
   readonly etat: EtatEdition = {
     outil: 'terrain', calque: null, montrerCollision: false, tuileFixe: 0,
-    espece: null, tuileChoisie: 0, calqueChoisi: null, matiere: SOLIDE,
+    espece: null, tuileChoisie: 0, calqueChoisi: null, matiere: SOLIDE, trace: 'libre',
   }
+
+  /**
+   * Ce que l'edition fait des salles : les poser, les retirer, les lire.
+   *
+   * Comme pour les entites, l'edition ne les possede pas : elle sait ou l'on
+   * a clique, le monde sait ce qu'il en fait. C'est ce qui permet a un monde
+   * sans salles de ne rien avoir a refuser — il ne branche rien.
+   */
+  surSalle: {
+    liste(): { nom: string; x: number; y: number; largeur: number; hauteur: number }[]
+    poser(x: number, y: number, largeur: number, hauteur: number): void
+    retirer(nom: string): void
+  } | null = null
 
   /**
    * Ce que l'edition fait quand on pose ou retire une entite.
@@ -93,6 +128,14 @@ export class Edition {
 
   /** Ce qu'on peut defaire. Partage avec l'editeur, qui y pose ses gestes. */
   readonly historique = new Historique()
+
+  /**
+   * Le coin de depart d'un rectangle en cours, et son coin courant.
+   *
+   * Il sert a DESSINER l'apercu autant qu'a appliquer : sans apercu, on trace
+   * un rectangle a l'aveugle et l'on defait une fois sur deux.
+   */
+  rectangle: { x0: number; y0: number; x1: number; y1: number } | null = null
 
   /** L'etat de la carte avant le geste en cours, ou null. */
   private photo: {
@@ -204,7 +247,125 @@ export class Edition {
       ? bouton !== 2
       : (bouton === 2 ? false : !this.etatDe(c.cx, c.cy))
     this.dernierePosition = null
+
+    /*
+     * UNE SALLE SE TIRE TOUJOURS EN RECTANGLE.
+     *
+     * Elle n'a pas de sens « a main levee » : c'est un rectangle par
+     * definition. Le mode de trace ne s'y applique donc pas, et l'outil
+     * l'impose au lieu de laisser choisir un mode qui ne voudrait rien dire.
+     */
+    if (this.etat.outil === 'salle') {
+      this.peint = true
+      if (bouton === 2) {
+        // Le clic droit retire la salle sous le curseur, comme il retire
+        // partout ailleurs.
+        const dessous = this.salleEn(c.cx, c.cy)
+        if (dessous) this.surSalle?.retirer(dessous.nom)
+        this.peint = false
+        this.jeu.dessiner()
+        return
+      }
+      this.rectangle = { x0: c.cx, y0: c.cy, x1: c.cx, y1: c.cy }
+      return
+    }
+
+    /*
+     * Le rectangle n'applique RIEN tant qu'on n'a pas lache.
+     *
+     * On pourrait peindre au fur et a mesure et effacer ce qui deborde. Ce
+     * serait plus court a ecrire et faux a l'usage : un rectangle qu'on
+     * retaille laisserait derriere lui tout ce qu'il a effleure, et le
+     * « defaire » ne rendrait pas la carte de depart.
+     */
+    if (this.etat.trace === 'rectangle' && this.etat.outil !== 'entite') {
+      this.rectangle = { x0: c.cx, y0: c.cy, x1: c.cx, y1: c.cy }
+      return
+    }
+    if (this.etat.trace === 'remplir' && this.etat.outil !== 'entite') {
+      this.remplir(c.cx, c.cy)
+      return
+    }
     this.appliquer(c.cx, c.cy)
+  }
+
+  /**
+   * Remplit la zone d'un seul tenant qui part de cette case.
+   *
+   * ## Ce que « la meme » veut dire
+   *
+   * Cela depend de l'outil, et c'est ce qui rend le remplissage utile : pour
+   * le terrain c'est « il y a un mur ou il n'y en a pas », pour la collision
+   * c'est la matiere exacte, pour la tuile c'est l'index dessine. Un seul
+   * critere pour les trois remplirait la carte entiere une fois sur deux.
+   *
+   * ## Pourquoi une file et non la recursion
+   *
+   * Une carte de deux cents cases de cote fait quarante mille cases. La
+   * recursion y epuise la pile du navigateur, et le remplissage tombe sur une
+   * erreur au lieu de remplir.
+   */
+  private remplir(cx: number, cy: number): void {
+    const depart = this.valeurSous(cx, cy)
+    const cible = this.valeurPosee()
+    // Remplir avec ce qui est deja la ne ferait rien, et couterait un geste
+    // dans l'historique — un « defaire » qui ne defait rien.
+    if (depart === cible) return
+    this.photographier()
+    this.peint = true
+    const vues = new Uint8Array(this.carte.cases)
+    const file = [this.carte.index(cx, cy)]
+    vues[file[0]] = 1
+    let compte = 0
+    while (file.length) {
+      const i = file.pop()!
+      const x = i % this.carte.largeur
+      const y = (i - x) / this.carte.largeur
+      if (this.valeurSous(x, y) !== depart) continue
+      this.appliquer(x, y)
+      compte++
+      // Quatre voisins et non huit : deux zones qui ne se touchent que par un
+      // coin sont deux zones. En diagonale, le remplissage fuit par le moindre
+      // angle et deborde dans la piece d'a cote.
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx
+        const ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= this.carte.largeur || ny >= this.carte.hauteur) continue
+        const j = this.carte.index(nx, ny)
+        if (vues[j]) continue
+        vues[j] = 1
+        file.push(j)
+      }
+    }
+    void compte
+    this.jeu.dessiner()
+  }
+
+  /** La salle qui couvre cette case, s'il y en a une. */
+  salleEn(cx: number, cy: number): { nom: string; x: number; y: number; largeur: number; hauteur: number } | null {
+    for (const s of this.surSalle?.liste() ?? []) {
+      if (cx >= s.x && cy >= s.y && cx < s.x + s.largeur && cy < s.y + s.hauteur) return s
+    }
+    return null
+  }
+
+  /** Ce qui est pose sur cette case, du point de vue de l'outil courant. */
+  private valeurSous(cx: number, cy: number): number {
+    const i = this.carte.index(cx, cy)
+    if (this.etat.outil === 'collision') return this.carte.solides[i]
+    if (this.etat.outil === 'tuile') {
+      const calque = this.carte.calques.find((q) => q.nom === this.etat.calqueChoisi)
+        ?? this.etat.calque
+      return calque ? calque.cases[i] : VIDE
+    }
+    return this.etatDe(cx, cy) ? 1 : 0
+  }
+
+  /** Ce que l'outil courant DEPOSERAIT sur une case. */
+  private valeurPosee(): number {
+    if (this.etat.outil === 'collision') return this.pose ? this.etat.matiere : 0
+    if (this.etat.outil === 'tuile') return this.pose ? this.etat.tuileChoisie : VIDE
+    return this.etat.outil === 'gomme' ? 0 : (this.pose ? 1 : 0)
   }
 
   bouger(pageX: number, pageY: number): void {
@@ -219,6 +380,15 @@ export class Edition {
     if (!this.peint) return
     const c = this.caseSous(pageX, pageY)
     if (!c) return
+    if (this.rectangle) {
+      if (this.rectangle.x1 === c.cx && this.rectangle.y1 === c.cy) return
+      this.rectangle.x1 = c.cx
+      this.rectangle.y1 = c.cy
+      // On redessine pour que l'apercu suive : la scene est arretee, rien ne
+      // le ferait a notre place.
+      this.jeu.dessiner()
+      return
+    }
     if (this.dernierePosition && this.dernierePosition.cx === c.cx && this.dernierePosition.cy === c.cy) return
     if (this.glisseEntite) {
       this.dernierePosition = { cx: c.cx, cy: c.cy }
@@ -240,6 +410,35 @@ export class Edition {
       // distinction, chaque clic rate encombre le « defaire ».
       if (this.glisseEntite.bougee) this.surDeplacement?.finir(this.glisseEntite.id)
       this.glisseEntite = null
+      this.peint = false
+      this.dernierePosition = null
+      return
+    }
+    if (this.rectangle && this.etat.outil === 'salle') {
+      const r = this.rectangle
+      this.rectangle = null
+      this.peint = false
+      const x0 = Math.min(r.x0, r.x1)
+      const y0 = Math.min(r.y0, r.y1)
+      const l = Math.abs(r.x1 - r.x0) + 1
+      const h = Math.abs(r.y1 - r.y0) + 1
+      // Une salle d'une case est un clic rate, pas une salle. On l'ignore au
+      // lieu d'en creer une qu'il faudra retirer.
+      if (l >= 2 && h >= 2) this.surSalle?.poser(x0, y0, l, h)
+      this.jeu.dessiner()
+      return
+    }
+    if (this.rectangle) {
+      const r = this.rectangle
+      this.rectangle = null
+      this.photographier()
+      const x0 = Math.min(r.x0, r.x1)
+      const x1 = Math.max(r.x0, r.x1)
+      const y0 = Math.min(r.y0, r.y1)
+      const y1 = Math.max(r.y0, r.y1)
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.appliquer(x, y)
+      this.jeu.dessiner()
+      this.enregistrer(`${NOM_GESTE[this.etat.outil] ?? this.etat.outil} (rectangle)`)
       this.peint = false
       this.dernierePosition = null
       return

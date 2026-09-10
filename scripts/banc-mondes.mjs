@@ -2389,6 +2389,218 @@ console.log('\n--- un projet enregistre puis relu ---')
   }
 
   /*
+   * PEINDRE UN NIVEAU CASE PAR CASE NE SE FAIT PAS.
+   *
+   * Une carte de quarante sur trente-trois, c'est mille trois cents clics, et
+   * c'est exactement ce que l'editeur avait a offrir. Le rectangle et le
+   * remplissage ne sont pas des outils de plus : ce sont des manieres
+   * d'appliquer celui qu'on a choisi.
+   */
+  {
+    const { Edition } = await import('../src/editeur/edition.ts')
+    const { Carte, SOLIDE } = await import('../src/tuiles/tilemap.ts')
+    const { creerNoeud } = await import('../src/scene/noeud.ts')
+
+    /** Un bac d'essai : une carte, et de quoi viser une case a coup sur. */
+    const bac = (l = 12, h = 8) => {
+      const carte = new Carte(l, h, 16)
+      carte.ajouterCalque('sol')
+      const racine = creerNoeud('noeud', 'r')
+      const jeu = {
+        camera: { x: 0, y: 0 },
+        ecran: { echelle: 1, vue: { largeur: l * 16, hauteur: h * 16 } },
+        dessiner: () => {},
+        racine,
+      }
+      const ed = new Edition(jeu, carte)
+      // On court-circuite la conversion pixel -> case : ce qu'on eprouve ici
+      // est le TRACE, pas la geometrie de la vue.
+      ed.caseSous = (x, y) => ({ cx: x, cy: y })
+      ed.etat.calque = carte.calques[0]
+      ed.etat.calqueChoisi = 'sol'
+      return { carte, ed }
+    }
+    const solides = (carte) => [...carte.solides].filter(Boolean).length
+
+    /* Le rectangle : rien n'est pose avant qu'on lache. */
+    {
+      const { carte, ed } = bac()
+      ed.etat.outil = 'collision'
+      ed.etat.trace = 'rectangle'
+      ed.commencer(2, 2, 0)
+      check('un rectangle ne pose RIEN tant qu’on ne lâche pas',
+        solides(carte) === 0,
+        'sinon un rectangle qu’on retaille laisse derrière lui tout ce qu’il a effleuré')
+      ed.bouger(5, 4)
+      check('et il ne pose toujours rien pendant qu’on le retaille',
+        solides(carte) === 0, 'seul l’aperçu bouge')
+      ed.finir()
+      check('en lâchant, il pose exactement son aire',
+        solides(carte) === 4 * 3,
+        `${solides(carte)} cases pour un rectangle de 4 sur 3`)
+
+      // Et il se defait d'un coup : c'est UN geste, pas douze.
+      ed.historique.defaire()
+      check('et il se défait d’un seul coup',
+        solides(carte) === 0,
+        'douze cases posées en douze gestes rendraient le « défaire » inutilisable')
+    }
+
+    /* Un rectangle tire a l'envers vaut le meme rectangle. */
+    {
+      const { carte, ed } = bac()
+      ed.etat.outil = 'collision'
+      ed.etat.trace = 'rectangle'
+      ed.commencer(6, 5, 0)
+      ed.bouger(3, 2)
+      ed.finir()
+      check('on peut le tirer dans n’importe quel sens',
+        solides(carte) === 4 * 4 && carte.solides[carte.index(3, 2)] === SOLIDE,
+        `${solides(carte)} cases — du coin bas-droit vers le haut-gauche`)
+    }
+
+    /* Le remplissage : la zone d'un seul tenant, et rien de plus. */
+    {
+      const { carte, ed } = bac(12, 8)
+      // Un mur vertical coupe la carte en deux. Remplir a gauche ne doit pas
+      // deborder a droite.
+      for (let y = 0; y < 8; y++) carte.solides[carte.index(6, y)] = SOLIDE
+      ed.etat.outil = 'collision'
+      ed.etat.trace = 'remplir'
+      ed.commencer(2, 2, 0)
+      ed.finir()
+      const gauche = 6 * 8
+      check('le remplissage s’arrête au mur, il ne fuit pas de l’autre côté',
+        solides(carte) === gauche + 8,
+        `${solides(carte)} cases : ${gauche} à gauche plus les 8 du mur`)
+    }
+
+    /* Et il ne fuit pas par un coin : deux zones qui se touchent en diagonale
+     * sont deux zones. */
+    {
+      const { carte, ed } = bac(6, 6)
+      // Une diagonale de murs, du coin haut-droit au coin bas-gauche.
+      for (let i = 0; i < 6; i++) carte.solides[carte.index(5 - i, i)] = SOLIDE
+      ed.etat.outil = 'collision'
+      ed.etat.trace = 'remplir'
+      ed.commencer(0, 0, 0)
+      ed.finir()
+      // Le triangle au-dessus de la diagonale : 5 + 4 + 3 + 2 + 1 = 15 cases.
+      check('et il ne se faufile pas entre deux coins de mur',
+        solides(carte) === 15 + 6,
+        `${solides(carte)} cases : les 15 du triangle plus les 6 de la diagonale — `
+        + 'en diagonale, le remplissage déborderait dans la pièce d’à côté')
+    }
+
+    /* Remplir avec ce qui est deja la ne fait rien, et ne coute pas un geste. */
+    {
+      const { carte, ed } = bac(6, 6)
+      ed.etat.outil = 'collision'
+      ed.etat.trace = 'remplir'
+      ed.commencer(1, 1, 2)
+      ed.finir()
+      check('remplir avec ce qui est déjà là ne laisse rien dans l’historique',
+        solides(carte) === 0 && !ed.historique.peutDefaire,
+        'un « défaire » qui ne défait rien est pire qu’un bouton grisé')
+    }
+  }
+
+  /*
+   * L'OUTIL « SALLE », et ce qu'il refuse de faire.
+   */
+  {
+    const { Edition } = await import('../src/editeur/edition.ts')
+    const { Carte } = await import('../src/tuiles/tilemap.ts')
+    const { creerNoeud } = await import('../src/scene/noeud.ts')
+    const { salle: salleNeuve } = await import('../src/niveau/salles.ts')
+
+    const carte = new Carte(30, 20, 16)
+    carte.ajouterCalque('sol')
+    const jeu = {
+      camera: { x: 0, y: 0 },
+      ecran: { echelle: 1, vue: { largeur: 480, hauteur: 320 } },
+      dessiner: () => {},
+      racine: creerNoeud('noeud', 'r'),
+    }
+    const ed = new Edition(jeu, carte)
+    ed.caseSous = (x, y) => ({ cx: x, cy: y })
+    const salles = []
+    ed.surSalle = {
+      liste: () => salles,
+      poser: (x, y, largeur, hauteur) => {
+        salles.push(salleNeuve(`salle${salles.length + 1}`, { x, y, largeur, hauteur }))
+      },
+      retirer: (nom) => {
+        const i = salles.findIndex((q) => q.nom === nom)
+        if (i >= 0) salles.splice(i, 1)
+      },
+    }
+    ed.etat.outil = 'salle'
+
+    ed.commencer(2, 2, 0)
+    ed.bouger(9, 7)
+    ed.finir()
+    check('l’outil « salle » pose un tableau en tirant un rectangle',
+      salles.length === 1 && salles[0].x === 2 && salles[0].y === 2
+      && salles[0].largeur === 8 && salles[0].hauteur === 6,
+      salles.length ? `${salles[0].nom} en ${salles[0].x},${salles[0].y}, `
+        + `${salles[0].largeur}×${salles[0].hauteur}` : 'aucune')
+
+    /*
+     * Un clic sans glissement n'est pas une salle : c'est un clic rate. En
+     * creer une d'une case obligerait a la retirer a chaque fois qu'on
+     * effleure la carte.
+     */
+    ed.commencer(20, 15, 0)
+    ed.finir()
+    check('mais un simple clic n’en pose pas',
+      salles.length === 1,
+      'une salle d’une case est un clic raté, pas un tableau')
+
+    /* Le clic droit retire, comme partout ailleurs dans l'editeur. */
+    ed.commencer(4, 4, 2)
+    ed.finir()
+    check('et le clic droit retire celle qui est dessous',
+      salles.length === 0, `${salles.length} salle(s) restante(s)`)
+
+    /* Il ne touche NI au dessin NI a l'historique du dessin : melanger les
+     * deux ferait qu'un « défaire » sur un coup de pinceau retirerait une
+     * salle posee entre-temps. */
+    check('poser une salle ne laisse rien dans l’historique du dessin',
+      !ed.historique.peutDefaire,
+      'sinon « défaire » sur un coup de pinceau retirerait une salle')
+  }
+
+  /*
+   * LES QUATRE NOMBRES D'UNE SALLE SE REGLENT AU CLAVIER.
+   *
+   * On la TIRE a la souris — le bon geste pour dessiner un rectangle, le
+   * mauvais pour le regler a la case pres.
+   */
+  {
+    const { renommerSalleProjet, reglerSalleProjet, retirerSalleProjet } =
+      await import('../src/editeur/projet-neuf.ts')
+    const { salle: salleNeuve } = await import('../src/niveau/salles.ts')
+    const base = {
+      salles: [salleNeuve('a', { x: 1, y: 2, largeur: 20, hauteur: 11 }), salleNeuve('b')],
+    }
+    check('on renomme une salle',
+      renommerSalleProjet(base, 'a', 'entree').salles[0].nom === 'entree')
+    check('on règle un de ses quatre nombres, sans toucher aux autres',
+      JSON.stringify(reglerSalleProjet(base, 'a', { largeur: 30 }).salles[0])
+        === JSON.stringify({ ...base.salles[0], largeur: 30 }),
+      'régler la largeur ne doit pas déplacer le coin')
+    check('une valeur absurde est bornée, pas refusée',
+      reglerSalleProjet(base, 'a', { largeur: 0 }).salles[0].largeur === 1
+      && reglerSalleProjet(base, 'a', { x: -5 }).salles[0].x === 0
+      && reglerSalleProjet(base, 'a', { hauteur: NaN }).salles[0].hauteur === 11,
+      'un champ vidé au clavier rend NaN : refuser laisserait le champ dans un état '
+      + 'que rien ne rattrape')
+    check('et on la retire',
+      retirerSalleProjet(base, 'a').salles.map((q) => q.nom).join(',') === 'b')
+  }
+
+  /*
    * L'EDITEUR NE DOIT PAS LAISSER COMPOSER CE QUE LE FICHIER PERD.
    *
    * Les cinq matieres se combinent librement ; les six formes de pente

@@ -2,7 +2,7 @@ import { Jeu } from '../runtime/jeu.ts'
 import { Palette, depuisHex } from '../noyau/palette.ts'
 import { atlasDepuisLettres } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
-import { Edition, type Outil } from './edition.ts'
+import { Edition, type Outil, type Trace } from './edition.ts'
 import type { Noeud } from '../scene/noeud.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
@@ -18,6 +18,10 @@ import { rendre as rendreSon } from '../runtime/son.ts'
 import type { ProjetSerialise } from '../export/format.ts'
 import { retirerDe } from '../runtime/entites.ts'
 import * as dossier from '../io/dossier.ts'
+import { ecrire } from '../runtime/rendu-texte.ts'
+import {
+  salle as salleNeuve, chevauchements, type Salle as SalleJeu,
+} from '../niveau/salles.ts'
 
 /**
  * L'editeur.
@@ -127,6 +131,41 @@ function installer(nouveau: Monde): void {
   edition.etat.espece = monde.especes.find((e) => e.degats > 0)?.id
     ?? monde.especes[0]?.id ?? null
   edition.etat.calqueChoisi = monde.carte.calques[monde.carte.calques.length - 1]?.nom ?? null
+
+  /**
+   * Poser et retirer une SALLE.
+   *
+   * Une salle n'est pas un dessin : c'est un rectangle qui dit ou la camera
+   * s'arrete, ou l'on reapparait et quand on change de tableau. Elle n'a donc
+   * ni calque ni tuile, et l'editeur la traite a part.
+   *
+   * Les salles vivent sur le MONDE et non dans l'historique du dessin : les
+   * melanger ferait qu'un « defaire » sur un coup de pinceau retirerait aussi
+   * une salle posee entre-temps, ce que personne n'attend.
+   */
+  edition.surSalle = {
+    liste: () => (monde.salles ?? []) as { nom: string; x: number; y: number; largeur: number; hauteur: number }[],
+    poser: (x, y, largeur, hauteur) => {
+      const m = monde as Monde & { salles?: SalleJeu[] }
+      if (!m.salles) m.salles = []
+      // Un nom qui ne se repete pas : c'est par lui qu'on retrouve une salle,
+      // et deux salles du meme nom rendraient « laquelle ? » sans reponse.
+      let n = m.salles.length + 1
+      while (m.salles.some((q) => q.nom === `salle${n}`)) n++
+      m.salles.push(salleNeuve(`salle${n}`, { x, y, largeur, hauteur }))
+      // Le compte et l'avertissement vont dans la barre d'etat, qui les
+      // GARDE : voir `majEtat`.
+      panneauProjet?.montrer()
+    },
+    retirer: (nom) => {
+      const m = monde as Monde & { salles?: SalleJeu[] }
+      if (!m.salles) return
+      const i = m.salles.findIndex((q) => q.nom === nom)
+      if (i < 0) return
+      m.salles.splice(i, 1)
+      panneauProjet?.montrer()
+    },
+  }
 
   /**
    * Poser et retirer une entite.
@@ -510,6 +549,25 @@ outils.addEventListener('click', (e) => {
   if (b?.dataset.outil) choisirOutil(b.dataset.outil as Outil)
 })
 
+/*
+ * Le trace : a main levee, en rectangle, ou par remplissage.
+ *
+ * C'est un reglage de l'outil courant et non un outil de plus. Un rectangle
+ * de mur, un rectangle de collision et un rectangle de tuile sont le meme
+ * geste sur trois matieres ; en faire des outils separes ferait quinze
+ * boutons pour trois idees.
+ */
+const traces = document.getElementById('traces') as HTMLElement
+traces.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button')
+  const t = b?.dataset.trace as Trace | undefined
+  if (!t) return
+  edition.etat.trace = t
+  for (const q of traces.querySelectorAll('button')) {
+    q.classList.toggle('actif', (q as HTMLElement).dataset.trace === t)
+  }
+})
+
 voirCollision.addEventListener('change', () => {
   edition.etat.montrerCollision = voirCollision.checked
   jeu.dessiner()
@@ -523,15 +581,26 @@ canevas.addEventListener('pointerdown', (e) => {
   if (jeu.tourne) return
   canevas.setPointerCapture(e.pointerId)
   edition.commencer(e.clientX, e.clientY, e.button)
-  dessinerCollision()
+  redessinerEdition()
   majEtat()
 })
 canevas.addEventListener('pointermove', (e) => {
   if (jeu.tourne) return
   edition.bouger(e.clientX, e.clientY)
-  dessinerCollision()
+  redessinerEdition()
 })
-canevas.addEventListener('pointerup', () => { edition.finir(); majEtat(); majHistorique() })
+canevas.addEventListener('pointerup', () => {
+  edition.finir()
+  redessinerEdition()
+  majEtat()
+  majHistorique()
+})
+
+/** Les deux surcouches de l'editeur, dans l'ordre ou elles se posent. */
+function redessinerEdition(): void {
+  dessinerCollision()
+  dessinerSalles()
+}
 
 /* ------------------------------------------------------------------ */
 /* Defaire et refaire                                                  */
@@ -618,11 +687,71 @@ function dessinerCollision(): void {
   jeu.ecran.presenter()
 }
 
+/**
+ * Les salles, et l'apercu du geste en cours.
+ *
+ * Elles se dessinent DANS le tampon du jeu et non en HTML par-dessus : le
+ * cadre du jeu est agrandi d'un facteur entier, et un rectangle HTML pose
+ * au-dessus aurait des bords a une autre echelle que tout le reste. Un liseré
+ * d'un pixel de jeu doit faire un pixel de jeu.
+ */
+function dessinerSalles(): void {
+  if (jeu.tourne) return
+  const ctx = jeu.ecran.ctx
+  const t = monde.carte.tuile
+  const ox = -Math.round(jeu.camera.x)
+  const oy = -Math.round(jeu.camera.y)
+  const enSalle = edition.etat.outil === 'salle'
+
+  for (const s of monde.salles ?? []) {
+    const x = s.x * t + ox
+    const y = s.y * t + oy
+    const l = s.largeur * t
+    const h = s.hauteur * t
+    // Hors de l'outil « salle », un liseré discret : on veut savoir ou sont
+    // les tableaux en dessinant le decor, pas les avoir dans l'oeil.
+    ctx.strokeStyle = enSalle ? '#7fd4a8' : 'rgba(127, 212, 168, 0.35)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(x + 0.5, y + 0.5, l - 1, h - 1)
+    if (!enSalle) continue
+    ctx.fillStyle = 'rgba(127, 212, 168, 0.10)'
+    ctx.fillRect(x, y, l, h)
+    // Le nom, dans la fonte du jeu : la meme taille de pixel que tout le reste.
+    ecrire(jeu.ecran, s.nom, x + 3, y + 3, { couleur: '#7fd4a8', ombre: '#12101c' })
+  }
+
+  const r = edition.rectangle
+  if (r) {
+    const x0 = Math.min(r.x0, r.x1) * t + ox
+    const y0 = Math.min(r.y0, r.y1) * t + oy
+    const l = (Math.abs(r.x1 - r.x0) + 1) * t
+    const h = (Math.abs(r.y1 - r.y0) + 1) * t
+    ctx.fillStyle = 'rgba(232, 236, 244, 0.18)'
+    ctx.fillRect(x0, y0, l, h)
+    ctx.strokeStyle = '#e8ecf4'
+    ctx.lineWidth = 1
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, l - 1, h - 1)
+  }
+  jeu.ecran.presenter()
+}
+
 function majEtat(): void {
   const c = edition.compter()
   const entites = compterEntites(monde.racine)
+  const salles = monde.salles ?? []
+  /*
+   * LE RECOUVREMENT SE DIT ICI, ET NON EN MESSAGE PASSAGER.
+   *
+   * Deux salles qui se recouvrent rendent « dans quelle salle suis-je ? » sans
+   * reponse. Ce n'est pas un evenement — c'est un ETAT du niveau, qui dure
+   * tant qu'on ne l'a pas corrige. Un message qui disparait au clic suivant
+   * l'annoncerait une fois, a quelqu'un qui regarde ailleurs.
+   */
+  const croise = salles.length ? chevauchements(salles) : []
   verdict.textContent = `${palette.taille} couleurs · ${c.terrain} posées`
     + ` · ${c.solides} solides${entites ? ` · ${entites} entité(s)` : ''}`
+    + (salles.length ? ` · ${salles.length} salle(s)` : '')
+    + (croise.length ? ` · ⚠ « ${croise[0][0]} » et « ${croise[0][1]} » se recouvrent` : '')
 }
 
 /**
@@ -701,10 +830,27 @@ tuile précise, pour ce que l’autotiling ne sait pas deviner.
 traversable par en dessous, blessante, échelle, liquide — indépendamment de ce
 qu’elle montre. Clic droit pour retirer, partout.</p>
 
+<p>Le <b>tracé</b> vaut pour l’outil choisi, quel qu’il soit. <b>Libre</b> peint
+case par case. <b>Rect</b> se tire d’un coin à l’autre et ne pose rien avant
+qu’on lâche — un rectangle qu’on retaille ne laisse donc rien derrière lui.
+<b>Remplir</b> couvre la zone d’un seul tenant sous le curseur, en s’arrêtant
+aux murs et sans se faufiler entre deux coins. Dans les trois cas, le premier
+appui décide : commencer sur une case déjà peinte <i>efface</i> le rectangle
+ou la zone au lieu de la remplir.</p>
+
 <h4>Peupler</h4>
 <p><b>Entité</b> pose une créature au clic gauche, la retire au clic droit, et
 la <b>déplace en la faisant glisser</b>. Poser une entité, c’est ajouter un
 nœud à la scène : elle part dans le fichier avec le reste.</p>
+
+<h4>Découper en tableaux</h4>
+<p><b>Salle</b> pose un tableau en tirant un rectangle, et le retire au clic
+droit. Une salle borne la caméra — elle ne montre jamais le tableau d’à côté —
+et sert de point de reprise : mourir y renvoie, pas au départ du niveau. C’est
+le découpage de Celeste. Sans aucune salle, le monde reste continu et la caméra
+suit le héros partout. Deux salles qui se recouvrent sont signalées dans la
+barre d’état : la caméra ne saurait pas laquelle choisir. Leurs quatre nombres
+et leur nom se règlent dans <b>Projet</b>.</p>
 
 <h4>Changer la structure</h4>
 <p><b>Projet</b> ouvre ce que le pinceau ne sait pas faire : redimensionner la
