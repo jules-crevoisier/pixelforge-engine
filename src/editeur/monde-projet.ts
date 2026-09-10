@@ -512,8 +512,10 @@ export function mondeDepuisProjet(
         dessinAvant?.(ctx, ecran)
         // Les coeurs et etincelles du NIVEAU COURANT : c'est une capture par
         // paire, et non un branchement global, pour que changer de carte
-        // change aussi la jauge qu'on regarde.
-        courant.paire?.dessin?.(ctx, ecran)
+        // change aussi la jauge qu'on regarde. Et seulement PENDANT le jeu :
+        // des coeurs sur l'ecran d'edition sont du bruit — on les a vus sur
+        // une capture, pas dans un banc.
+        if (jeu.tourne) courant.paire?.dessin?.(ctx, ecran)
         dessinerDialogue(ecran, dialogue, {})
         if (finOuverte) {
           ctx.fillStyle = 'rgba(10, 8, 16, 0.86)'

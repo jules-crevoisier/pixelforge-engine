@@ -85,7 +85,7 @@ const atelier = new Atelier(
   },
   () => jeu,
   () => monde.racine,
-  () => { if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() } },
+  () => { if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() } },
 )
 
 /**
@@ -264,7 +264,9 @@ function installer(nouveau: Monde): void {
   dessinerCollision()
 
   atelier.reinitialiser()
-  aide.textContent = monde.aide
+  // L'aide du pied montre L'OUTIL courant, pas la fiche du monde : c'est la
+  // question qu'on se pose en editant. La fiche du monde vit derriere « ? ».
+  aide.textContent = AIDE_OUTILS[edition.etat.outil] ?? monde.aide
   info.textContent = `${monde.vue.largeur}×${monde.vue.hauteur} · ${monde.carte.largeur}×${monde.carte.hauteur} · ${monde.projection.mode}, ${monde.projection.regard}`
   majEtat()
   majMesure()
@@ -456,7 +458,7 @@ const panneauProjet = new PanneauProjet(
         const propre = jeu.sprites.get(nom) ?? jeu.sprites.get(monde.planches[0]?.nom ?? '')
         if (propre) jeu.cartes.set(nom, { carte: c.carte, atlas: propre })
       }
-      if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() }
+      if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
     },
     animations: () => monde.animations as unknown as never,
     sons: () => (monde.sons ?? []) as never,
@@ -506,6 +508,34 @@ function ecouterSon(s: Parameters<typeof rendreSon>[0]): void {
   source.connect(audio.destination)
   source.start()
 }
+
+/*
+ * L'ACCUEIL. On lancait l'editeur sur un monde de demonstration, sans un mot :
+ * la premiere impression etait « je ne comprends rien ». Trois choix, une
+ * phrase — et l'on sait quoi faire avant d'avoir rien appris.
+ */
+const accueil = document.getElementById('accueil') as HTMLElement
+const fermerAccueil = (): void => { accueil.hidden = true }
+const demarrerProjet = (projection: 'cote' | 'dessus'): void => {
+  fermerAccueil()
+  const pj = projetNeuf({ nom: 'mon-jeu', projection })
+  installerProjet(pj, pj.nom)
+  verdict.textContent = projection === 'cote'
+    ? 'Votre jeu de plateforme. Peignez du mur (1), posez des entités (5), appuyez sur ▶ Jouer.'
+    : 'Votre monde vu de dessus. Peignez du mur (1), posez des entités (5), appuyez sur ▶ Jouer.'
+}
+document.getElementById('accueilPlateforme')?.addEventListener('click', () => demarrerProjet('cote'))
+document.getElementById('accueilDessus')?.addEventListener('click', () => demarrerProjet('dessus'))
+document.getElementById('accueilOuvrir')?.addEventListener('click', () => {
+  fermerAccueil()
+  ;(document.getElementById('ouvrir') as HTMLButtonElement).click()
+})
+document.getElementById('accueilExemples')?.addEventListener('click', fermerAccueil)
+accueil.addEventListener('click', (e) => { if (e.target === accueil) fermerAccueil() })
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !accueil.hidden) fermerAccueil() })
+// Il se montre au demarrage, et seulement la : le rouvrir a chaque geste
+// serait un tourniquet a l'entree de l'atelier.
+accueil.hidden = false
 
 document.getElementById('nouveau')?.addEventListener('click', () => {
   if (!window.confirm('Créer un projet vide ? Ce qui est à l’écran sera remplacé.')) return
@@ -577,8 +607,20 @@ const palettePanneau = new PalettePanneau(
   },
 )
 
+/** Ce que chaque outil fait, dit la ou l'oeil tombe quand il hesite. */
+const AIDE_OUTILS: Record<string, string> = {
+  terrain: 'Mur — clic gauche : poser · clic droit ou Gomme : effacer · il se dessine et bloque',
+  gomme: 'Gomme — efface le dessin et la collision de la case',
+  collision: 'Collision — peint ce que la case FAIT (solide, pointe, échelle…) sans toucher au dessin',
+  tuile: 'Tuile — choisissez une case de la planche à gauche, puis peignez-la',
+  entite: 'Entité — choisissez une créature à gauche, clic pour poser, clic droit pour retirer, tirer pour déplacer',
+  salle: 'Salle — tirez un rectangle : la caméra s’y bornera, on y réapparaîtra',
+  main: 'Main — tirez pour déplacer la vue',
+}
+
 function choisirOutil(o: Outil): void {
   edition.etat.outil = o
+  aide.textContent = AIDE_OUTILS[o] ?? ''
   for (const b of outils.querySelectorAll('button')) {
     b.classList.toggle('actif', (b as HTMLElement).dataset.outil === o)
   }
@@ -589,7 +631,7 @@ function choisirOutil(o: Outil): void {
     calque: edition.etat.calqueChoisi,
     matiere: edition.etat.matiere,
   })
-  if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() }
+  if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
 }
 outils.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button')
@@ -634,6 +676,16 @@ canevas.addEventListener('pointerdown', (e) => {
 canevas.addEventListener('pointermove', (e) => {
   if (jeu.tourne) return
   edition.bouger(e.clientX, e.clientY)
+  caseSurvolee = edition.caseSous(e.clientX, e.clientY)
+  // La surcouche se redessine sur le DERNIER rendu du jeu : sans redessiner
+  // la scene, la case survolee laisserait une trainee de lisere.
+  jeu.dessiner()
+  redessinerEdition()
+})
+canevas.addEventListener('pointerleave', () => {
+  if (jeu.tourne) return
+  caseSurvolee = null
+  jeu.dessiner()
   redessinerEdition()
 })
 canevas.addEventListener('pointerup', () => {
@@ -643,8 +695,62 @@ canevas.addEventListener('pointerup', () => {
   majHistorique()
 })
 
-/** Les deux surcouches de l'editeur, dans l'ordre ou elles se posent. */
+/**
+ * Le cadre d'edition : le bord de la carte, sa grille, la case survolee.
+ *
+ * ## Pourquoi il existe
+ *
+ * Un projet s'ouvrait sur un rectangle noir sans bord ni grille : on ne
+ * savait ni ou etait la carte, ni ou elle s'arretait, ni sur quelle case le
+ * prochain clic tomberait. C'est une capture d'ecran qui l'a montre — pas un
+ * banc : les bancs lisent le modele, jamais ce que l'oeil recoit.
+ *
+ * Tout se dessine dans le TAMPON du jeu, comme les salles : un pixel de
+ * lisere doit faire un pixel de jeu. Et seulement a l'arret — en jouant, on
+ * voit ce que le joueur verra, rien d'autre.
+ */
+let caseSurvolee: { cx: number; cy: number } | null = null
+function dessinerCadreEdition(): void {
+  if (jeu.tourne) return
+  const ctx = jeu.ecran.ctx
+  const t = monde.carte.tuile
+  const ox = -Math.round(jeu.camera.x)
+  const oy = -Math.round(jeu.camera.y)
+  const L = monde.carte.largeur
+  const H = monde.carte.hauteur
+  if (monde.projection.mode !== 'orthogonale') {
+    // En isometrique, la grille rectangulaire mentirait : on trace juste le
+    // pourtour de la carte, par ses quatre coins projetes.
+    return
+  }
+  // La grille, une ligne sur deux teintes tres discretes : elle situe les
+  // cases sans manger le dessin.
+  ctx.strokeStyle = 'rgba(160, 170, 200, 0.10)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (let cx = 1; cx < L; cx++) {
+    ctx.moveTo(cx * t + ox + 0.5, oy)
+    ctx.lineTo(cx * t + ox + 0.5, H * t + oy)
+  }
+  for (let cy = 1; cy < H; cy++) {
+    ctx.moveTo(ox, cy * t + oy + 0.5)
+    ctx.lineTo(L * t + ox, cy * t + oy + 0.5)
+  }
+  ctx.stroke()
+  // Le BORD de la carte, net : c'est lui qui repond « ou s'arrete le monde ».
+  ctx.strokeStyle = 'rgba(127, 212, 168, 0.8)'
+  ctx.strokeRect(ox + 0.5, oy + 0.5, L * t - 1, H * t - 1)
+  // La case sous le curseur : le prochain clic tombera LA.
+  if (caseSurvolee && edition.etat.outil !== 'main') {
+    ctx.strokeStyle = '#e8ecf4'
+    ctx.strokeRect(caseSurvolee.cx * t + ox + 0.5, caseSurvolee.cy * t + oy + 0.5, t - 1, t - 1)
+  }
+  jeu.ecran.presenter()
+}
+
+/** Les surcouches de l'editeur, dans l'ordre ou elles se posent. */
 function redessinerEdition(): void {
+  dessinerCadreEdition()
   dessinerCollision()
   dessinerSalles()
 }
@@ -990,6 +1096,14 @@ window.addEventListener('keydown', (e) => {
   if (dansUnChamp || e.ctrlKey || e.metaKey) return
   if (e.key === '+' || e.key === '=') { e.preventDefault(); decalerCadre(-1) }
   if (e.key === '-') { e.preventDefault(); decalerCadre(1) }
+  // Un chiffre par outil, dans l'ordre du dock : la main gauche choisit,
+  // la droite peint — le geste de tous les logiciels de dessin.
+  const ORDRE_OUTILS: Outil[] = ['terrain', 'gomme', 'collision', 'tuile', 'entite', 'salle', 'main']
+  const n = Number(e.key)
+  if (n >= 1 && n <= ORDRE_OUTILS.length && !jeu.tourne) {
+    e.preventDefault()
+    choisirOutil(ORDRE_OUTILS[n - 1])
+  }
 })
 
 boutonJouer.addEventListener('click', () => {

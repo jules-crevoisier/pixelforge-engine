@@ -35,6 +35,10 @@ const err = []
 p.on('pageerror', e => err.push('pageerror: ' + e))
 p.on('console', m => { if (m.type() === 'error') err.push('console: ' + m.text()) })
 await p.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' })
+await p.waitForTimeout(600)
+// L'accueil s'ouvre au demarrage — c'est voulu. Le banc passe par les
+// exemples, comme quelqu'un qui vient regarder.
+await p.click('#accueilExemples').catch(() => {})
 
 let bilan = []
 const ok = (nom, v, d = '') => { bilan.push({ nom, v }); console.log(`${v ? '  ok  ' : ' ECHEC'} ${nom}${d ? ' — ' + d : ''}`) }

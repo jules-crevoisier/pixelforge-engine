@@ -538,7 +538,15 @@ export class Peuplement {
     }
     const lecteur = new Lecteur(this.clips)
     lecteur.jouer(e.clip)
-    n.image = lecteur.image
+    /*
+     * Un clip INTROUVABLE n'efface pas le dessin. Le lecteur rend alors -1,
+     * et l'ecrire ferait disparaitre l'entite — c'est arrive au heros : son
+     * espece nomme « marche », ses clips s'appellent « marche-bas » et
+     * freres, et l'adoption le rendait invisible dans l'editeur jusqu'au
+     * premier pas de jeu. Une capture d'ecran l'a montre ; aucun banc ne
+     * regardait.
+     */
+    if (lecteur.image >= 0) n.image = lecteur.image
     this.combat.inscrire(n.id, {
       max: e.pv, camp: e.camp, boite: e.boite, x: n.x, y: n.y,
       invulnerabiliteMs: e.invulnerabiliteMs,
@@ -708,7 +716,7 @@ export class Peuplement {
         // le dessin dit quand, l'etat dit quoi.
         this.declencher(v, nom, dx, dy)
       }
-      v.noeud.image = v.lecteur.image
+      if (v.lecteur.image >= 0) v.noeud.image = v.lecteur.image
 
       // Le decor qui blesse. La frappe appartient au camp « decor », donc a
       // personne : une pointe pique le heros comme la creature qui marche

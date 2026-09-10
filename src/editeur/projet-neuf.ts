@@ -7,7 +7,7 @@ import { matiereEnCaractere, caractereEnMatiere, VIDE } from '../tuiles/tilemap.
 import { ORTHO_DESSUS, ORTHO_COTE, ISO, type Projection } from '../noyau/projection.ts'
 import { espece, type Espece } from '../runtime/entites.ts'
 import { musique as musiqueFabrique, voie as voieFabrique, type Voie } from '../runtime/musique.ts'
-import { TUILE, CLE_DONJON, PLANCHE_DONJON, CLE_HEROS, PLANCHE_HEROS, COLONNES_HEROS } from '../demo/art.ts'
+import { TUILE, TUILE_SOL, CLE_DONJON, PLANCHE_DONJON, CLE_HEROS, PLANCHE_HEROS, COLONNES_HEROS } from '../demo/art.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from '../demo/art-creatures.ts'
 import { ESPECES_DEMO, clipsDemo } from '../demo/especes-demo.ts'
 import { SONS_DEMO } from '../demo/sons-demo.ts'
@@ -94,7 +94,19 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     calques: [
       {
         nom: 'sol', visible: true, devant: false, terrain: null,
-        cases: Array.from({ length: hauteur }, () => rangeeVide(largeur)),
+        /*
+         * Le sol est PRE-PEINT sur toute la carte. Un projet neuf s'ouvrait
+         * sur un rectangle noir — pas de grille, pas de bord, un heros
+         * minuscule sur du vide — et la premiere impression etait « je ne
+         * vois rien, je ne sais pas ou peindre ». Un sol partout dit d'un
+         * coup ou est la carte, ou elle s'arrete, et ce que « peindre du
+         * mur » va recouvrir. La gomme le retire si on veut du vide.
+         */
+        cases: Array.from({ length: hauteur },
+          (_q, y) => Array.from({ length: largeur },
+            // En vue de cote, seul le BAS est du sol : un plafond carrele
+            // n'aurait pas de sens, et l'oeil doit lire « ici on marche ».
+            () => String(choix.id === 'cote' && y < hauteur - 2 ? VIDE : TUILE_SOL)).join(',')),
         presence: Array.from({ length: hauteur }, () => rangeeZeros(largeur)),
       },
       {
@@ -104,13 +116,23 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
         presence: Array.from({ length: hauteur }, () => rangeeZeros(largeur)),
       },
     ],
-    solides: Array.from({ length: hauteur }, () => rangeeZeros(largeur)),
+    /*
+     * En vue de cote, le sol du bas est SOLIDE des la naissance : un projet
+     * plateforme qui s'ouvre sur un heros en chute libre dans le vide ne dit
+     * pas « editeur », il dit « casse ». En vue de dessus, rien n'est solide
+     * — on marche partout, et l'on peint ses murs.
+     */
+    solides: Array.from({ length: hauteur }, (_q, y) =>
+      (choix.id === 'cote' && y >= hauteur - 2
+        ? matiereEnCaractere(1).repeat(largeur)
+        : rangeeZeros(largeur))),
   }
 
   // Le heros au milieu, les pieds au bas de sa case. C'est la convention
   // d'ancrage de tout le moteur ; s'en ecarter ici le ferait flotter.
   const cxMilieu = Math.floor(largeur / 2)
-  const cyMilieu = Math.floor(hauteur / 2)
+  // En vue de cote, les pieds sur le sol pre-peint ; sinon au milieu.
+  const cyMilieu = choix.id === 'cote' ? hauteur - 3 : Math.floor(hauteur / 2)
   const espèceHeros = choix.id === 'cote' ? 'heros-cote' : 'heros'
   const heros: NoeudSerialise = {
     id: 'heros', nom: 'heros', type: 'sprite',

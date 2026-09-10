@@ -11,43 +11,59 @@
   <div class="app">
     <header class="barre">
       <span class="marque">PixelForge <b>Engine</b></span>
-      <select id="monde" title="Le monde chargé, et donc la projection"></select>
-      <button id="jouer" class="primaire">Jouer</button>
-      <button id="arreter" disabled>Arrêter</button>
       <span class="sep"></span>
-      <button id="defaire" title="Ctrl+Z" disabled>↶</button>
-      <button id="refaire" title="Ctrl+Maj+Z" disabled>↷</button>
-      <div class="outils" id="outils" role="group" aria-label="Outils d’édition">
-        <button data-outil="terrain" class="actif">Mur</button>
-        <button data-outil="gomme">Gomme</button>
-        <button data-outil="collision">Collision</button>
-        <button data-outil="tuile">Tuile</button>
-        <button data-outil="entite">Entité</button>
-        <button data-outil="salle">Salle</button>
-        <button data-outil="main">Main</button>
-      </div>
-      <div class="outils" id="traces" role="group" aria-label="Tracé">
-        <button data-trace="libre" class="actif" title="À main levée : une case par case survolée">Libre</button>
-        <button data-trace="rectangle" title="Rectangle : on tire d’un coin à l’autre, et rien n’est posé avant de lâcher">Rect</button>
-        <button data-trace="remplir" title="Remplir la zone d’un seul tenant sous le curseur">Remplir</button>
-      </div>
-      <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
-      <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>
-      <button id="basculeProjet" title="Carte, calques, espèces">Projet</button>
+      <button id="jouer" class="primaire grand" title="Lancer le jeu tel que le joueur le verra">▶&nbsp;Jouer</button>
+      <button id="arreter" class="grand" disabled title="Revenir à l’édition">■&nbsp;Arrêter</button>
       <span class="sep"></span>
-      <button id="zoomMoins" title="Voir plus de carte (−)">−</button>
-      <span class="info" id="zoomTexte">×1</span>
-      <button id="zoomPlus" title="Voir de plus près (+)">+</button>
-      <span class="sep"></span>
-      <button id="nouveau" title="Repartir d’un projet vide">Nouveau…</button>
-      <button id="dossier" title="Choisir le dossier de travail du projet">Dossier…</button>
-      <button id="enregistrer" title="Ctrl+S">Enregistrer</button>
-      <button id="ouvrir" title="Relire un projet">Ouvrir…</button>
+      <button id="defaire" title="Défaire (Ctrl+Z)" disabled>↶</button>
+      <button id="refaire" title="Refaire (Ctrl+Maj+Z)" disabled>↷</button>
       <span class="pousse"></span>
-      <select id="cible" title="Langage du chargeur généré"></select>
-      <button id="exporter">Exporter</button>
+      <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>
+      <button id="basculeProjet" title="Cartes, dessins, sons, textes, espèces">Projet</button>
+      <span class="sep"></span>
+      <button id="nouveau" title="Créer un nouveau jeu">Nouveau…</button>
+      <button id="ouvrir" title="Relire un projet enregistré">Ouvrir…</button>
+      <button id="enregistrer" title="Enregistrer le projet (Ctrl+S)">Enregistrer</button>
+      <button id="dossier" title="Choisir le dossier de travail du projet">Dossier…</button>
+      <span class="sep"></span>
+      <select id="monde" title="Projets ouverts et mondes d’exemple"></select>
+      <select id="cible" title="Forme de l’export"></select>
+      <button id="exporter" title="Emporter le jeu hors de l’éditeur">Exporter</button>
     </header>
     <div class="corps">
+      <nav class="dock" aria-label="Outils">
+        <div class="dock-groupe outils" id="outils" role="group" aria-label="Outils d’édition">
+          <button data-outil="terrain" class="actif" title="Peindre du mur — il se dessine et bloque (1)">
+            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M1 3h14v3H1zM1 7h6v3H1zm8 0h6v3H9zM1 11h14v3H1z"/></svg><span>Mur</span></button>
+          <button data-outil="gomme" title="Effacer — dessin et collision (2)">
+            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M9 2l5 5-6 7H5l-3-3 7-9zm-4 11h8v2H7z" opacity=".9"/></svg><span>Gomme</span></button>
+          <button data-outil="collision" title="Peindre ce que les cases FONT : solide, pointe, échelle… (3)">
+            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 1l6 2v5c0 4-3 6-6 7-3-1-6-3-6-7V3z" opacity=".55"/><path fill="currentColor" d="M8 4l3 1v3c0 2-1.5 3-3 3.6C6.5 11 5 10 5 8V5z"/></svg><span>Collision</span></button>
+          <button data-outil="tuile" title="Poser une tuile précise de la planche (4)">
+            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M1 1h6v6H1zM9 1h6v6H9zM1 9h6v6H1z" opacity=".5"/><path fill="currentColor" d="M9 9h6v6H9z"/></svg><span>Tuile</span></button>
+          <button data-outil="entite" title="Poser une créature, un cœur, une balise… (5)">
+            <svg viewBox="0 0 16 16"><circle cx="8" cy="4.5" r="3" fill="currentColor"/><path fill="currentColor" d="M3 15c0-3 2-5 5-5s5 2 5 5z"/></svg><span>Entité</span></button>
+          <button data-outil="salle" title="Découper le niveau en tableaux, à la souris (6)">
+            <svg viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2" d="M2 2h12v12H2z"/></svg><span>Salle</span></button>
+          <button data-outil="main" title="Déplacer la vue en tirant (7)">
+            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M6 2c.6 0 1 .4 1 1v4h1V2c0-.6.4-1 1-1s1 .4 1 1v5h1V3c0-.6.4-1 1-1s1 .4 1 1v7c0 3-2 5-5 5s-5-2-4.6-5L3 8c-.4-.8 0-1.6.8-1.8L5 6V3c0-.6.4-1 1-1z"/></svg><span>Main</span></button>
+        </div>
+        <div class="dock-groupe outils" id="traces" role="group" aria-label="Tracé">
+          <button data-trace="libre" class="actif" title="À main levée : une case par case survolée">
+            <svg viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M2 12c3-6 6 4 12-8"/></svg><span>Libre</span></button>
+          <button data-trace="rectangle" title="Rectangle : rien n’est posé avant de lâcher">
+            <svg viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M2.5 3.5h11v9h-11z"/></svg><span>Rect</span></button>
+          <button data-trace="remplir" title="Remplir la zone d’un seul tenant sous le curseur">
+            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M7 1l6 6-5 5-6-6zm6 9s2 2.2 2 3.5a2 2 0 1 1-4 0C11 12.2 13 10 13 10z"/></svg><span>Remplir</span></button>
+        </div>
+        <div class="dock-groupe dock-bas">
+          <button id="zoomMoins" title="Voir plus de carte (−)">−</button>
+          <span class="info" id="zoomTexte">×1</span>
+          <button id="zoomPlus" title="Voir de plus près (+)">+</button>
+          <label class="bascule dock-bascule" title="Voir ce que chaque case FAIT, par-dessus le dessin">
+            <input type="checkbox" id="voirCollision" /><span>Collisions</span></label>
+        </div>
+      </nav>
       <aside class="palette" id="palette" hidden>
         <p class="palette-titre" id="paletteTitre"></p>
         <div class="palette-grille" id="paletteGrille"></div>
@@ -81,6 +97,31 @@
           <pre id="scriptAide"></pre>
         </details>
       </aside>
+    </div>
+    <div class="accueil" id="accueil" hidden>
+      <div class="accueil-boite">
+        <p class="accueil-marque">PixelForge <b>Engine</b></p>
+        <p class="accueil-mot">Un moteur pour faire des jeux en pixel art — dessin, niveaux, sons,
+          musiques et scripts au même endroit, et un fichier de projet qui se relit partout.</p>
+        <div class="accueil-cartes">
+          <button class="accueil-carte" id="accueilPlateforme">
+            <span class="accueil-icone">🏃</span>
+            <b>Jeu de plateforme</b>
+            <span>Vue de côté, gravité, sauts.<br/>Un sol déjà posé : on peint, on joue.</span>
+          </button>
+          <button class="accueil-carte" id="accueilDessus">
+            <span class="accueil-icone">🗺️</span>
+            <b>Vue de dessus</b>
+            <span>Donjons, aventure, exploration.<br/>On marche dans les quatre sens.</span>
+          </button>
+          <button class="accueil-carte" id="accueilOuvrir">
+            <span class="accueil-icone">📄</span>
+            <b>Ouvrir un projet</b>
+            <span>Relire un fichier .json enregistré<br/>ici ou ailleurs.</span>
+          </button>
+        </div>
+        <button class="lien accueil-exemples" id="accueilExemples">…ou explorer les mondes d’exemple</button>
+      </div>
     </div>
     <footer class="pied">
       <button id="basculeAide" class="lien" title="Ce que fait chaque outil">?</button>

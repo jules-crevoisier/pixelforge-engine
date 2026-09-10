@@ -30,10 +30,12 @@ body {
    plus qu'il manque quelque chose. Le repli redevient le bon choix des lors
    que la hauteur suit, et c'est ce que `auto` fait ici. */
 .barre {
-  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   background: var(--bg-1); border-bottom: 1px solid var(--line);
   flex-wrap: wrap; row-gap: 6px; min-height: 44px;
 }
+/* Les selects de droite n'ont pas a pousser la barre sur deux lignes. */
+.barre select { max-width: 150px; }
 .barre > * { flex-shrink: 0; }
 /* Le ressort ne pousse plus rien quand la barre se replie : il ferait une
    ligne de vide au lieu de coller l'export a droite. */
@@ -252,3 +254,68 @@ button.lien:hover { color: var(--accent); }
    choisir. Le liseré le dit sur la ligne, là où l'on peut corriger. */
 .ligne.faute { border-color: #ff8a8a; }
 .ligne.faute input { border-color: #ff8a8a; }
+
+/* ------------------------------------------------------------------ */
+/* Le dock d'outils : vertical, a gauche, une icone et un nom.         */
+/*                                                                     */
+/* Les outils vivaient dans la barre du haut, en petits boutons texte  */
+/* serres entre « Jouer » et « Exporter » : rien ne distinguait un     */
+/* OUTIL d'une COMMANDE, et la premiere impression etait un mur de     */
+/* mots. Un dock vertical dit « ceci est ta main gauche » — comme dans */
+/* tous les logiciels de dessin que nos yeux connaissent deja.         */
+/* ------------------------------------------------------------------ */
+.dock {
+  width: 68px; flex: none; display: flex; flex-direction: column;
+  background: var(--bg-1); border-right: 1px solid var(--line);
+  padding: 8px 6px; gap: 10px; overflow-y: auto;
+}
+.dock-groupe { display: flex; flex-direction: column; gap: 3px; }
+.dock-groupe + .dock-groupe { border-top: 1px solid var(--line); padding-top: 10px; }
+.dock .outils button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 2px 4px; width: 100%; border-radius: 8px;
+  background: transparent; border-color: transparent; color: var(--dim);
+}
+.dock .outils button svg { width: 18px; height: 18px; }
+.dock .outils button span { font-size: 10px; letter-spacing: .02em; }
+.dock .outils button:hover { color: var(--texte); border-color: var(--line); }
+.dock .outils button.actif {
+  background: var(--bg-0); border-color: var(--accent); color: var(--accent);
+}
+.dock-bas { margin-top: auto; align-items: center; gap: 6px; }
+.dock-bas button { width: 100%; padding: 3px 0; }
+.dock-bas .info { font-size: 10.5px; }
+.dock-bascule {
+  flex-direction: column; gap: 2px; font-size: 10px; text-align: center;
+  padding-top: 6px; border-top: 1px solid var(--line); width: 100%;
+}
+
+/* Jouer est LE bouton : il doit se voir depuis l'autre bout de la piece. */
+button.grand { padding: 7px 18px; font-size: 13px; border-radius: 8px; }
+
+/* ------------------------------------------------------------------ */
+/* L'accueil : trois choix, une phrase. On lance l'editeur, on sait    */
+/* quoi faire — c'etait exactement ce qui manquait.                    */
+/* ------------------------------------------------------------------ */
+.accueil {
+  position: fixed; inset: 0; z-index: 40; display: flex;
+  align-items: center; justify-content: center;
+  background: rgba(8, 9, 13, .88); backdrop-filter: blur(3px);
+}
+.accueil[hidden] { display: none; }
+.accueil-boite { max-width: 720px; padding: 24px; text-align: center; }
+.accueil-marque { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+.accueil-marque b { color: var(--accent); }
+.accueil-mot { color: var(--dim); font-size: 14px; line-height: 1.6; margin: 0 auto 26px; max-width: 560px; }
+.accueil-cartes { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.accueil-carte {
+  width: 210px; padding: 18px 14px 16px; border-radius: 12px;
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  background: var(--bg-1); border: 1px solid var(--line); font-size: 12px;
+  color: var(--dim); line-height: 1.5;
+}
+.accueil-carte b { color: var(--texte); font-size: 14px; }
+.accueil-carte:hover { border-color: var(--accent); transform: translateY(-2px); }
+.accueil-carte { transition: transform .12s ease, border-color .12s ease; }
+.accueil-icone { font-size: 26px; line-height: 1; }
+.accueil-exemples { margin-top: 20px; font-size: 12.5px; font-weight: 400; }
