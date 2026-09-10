@@ -274,6 +274,7 @@ function projetCourant() {
     jeu.entrees.planCourant(),
     monde.musiques ?? [],
     monde.textes ?? {},
+    monde.salles ?? [],
   )
 }
 

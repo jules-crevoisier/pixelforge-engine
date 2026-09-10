@@ -573,15 +573,15 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 257 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:mondes     # 282 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   #  91 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           #  80 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           #  86 vérifications de l'éditeur, dans un vrai navigateur
 npm run banc:image      #  26 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
-npm run agent           # la grille : 67 critères, et ce qu'il reste à faire
+npm run agent           # la grille : 71 critères, et ce qu'il reste à faire
 npm run build
 ```
 
@@ -846,6 +846,62 @@ quelqu'un ajoute une ligne au menu et écrit son libellé en clair, parce que
 c'est plus court. Rien ne tombe — le menu s'affiche, en français, dans toutes
 les langues. Un contrôle lit donc la source du menu de pause et refuse toute
 chaîne posée en clair dans une entrée.
+
+### Un chapitre en tableaux, comme Celeste
+
+![Un tableau de l'Ascension : caméra fixe, pointes, plateformes](docs/ascension.png)
+
+Le moteur savait déjà verrouiller la caméra sur une salle — mais sur une
+**grille** : toutes les salles de la même taille, découpées au couteau dans une
+carte. C'est le découpage d'Isaac, et il convient à des salles engendrées.
+
+Celeste n'est pas fait comme ça. Ses salles sont des rectangles **posés à la
+main**, de tailles différentes : un couloir de deux écrans de large et d'un demi
+de haut, un puits d'un demi de large et de trois de haut. La forme de la salle
+*est* le niveau. Une grille régulière ne peut pas l'exprimer, et l'on ne peut
+donc pas faire un Celeste avec.
+
+Une salle décide de trois choses, et la troisième fait tout le jeu :
+
+1. **Où la caméra s'arrête.** Elle ne sort jamais de la salle courante. Une
+   seule règle donne les deux comportements de Celeste : dans une salle de la
+   taille de l'écran, les bornes bloquent tout et le tableau est fixe ; dans une
+   salle plus large, la caméra suit.
+2. **Quand on change de tableau.** Sortir d'une salle fait entrer dans celle
+   d'à côté, et l'image glisse — sans arrêter le jeu, parce que s'arrêter
+   casserait un enchaînement.
+3. **Où l'on réapparaît.** Mourir renvoie à l'entrée du tableau **courant**, pas
+   à un point de sauvegarde lointain. C'est ce qui rend la mort assez bon marché
+   pour qu'on accepte de mourir deux cents fois dans un chapitre. Un jeu où
+   mourir coûte trente secondes de trajet n'est pas un jeu difficile, c'est un
+   jeu pénible.
+
+Entre deux salles, on **garde la dernière connue**. Un personnage peut se
+trouver dans un interstice — une porte, un pixel entre deux rectangles ;
+chercher la salle à chaque pas la rendrait « aucune », la caméra se libérerait
+et le tableau sauterait.
+
+Deux salles qui se recouvrent rendent « dans quelle salle suis-je ? » sans
+réponse : c'est l'ordre de la liste qui tranche, donc rien. On le **signale** au
+lieu de l'interdire — l'éditeur doit pouvoir montrer le problème pendant qu'on
+pose une salle, pas refuser de la poser. Une salle qu'aucune autre ne touche est
+signalée aussi : c'est du travail perdu, et ça ne se voit qu'en jouant tout le
+chapitre.
+
+Le monde **Ascension** met tout cela en jeu : six tableaux en spirale, un point
+de vie, une reprise en trois dixièmes de seconde. Un banc le gravit en entier
+avec le vrai contrôleur, tableau par tableau, avec une politique volontairement
+grossière — tenir une direction, sauter dès qu'on touche le sol. Si un escalier
+ne se monte qu'avec un enchaînement précis, il ne se monte pas.
+
+**Deux défauts trouvés en le construisant, et tous deux étaient à l'écran.**
+Le héros affichait trois cœurs et mourait au premier coup : le réglage
+`pvHeros` et l'espèce avaient divergé, et c'est le réglage qui servait à
+l'affichage *et* à la réapparition — si bien que le contrat « une pointe tue »
+tenait jusqu'à la première mort, puis se défaisait. Et tomber hors du monde ne
+tuait pas : le héros sortait de la carte et chutait indéfiniment, plus rien ne
+le touchait, et le jeu avait l'air figé alors qu'il tournait. C'est ce qui
+arrive au premier niveau qu'on dessine avec un bord ouvert.
 
 ### Une créature qui contourne le mur
 
@@ -1156,7 +1212,7 @@ pire défaut d'une mesure.
 
 ### Où en est le projet, d'après lui
 
-    Celeste — plateforme de précision             10/10
+    Celeste — plateforme de précision             14/14
     The Binding of Isaac — salles engendrées       7/7
     Dead Cells — combat et corps                   6/6
     Faire un jeu sans lire le moteur               8/8
@@ -1165,7 +1221,7 @@ pire défaut d'une mesure.
     Ce qu'un jeu de plateforme doit avoir          9/9
     Ce qu'un jeu a en plus de son gameplay        13/13
     Le déployer sans que ça casse en production    4/4
-                                          771 vérifications
+                                          802 vérifications
 
 Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
 libellés jamais en clair, accord des six portages sur les notes et les textes —

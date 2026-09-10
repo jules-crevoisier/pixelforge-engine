@@ -578,6 +578,66 @@ ok('Enregistrer telecharge le projet faute de dossier',
   telecharges.length === 4 && telecharges[3].endsWith('.json'), telecharges.join(', '))
 
 /*
+ * LE CHAPITRE EN TABLEAUX, JOUE POUR DE BON.
+ *
+ * Un decoupage en salles se verifie en Node — les rectangles, les
+ * chevauchements, la reprise. Ce qui ne se verifie qu'ici, c'est que
+ * l'ensemble TIENT : qu'on court, qu'on change d'ecran, que la camera s'y
+ * arrete, et qu'on repart de l'entree du tableau quand on meurt.
+ */
+{
+  await p.selectOption('#monde', 'ascension')
+  await p.waitForTimeout(450)
+  await p.click('#jouer')
+  await p.waitForTimeout(350)
+
+  const sonde = () => p.evaluate(() => window.pfe.monde.sonde())
+  const camera = () => p.evaluate(() => ({
+    x: Math.round(window.pfe.jeu.camera.x), y: Math.round(window.pfe.jeu.camera.y),
+  }))
+
+  const debut = await sonde()
+  const camDebut = await camera()
+  ok('l’Ascension commence dans un tableau', debut.salle === 'depart' && debut.salles === 6,
+    `« ${debut.salle} » sur ${debut.salles} tableaux`)
+  ok('et le héros y meurt d’un seul coup', debut.pv === 1,
+    `${debut.pv} pv — le contrat de Celeste, qui ne tient que parce que la reprise est immédiate`)
+
+  // On court a droite en sautillant : c'est tout ce qu'il faut pour passer
+  // dans le tableau suivant.
+  await p.keyboard.down('ArrowRight')
+  for (let i = 0; i < 24; i++) { await p.keyboard.press('Space'); await p.waitForTimeout(110) }
+  await p.keyboard.up('ArrowRight')
+  await p.waitForTimeout(400)
+  const apres = await sonde()
+  const camApres = await camera()
+  ok('en courant, on passe dans le tableau suivant',
+    apres.salle === 'faille' && apres.changements >= 1,
+    `« ${debut.salle} » puis « ${apres.salle} », ${apres.changements} changement(s)`)
+  ok('et la caméra a suivi, d’un tableau à l’autre',
+    camApres.x === camDebut.x + 320 && camApres.y === camDebut.y,
+    `${camDebut.x},${camDebut.y} puis ${camApres.x},${camApres.y} — un tableau fait 320 px`)
+
+  /*
+   * LA REGLE QUI FAIT TOUT. On tombe hors du monde, ce qui tue, et l'on doit
+   * repartir de l'ENTREE DU TABLEAU COURANT — pas du depart du chapitre.
+   */
+  const reprise = apres.reprise
+  const mortsAvant = apres.morts
+  await p.evaluate(() => { window.pfe.monde.heros.y += 400 })
+  await p.waitForTimeout(1400)
+  const ressuscite = await sonde()
+  ok('tomber hors du monde tue au lieu de chuter sans fin',
+    ressuscite.morts > mortsAvant,
+    `${mortsAvant} puis ${ressuscite.morts} morts — sans cette règle, le jeu a l’air figé alors qu’il tourne`)
+  ok('et l’on repart de l’entrée du tableau, pas du départ du chapitre',
+    Math.abs(ressuscite.heros.x - reprise.x) < 2 && Math.abs(ressuscite.heros.y - reprise.y) < 2
+    && ressuscite.salle === 'faille',
+    `revenu en ${Math.round(ressuscite.heros.x)},${Math.round(ressuscite.heros.y)} `
+    + `pour une entrée en ${reprise.x},${reprise.y}`)
+}
+
+/*
  * LA PARALLAXE, MESUREE ET NON REGARDEE.
  *
  * Le fond de la caverne defile a 40 % de la camera. Le verifier a l'oeil n'est

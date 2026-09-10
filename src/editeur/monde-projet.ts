@@ -91,6 +91,7 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
     // couteuse d'un format, parce qu'elle ne se voit qu'apres coup.
     musiques: p.musiques ?? [],
     textes: p.textes ?? {},
+    salles: p.salles ?? [],
     peuplement,
     planches: p.planches,
     tuilePinceau: 0,

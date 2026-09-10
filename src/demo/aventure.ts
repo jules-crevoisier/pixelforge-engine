@@ -67,6 +67,14 @@ export interface OptionsAventure {
   tuile?: number
 }
 
+/**
+ * De combien de cases on tombe sous le monde avant que la chute ne tue.
+ *
+ * Huit cases : une demi-hauteur d'ecran a la resolution de reference. Assez
+ * pour voir le heros quitter le cadre, trop peu pour attendre.
+ */
+const MARGE_CHUTE = 8
+
 export class Aventure {
   readonly combat = new Combat()
   readonly peuplement: Peuplement
@@ -198,7 +206,19 @@ export class Aventure {
   }
 
   get pv(): number { return this.vieHeros.pv }
-  get max(): number { return this.pvMax }
+  /**
+   * La vitalite maximale REELLE du heros.
+   *
+   * Elle vient de sa vitalite et non du reglage `pvHeros`, parce que le
+   * reglage n'est qu'un secours : des que le heros porte une espece — et il
+   * en porte une dans tous les mondes — c'est l'ESPECE qui decide.
+   *
+   * Les deux ont diverge en silence, et cela se voyait a l'ecran sans qu'on
+   * le lise : un heros d'un point de vie affichait trois coeurs, mourait au
+   * premier coup, et repartait avec trois points. Le contrat « une pointe
+   * tue » tenait jusqu'a la premiere mort, puis se defaisait.
+   */
+  get max(): number { return this.vieHeros.max || this.pvMax }
   get mort(): boolean { return this.vieHeros.mort }
 
   /**
@@ -216,6 +236,29 @@ export class Aventure {
     this.pasCourant = c.pas
     this.vieHeros.x = this.heros.x
     this.vieHeros.y = this.heros.y
+
+    /*
+     * TOMBER HORS DU MONDE TUE.
+     *
+     * Sans cette regle, un trou dans un sol fait chuter le heros
+     * indefiniment : il sort de la carte, plus rien ne le touche, plus rien
+     * ne le ramene, et le jeu a l'air fige alors qu'il tourne. Ce n'est pas
+     * une faute rare — c'est ce qui arrive au premier niveau qu'on dessine
+     * avec un bord ouvert.
+     *
+     * Une demi-hauteur d'ecran sous le monde, et non zero : on tombe
+     * VISIBLEMENT avant de mourir. Tuer au pixel ou le sol s'arrete ferait
+     * disparaitre le heros au bord de l'ecran sans qu'on comprenne pourquoi.
+     * Une carte entiere, a l'inverse, laisserait tomber deux secondes dans le
+     * noir — assez pour croire le jeu bloque.
+     */
+    const tuile = c.carte?.tuile ?? 16
+    const bas = (c.carte?.hauteur ?? 0) * tuile
+    if (bas > 0 && !this.vieHeros.mort && this.heros.y > bas + MARGE_CHUTE * tuile) {
+      this.combat.frapper('decor', {
+        x: this.heros.x - 1, y: this.heros.y - 1, w: 2, h: 2,
+      }, Math.max(1, this.vieHeros.pv), 0, 0, 0, 0)
+    }
 
     // La mort d'abord : un mort ne frappe pas, ne ramasse pas, et ne se fait
     // pas frapper. Le laisser vivre le temps du compte a rebours donnerait des
@@ -339,8 +382,8 @@ export class Aventure {
         continue
       }
       if (e.soigne <= 0) continue
-      if (this.vieHeros.pv >= this.pvMax) continue
-      this.vieHeros.pv = Math.min(this.pvMax, this.vieHeros.pv + e.soigne)
+      if (this.vieHeros.pv >= this.max) continue
+      this.vieHeros.pv = Math.min(this.max, this.vieHeros.pv + e.soigne)
       this.sonneur.evenement(this.pasCourant, n.id, 'ramasse')
       this.particules.emettre(this.gerbes.ramasse, n.x, n.y - TUILE / 2)
       this.peuplement.tuer(n.id)
@@ -360,7 +403,7 @@ export class Aventure {
     this.heros.y = this.reapparition.y
     this.heros.visible = true
     this.vieHeros.mort = false
-    this.vieHeros.pv = this.pvMax
+    this.vieHeros.pv = this.max
     this.vieHeros.invulnerable = 900
     this.vieHeros.x = this.heros.x
     this.vieHeros.y = this.heros.y
@@ -421,7 +464,7 @@ export class Aventure {
       const atlas = jeu.sprites.get('creatures') as Atlas | undefined
       if (!atlas) return
       void ecran
-      for (let i = 0; i < this.pvMax; i++) {
+      for (let i = 0; i < this.max; i++) {
         const plein = i < this.vieHeros.pv
         const { sx, sy } = rectDeTuile(atlas, plein ? COEUR_PLEIN : COEUR_PERDU)
         ctx.drawImage(atlas.canevas as CanvasImageSource, sx, sy, atlas.largeur, atlas.hauteur,

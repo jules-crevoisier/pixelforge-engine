@@ -13,6 +13,7 @@ import { rect } from '../noyau/pixel.ts'
 import {
   type Noeud, type NoeudSprite, type NoeudCorps, Mouvements, trouverParNom,
 } from '../scene/noeud.ts'
+import { Salles, type Salle } from '../niveau/salles.ts'
 
 /**
  * Le jeu : ce qui tient ensemble l'ecran, les entrees, la boucle et la scene.
@@ -103,6 +104,28 @@ export class Jeu {
    * quatre coins de vide.
    */
   cameraParSalle: { largeur: number; hauteur: number } | null = null
+  /**
+   * Le decoupage du niveau en salles POSEES A LA MAIN, a la Celeste.
+   *
+   * Il l'emporte sur `cameraParSalle`, qui decoupe une carte en rectangles
+   * tous identiques : ce decoupage-la convient a des salles engendrees, pas a
+   * un chapitre dessine ou la forme de chaque tableau est une decision.
+   *
+   * Quand il est pose, la camera ne sort jamais de la salle courante et
+   * glisse d'un tableau a l'autre quand on en change.
+   */
+  salles: Salles | null = null
+  /**
+   * Ce qui reste du glissement entre deux tableaux, en secondes.
+   *
+   * Il ne sert qu'a BORNER la vitesse de la camera : sans lui, changer de
+   * salle la teleporterait d'un ecran, et l'oeil perdrait le fil de ou l'on
+   * se trouve. Pendant le glissement, le jeu continue — Celeste ne s'arrete
+   * pas pour changer de tableau, et s'arreter casserait un enchainement.
+   */
+  private glissement = 0
+  /** Appele quand on entre dans une nouvelle salle. */
+  surSalle: ((s: Salle) => void) | null = null
   /**
    * Duree du glissement d'une salle a l'autre, en secondes.
    *
@@ -327,6 +350,46 @@ export class Jeu {
               this.camera.y += (dy / reste) * pas
             }
           }
+        }
+      } else if (c && this.salles) {
+        /*
+         * Le cadrage par salle DESSINEE.
+         *
+         * La camera suit le heros exactement comme ailleurs — meme marge
+         * morte — mais bornee a la salle courante. Les deux comportements de
+         * Celeste en decoulent sans qu'on les ecrive : dans une salle de la
+         * taille de l'ecran, les bornes bloquent tout et le tableau est fixe ;
+         * dans une salle plus large, la camera suit. Une regle, deux effets.
+         */
+        const p = projeter(this.projection, c.x, c.y, this.carte.tuile)
+        const changee = this.salles.suivre(c.x, c.y)
+        if (changee) {
+          this.glissement = this.dureeTransition
+          this.surSalle?.(changee)
+        }
+        const dt = this.boucle.pasMs / 1000
+        this.glissement = Math.max(0, this.glissement - dt)
+        // On calcule la cible sur une COPIE : `suivre` part de la camera
+        // courante pour appliquer la marge morte, et la faire avancer d'un
+        // coup nous priverait du glissement.
+        const cible = { x: this.camera.x, y: this.camera.y }
+        suivre(cible, p.x, p.y, this.ecran.vue,
+          this.margeCamera.x, this.margeCamera.y, this.salles.bornes())
+        const dx = cible.x - this.camera.x
+        const dy = cible.y - this.camera.y
+        const reste = Math.hypot(dx, dy)
+        // Hors transition, la camera va ou elle doit : la marge morte a deja
+        // fait le travail d'amortissement, et en rajouter la ferait ramper.
+        const pas = this.glissement > 0
+          ? (Math.hypot(this.ecran.vue.largeur, this.ecran.vue.hauteur)
+            / Math.max(0.01, this.dureeTransition)) * dt
+          : reste
+        if (reste <= pas || reste === 0) {
+          this.camera.x = cible.x
+          this.camera.y = cible.y
+        } else {
+          this.camera.x += (dx / reste) * pas
+          this.camera.y += (dy / reste) * pas
         }
       } else if (c) {
         // La camera vit dans le repere de l'ECRAN : elle cadre ce qu'on voit,

@@ -40,6 +40,7 @@ import { MUSIQUES_DEMO, brancherMusique } from './musiques-demo.ts'
 import { TEXTES_DEMO, LANGUES_DEMO } from './textes-demo.ts'
 import { Musicien, rendreMusique, type Musique as MusiqueJeu } from '../runtime/musique.ts'
 import { Traduction } from '../runtime/traduction.ts'
+import { Salles, salle, type Salle as SalleJeu } from '../niveau/salles.ts'
 import { rendre as rendreSon, type Son as SonJeu } from '../runtime/son.ts'
 import { Dialogue, replique, type Replique as RepliqueJeu } from '../runtime/dialogue.ts'
 import { Menu, entree } from '../runtime/menu.ts'
@@ -91,6 +92,14 @@ export interface Monde {
   readonly dialogues?: { nom: string; repliques: RepliqueJeu[] }[]
   /** Les musiques du monde, en notes. Meme raison que les sons. */
   readonly musiques?: MusiqueJeu[]
+  /**
+   * Le decoupage du niveau en salles, quand il en a un.
+   *
+   * Absent : le monde est continu et la camera suit le heros partout. C'est
+   * le cas de trois des mondes de demonstration, et ce n'est pas un manque —
+   * un donjon vu de dessus n'a pas de tableaux.
+   */
+  readonly salles?: SalleJeu[]
   /**
    * Les textes du monde, par langue puis par clef.
    *
@@ -905,6 +914,249 @@ const NOM_ROLE: Record<string, string> = {
  * verrouillee sur la salle au lieu de suivre le personnage. La deuxieme est ce
  * qui fait le genre : on ne voit jamais la salle suivante avant d'y entrer.
  */
+const PLAN_ASCENSION = [
+  '########################################',
+  '#......................................#',
+  '#......................................#',
+  '#......................................#',
+  '#......................................#',
+  '#......................................#',
+  '#...............................b......#',
+  '#....====.....................=====....#',
+  '#......................................#',
+  '#...........!......................!...#',
+  '#======================================#',
+  '#......................................#',
+  '#......................................#',
+  '#.====.................................#',
+  '#......................................#',
+  '#.....====.............................#',
+  '#......................................#',
+  '#.........====..................!......#',
+  '#.............................====.....#',
+  '#.............====.....................#',
+  '#.......^^^............................#',
+  '#======================================#',
+  '#......................................#',
+  '#..................................====#',
+  '#...........====.......................#',
+  '#...............................====...#',
+  '#.............!........................#',
+  '#.....====..................====.......#',
+  '#......................................#',
+  '#.......................====...........#',
+  '#..@.....................^^^...........#',
+  '########################################',
+  '########################################',
+]
+
+/**
+ * Les tableaux de l'ascension, poses A LA MAIN.
+ *
+ * Six rectangles de vingt cases sur onze — la taille exacte de la vue, en
+ * cases de seize pixels : chaque salle tient dans un ecran, et la camera n'y
+ * bouge donc pas d'un pixel. C'est le cadrage de Celeste : un tableau, une
+ * image fixe, et l'on VOIT le probleme en entier avant de sauter.
+ *
+ * Ils ne font pas tous la meme taille dans un vrai chapitre — c'est tout
+ * l'interet d'un decoupage a la main — mais une demonstration doit d'abord
+ * montrer la regle, et six tableaux identiques la montrent sans la brouiller.
+ */
+const SALLES_ASCENSION: SalleJeu[] = [
+  salle('depart', { x: 0, y: 22, largeur: 20, hauteur: 11 }),
+  salle('cheminee', { x: 0, y: 11, largeur: 20, hauteur: 11 }),
+  salle('corniche', { x: 0, y: 0, largeur: 20, hauteur: 11 }),
+  salle('faille', { x: 20, y: 22, largeur: 20, hauteur: 11 }),
+  salle('traverse', { x: 20, y: 11, largeur: 20, hauteur: 11 }),
+  salle('sommet', { x: 20, y: 0, largeur: 20, hauteur: 11 }),
+]
+
+/**
+ * L'ascension : un chapitre en tableaux, a la Celeste.
+ *
+ * ## Ce que ce monde montre et qu'aucun autre ne montrait
+ *
+ * Les trois autres mondes de cote sont CONTINUS : la camera suit le heros
+ * dans toute la carte. Celui-ci est decoupe en tableaux, et les trois
+ * consequences se voient en jouant :
+ *
+ * - la camera s'arrete au bord du tableau, elle ne montre jamais le suivant ;
+ * - passer d'un tableau a l'autre fait GLISSER l'image, sans arreter le jeu ;
+ * - mourir renvoie a l'entree du tableau courant, pas au depart du chapitre.
+ *
+ * C'est la troisieme regle qui fait tout : elle rend la mort si bon marche
+ * qu'on accepte de mourir deux cents fois dans un chapitre. Un jeu ou mourir
+ * coute trente secondes de trajet n'est pas un jeu difficile, c'est un jeu
+ * penible.
+ */
+export function mondeAscension(): Monde {
+  const largeur = PLAN_ASCENSION[0].length
+  const hauteur = PLAN_ASCENSION.length
+  const carte = new Carte(largeur, hauteur, TUILE)
+  const lointain = carte.ajouterCalque('lointain', {
+    parallaxe: { x: 0.4, y: 0.25 }, repete: true,
+  })
+  const roche = carte.ajouterCalque('roche', {
+    terrain: { tuileDepart: 0, jeu: 'blob47', dehorsEstPlein: true },
+  })
+  const decor = carte.ajouterCalque('pieges', { presence: new Uint8Array(largeur * hauteur) })
+
+  let depart = { x: TUILE, y: TUILE }
+  for (let y = 0; y < hauteur; y++) {
+    for (let x = 0; x < largeur; x++) {
+      const c = PLAN_ASCENSION[y][x]
+      const i = carte.index(x, y)
+      lointain.cases[i] = TUILE_LOINTAIN + ((x * 3 + y * 5) % LOINTAIN_NOMBRE)
+      if (c === '#') {
+        if (roche.presence) roche.presence[i] = 1
+        carte.solides[i] = SOLIDE
+      }
+      if (c === '^') {
+        decor.cases[i] = TUILE_POINTES
+        carte.solides[i] = BLESSANTE
+      }
+      if (c === '=') {
+        decor.cases[i] = TUILE_PASSERELLE
+        carte.solides[i] = PLATEFORME
+      }
+      const cote = COTES_CAVERNE[c]
+      if (cote) {
+        decor.cases[i] = cote.tuile
+        carte.solides[i] = cote.matiere
+      }
+      if (c === '@') depart = { x: x * TUILE + TUILE / 2, y: y * TUILE + TUILE }
+    }
+  }
+  carte.rafraichirTout(roche)
+  for (let i = 0; i < roche.cases.length; i++) if (!roche.presence?.[i]) roche.cases[i] = VIDE
+
+  const racine = creerNoeud('noeud', 'ascension')
+  const noeudCarte = creerNoeud('carte', 'decor') as Noeud & { source: string }
+  noeudCarte.source = 'ascension'
+  racine.enfants.push(noeudCarte)
+
+  const heros = creerNoeud('sprite', 'heros') as NoeudSprite
+  heros.source = 'heros'
+  heros.image = imageHeros(DIR_DROITE, TEMPS_REPOS)
+  heros.ancreX = TUILE / 2
+  heros.ancreY = TUILE
+  heros.x = depart.x
+  heros.y = depart.y
+  const corps = creerNoeud('corps', 'corps') as NoeudCorps
+  corps.boiteX = -4
+  corps.boiteY = -14
+  corps.boiteL = 8
+  corps.boiteH = 14
+  heros.enfants.push(corps)
+  racine.enfants.push(heros)
+
+  const projection = ORTHO_COTE(TUILE)
+  const animations = clipsDemo()
+  /*
+   * Une espece a UN point de vie, et non le reglage `pvHeros`.
+   *
+   * `pvHeros` n'est qu'un secours : quand le peuplement adopte le heros — et
+   * il l'adopte des qu'il porte une espece — c'est l'ESPECE qui decide de sa
+   * vitalite. Le monde d'a cote demandait « un point de vie » et en recevait
+   * cinq depuis des mois, sans que rien ne le dise.
+   */
+  ;(heros as unknown as { espece: string }).espece = 'heros-ascension'
+  const aventure = new Aventure(racine, heros, {
+    clips: animations, projection, tuile: TUILE, reapparitionMs: 300,
+  })
+  const peuplement = aventure.peuplement
+  for (let y = 0; y < hauteur; y++) {
+    for (let x = 0; x < largeur; x++) {
+      const id = ENTITES_CAVERNE[PLAN_ASCENSION[y][x]]
+      if (id) peuplement.poser(id, x * TUILE + TUILE / 2, y * TUILE + TUILE)
+    }
+  }
+
+  const salles = new Salles(SALLES_ASCENSION, TUILE)
+  salles.poser(depart.x, depart.y)
+  const pause = new Pause(() => aventure.reinitialiser())
+
+  return {
+    id: 'ascension',
+    nom: 'Ascension — en tableaux',
+    aide: 'Flèches pour courir, Espace pour sauter, Maj pour le dash. Chaque écran est un '
+      + 'tableau : la caméra s’y arrête, et mourir y renvoie — jamais au départ du chapitre.',
+    vue: { largeur: 320, hauteur: 180 },
+    projection,
+    carte,
+    racine,
+    heros,
+    depart,
+    couleurs: [...couleursDe(CLE_CAVERNE), ...couleursDe(CLE_HEROS), ...couleursDe(CLE_CREATURES)],
+    animations,
+    planches: [
+      decrirePlanche('caverne', PLANCHE_CAVERNE, CLE_CAVERNE, 8, TUILE),
+      decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+      decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
+    ],
+    especes: ESPECES_DEMO,
+    sons: SONS_DEMO,
+    musiques: MUSIQUES_DEMO,
+    textes: TEXTES_DEMO,
+    salles: SALLES_ASCENSION,
+    peuplement,
+    tuilePinceau: 0,
+    installer(jeu) {
+      aventure.sonneur.ajouter(...SONS_DEMO)
+      brancherAudio(aventure.sonneur, rendreSon)
+      installerMusique(pause)
+      jeu.cartes.set('ascension', {
+        carte, atlas: atlasDepuisLettres(PLANCHE_CAVERNE, CLE_CAVERNE, TUILE, 8),
+      })
+      jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
+      jeu.suivreNoeud('heros')
+      /*
+       * LE DECOUPAGE EN TABLEAUX, et la regle qui en decoule.
+       *
+       * `jeu.salles` borne la camera. `surSalle` deplace le point de reprise :
+       * entrer dans un tableau, c'est accepter de le recommencer depuis la.
+       * Sans cette seconde ligne, mourir renverrait au depart du chapitre, et
+       * l'ascension deviendrait une corvee au troisieme tableau.
+       */
+      jeu.salles = salles
+      jeu.surSalle = () => {
+        const r = salles.reprise()
+        if (r) aventure.reapparition = { x: r.x, y: r.y }
+      }
+      jeu.scripts.set(racine.nom, (c) => {
+        if (pause.ouverte) { pause.avancer(c, aventure.sonneur, c.pas); return }
+        if (c.entrees.consommer('annuler')) { pause.ouvrir(); return }
+        aventure.avancer(c, peuplement.regardDe(heros.id))
+      })
+      aventure.installerEcran(jeu)
+      const dessinAventure = jeu.apresDessin
+      jeu.apresDessin = (ctx, ecran) => {
+        dessinAventure?.(ctx, ecran)
+        if (pause.ouverte) dessinerMenu(ecran, pause.menu, 116, 66, { ombre: '#12101c' })
+      }
+    },
+    reinitialiser() {
+      aventure.reinitialiser()
+      heros.x = depart.x
+      heros.y = depart.y
+      aventure.reapparition = { x: depart.x, y: depart.y }
+      salles.poser(depart.x, depart.y)
+      pause.fermer()
+    },
+    etat: () => `tableau « ${salles.nom} » · ${aventure.pv} pv · ${aventure.morts} mort(s)`,
+    sonde: () => ({
+      salle: salles.nom,
+      salles: salles.nombre,
+      changements: salles.changements,
+      reprise: salles.reprise(),
+      pv: aventure.pv,
+      morts: aventure.morts,
+      heros: { x: heros.x, y: heros.y },
+      pause: pause.ouverte,
+    }),
+  }
+}
+
 export function mondeEtage(graine = 1): Monde {
   const plan = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
   const etage = assemblerEtage(plan, {
@@ -1104,5 +1356,6 @@ export const MONDES: { id: string; nom: string; construire: () => Monde }[] = [
   { id: 'citadelle', nom: 'Citadelle (iso)', construire: mondeCitadelle },
   // La graine est fixe pour que la demonstration soit la meme pour tout le
   // monde : un bogue vu chez quelqu'un doit pouvoir etre revu ici.
+  { id: 'ascension', nom: 'Ascension (tableaux)', construire: mondeAscension },
   { id: 'etage', nom: 'Étage engendré (salles)', construire: () => mondeEtage(7) },
 ]

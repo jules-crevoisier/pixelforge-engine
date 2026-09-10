@@ -9,6 +9,7 @@ import type { Espece } from '../runtime/entites.ts'
 import type { Son } from '../runtime/son.ts'
 import type { Replique } from '../runtime/dialogue.ts'
 import type { Musique } from '../runtime/musique.ts'
+import type { Salle } from '../niveau/salles.ts'
 import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
 
 /**
@@ -37,6 +38,15 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  * la rangee qui a change au lieu d'un pate de caracteres.
  *
  * ## L'histoire des versions
+ *
+ * **10** — les salles. Un chapitre a la Celeste n'est pas une grande carte
+ * qu'on parcourt : c'est une suite de TABLEAUX poses a la main, de tailles
+ * differentes, dont la forme dit ou la camera s'arrete, ou l'on reapparait et
+ * quand on change d'ecran. Le moteur savait deja verrouiller la camera sur
+ * une grille reguliere — le decoupage d'Isaac, qui convient a des salles
+ * engendrees. Une grille ne peut pas exprimer un couloir de deux ecrans de
+ * large et d'un demi de haut, et l'on ne peut donc pas faire un Celeste avec.
+ * Un fichier sans salles se relit : le monde reste continu, comme avant.
  *
  * **9** — la parallaxe et la repetition des calques. Un fond qui defile
  * moins vite que le sol donne la profondeur, et il ne sert a rien sans la
@@ -104,7 +114,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 9
+export const VERSION_FORMAT = 10
 
 export interface ProjetSerialise {
   version: number
@@ -157,6 +167,13 @@ export interface ProjetSerialise {
   touches: Record<string, string[]>
   /** Les musiques, en notes. Voir `runtime/musique.ts`. */
   musiques: Musique[]
+  /**
+   * Le decoupage du niveau en salles, en CASES.
+   *
+   * Vide : le monde est continu et la camera suit le heros dans toute la
+   * carte. C'est ce que faisaient tous les projets avant la version 10.
+   */
+  salles: Salle[]
   /**
    * Les textes du jeu, par langue puis par clef.
    *
@@ -374,6 +391,7 @@ export function serialiserProjet(
   touches: Record<string, string[]> = {},
   musiques: Musique[] = [],
   textes: Record<string, Record<string, string>> = {},
+  salles: Salle[] = [],
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -398,6 +416,9 @@ export function serialiserProjet(
     textes: Object.fromEntries(
       Object.entries(textes).map(([l, t]) => [l, { ...t }]),
     ),
+    salles: salles.map((s) => ({
+      ...s, reprise: s.reprise ? { ...s.reprise } : null,
+    })),
   }
 }
 

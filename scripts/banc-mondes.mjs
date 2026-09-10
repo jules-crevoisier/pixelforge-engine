@@ -872,6 +872,218 @@ console.log('\n--- l\'atelier de scripts ---')
   }
 }
 
+console.log('\n--- un chapitre en tableaux, a la Celeste ---')
+
+/*
+ * Le decoupage en salles est ce qui separe « un monde qu'on parcourt » d'« un
+ * chapitre qu'on gravit ». Trois regles en decoulent, et les trois se
+ * verifient ici : la camera s'arrete au bord du tableau, on change de tableau
+ * en le quittant, et mourir renvoie a l'entree du tableau COURANT.
+ */
+{
+  const { Salles, salle, bornesDe, chevauchements, salleIsolees } =
+    await import('../src/niveau/salles.ts')
+  const { mondeAscension } = await import('../src/demo/mondes.ts')
+
+  const T = 16
+  const liste = [
+    salle('a', { x: 0, y: 0, largeur: 20, hauteur: 11 }),
+    salle('b', { x: 20, y: 0, largeur: 20, hauteur: 11 }),
+    salle('c', { x: 0, y: 11, largeur: 20, hauteur: 11, reprise: { x: 40, y: 300 } }),
+  ]
+  const sa = new Salles(liste, T)
+
+  check('une salle se retrouve par le point qu’elle contient',
+    sa.salleEn(5 * T, 5 * T)?.nom === 'a' && sa.salleEn(25 * T, 5 * T)?.nom === 'b'
+    && sa.salleEn(5 * T, 15 * T)?.nom === 'c',
+    'trois tableaux, trois réponses')
+  check('et hors de toute salle, il n’y en a aucune',
+    sa.salleEn(-1, -1) === null && sa.salleEn(100 * T, 0) === null,
+    'rendre une salle au hasard ferait sauter la caméra hors du niveau')
+  check('les bornes d’une salle sont en pixels',
+    JSON.stringify(bornesDe(liste[1], T)) === JSON.stringify({ x: 320, y: 0, l: 320, h: 176 }),
+    'la salle est en cases ; la caméra, elle, vit en pixels')
+
+  /* Le suivi : c'est lui qui fait l'evenement « on a change de tableau ». */
+  sa.poser(5 * T, 5 * T)
+  check('on commence dans la salle où l’on est posé', sa.nom === 'a')
+  check('bouger DANS la salle ne change rien',
+    sa.suivre(10 * T, 5 * T) === null && sa.changements === 0,
+    'un changement à chaque pas relancerait le glissement de caméra sans arrêt')
+  check('en sortir par le côté fait entrer dans la suivante',
+    sa.suivre(25 * T, 5 * T)?.nom === 'b' && sa.nom === 'b' && sa.changements === 1)
+
+  /*
+   * L'INTERSTICE. Un personnage peut se trouver entre deux salles — une porte,
+   * un pixel de jeu entre deux rectangles. Chercher la salle a chaque pas la
+   * rendrait « aucune », la camera se libererait et le tableau sauterait.
+   */
+  check('mais entre deux salles, on garde la dernière connue',
+    sa.suivre(25 * T, 100 * T) === null && sa.nom === 'b',
+    'sinon la caméra se libérerait le temps d’un pixel, et le tableau sauterait')
+
+  /* La reprise : l'entree, ou le point que la salle impose. */
+  sa.poser(2 * T, 2 * T)
+  check('on réapparaît là où l’on est entré',
+    JSON.stringify(sa.reprise()) === JSON.stringify({ x: 2 * T, y: 2 * T }),
+    'une salle qu’on traverse de gauche à droite se recommence par la gauche')
+  sa.suivre(5 * T, 15 * T)
+  check('sauf si la salle impose un point de reprise',
+    JSON.stringify(sa.reprise()) === JSON.stringify({ x: 40, y: 300 }),
+    'on tombe dans certaines salles par le haut : recommencer en l’air ferait retomber dans les pointes')
+
+  /* L'etat de la salle courante voyage dans l'instantane du reseau. */
+  {
+    const avant = sa.instantane()
+    sa.suivre(25 * T, 5 * T)
+    sa.restaurer(avant)
+    check('la salle courante se remet comme elle était après un rembobinage',
+      sa.nom === 'c' && JSON.stringify(sa.reprise()) === JSON.stringify({ x: 40, y: 300 }),
+      'deux machines sur des tableaux différents n’ont ni la même caméra ni le même point de reprise')
+  }
+
+  /*
+   * CE QUI REND UN DECOUPAGE INUTILISABLE.
+   *
+   * Deux salles qui se chevauchent rendent « dans quelle salle suis-je ? »
+   * sans reponse : c'est l'ordre de la liste qui tranche, donc rien. On le
+   * SIGNALE au lieu de l'interdire — l'editeur doit pouvoir montrer le
+   * probleme pendant qu'on pose une salle, pas refuser de la poser.
+   */
+  check('deux salles qui se chevauchent sont signalées',
+    chevauchements([salle('x', { largeur: 10, hauteur: 10 }),
+      salle('y', { x: 5, y: 5, largeur: 10, hauteur: 10 })]).length === 1,
+    'sinon la caméra sauterait d’un tableau à l’autre au gré des pixels')
+  check('et deux salles qui se touchent seulement, non',
+    chevauchements(liste).length === 0,
+    'se toucher par un côté est la règle ; se recouvrir est une faute')
+
+  check('une salle qu’on ne peut pas atteindre est signalée',
+    salleIsolees([...liste, salle('perdue', { x: 90, y: 90, largeur: 5, hauteur: 5 })])
+      .join(',') === 'perdue',
+    'du travail perdu, qui ne se voit qu’en jouant tout le chapitre')
+  check('et un découpage où tout se touche ne l’est pas',
+    salleIsolees(liste).length === 0, `${liste.length} salles reliées`)
+
+  /* Le monde de démonstration, en entier. */
+  {
+    const m = mondeAscension()
+    check('l’Ascension est faite de six tableaux, sans chevauchement ni orphelin',
+      m.salles.length === 6 && chevauchements(m.salles).length === 0
+      && salleIsolees(m.salles).length === 0,
+      `${m.salles.map((q) => q.nom).join(', ')}`)
+    check('chaque tableau fait exactement la taille de la vue',
+      m.salles.every((q) => q.largeur * TUILE === m.vue.largeur
+        && q.hauteur * TUILE === m.vue.hauteur - 4),
+      `${m.salles[0].largeur}×${m.salles[0].hauteur} cases pour une vue de `
+      + `${m.vue.largeur}×${m.vue.hauteur} px — la caméra n’y bouge donc pas`)
+    check('les six tableaux couvrent la carte entière, sans trou',
+      m.salles.reduce((n, q) => n + q.largeur * q.hauteur, 0)
+        >= (m.carte.largeur - 0) * (m.carte.hauteur - 1) * 0.9,
+      `${m.salles.reduce((n, q) => n + q.largeur * q.hauteur, 0)} cases de tableau `
+      + `pour ${m.carte.largeur * m.carte.hauteur} cases de carte`)
+    check('le héros y meurt d’un seul coup',
+      m.sonde().pv === 1,
+      'c’est le contrat de Celeste, et il ne tient que parce que la reprise est immédiate')
+    check('et il commence dans un tableau, pas entre deux',
+      m.sonde().salle !== '', `« ${m.sonde().salle} »`)
+
+    /*
+     * LE CHAPITRE SE GRIMPE VRAIMENT.
+     *
+     * Six tableaux bien decoupes ne font pas un chapitre : encore faut-il
+     * pouvoir passer de l'un a l'autre. On fait donc l'ascension avec le VRAI
+     * controleur, etape par etape, et l'on demande a chacune d'aboutir dans
+     * le tableau suivant.
+     *
+     * La politique est grossiere — tenir une direction, sauter des qu'on
+     * touche le sol — et c'est voulu : si un escalier ne se monte qu'avec un
+     * enchainement precis, il ne se monte pas. Un chapitre de demonstration
+     * doit se traverser en sautillant.
+     */
+    const { Plateformeur } = await import('../src/runtime/plateforme.ts')
+    const BOITE = { x: -4, y: -14, l: 8, h: 14 }
+    const sa = new Salles(m.salles, TUILE)
+    const ETAPES = [
+      ['depart', { x: 3 * TUILE + 8, y: 31 * TUILE }, 1, 'faille'],
+      ['faille', { x: 21 * TUILE, y: 31 * TUILE }, 1, 'traverse'],
+      ['traverse', { x: 37 * TUILE, y: 21 * TUILE }, -1, 'cheminee'],
+      ['cheminee', { x: 18 * TUILE, y: 21 * TUILE }, -1, 'corniche'],
+      ['corniche', { x: 2 * TUILE, y: 10 * TUILE }, 1, 'sommet'],
+    ]
+    const rates = []
+    for (const [nom, depart, dir, vise] of ETAPES) {
+      const ctrl = new Plateformeur()
+      const corps = { x: depart.x, y: depart.y, boite: { ...BOITE } }
+      sa.poser(corps.x, corps.y)
+      let atteint = false
+      for (let i = 0; i < 1400 && !atteint; i++) {
+        ctrl.avancer(m.carte, corps, 1 / 60, dir, ctrl.diagnostic().auSol, true)
+        sa.suivre(corps.x, corps.y)
+        if (sa.nom === vise) atteint = true
+      }
+      if (!atteint) rates.push(`${nom}→${vise} (fini dans « ${sa.nom} »)`)
+    }
+    check('on gravit le chapitre entier, tableau par tableau, en sautillant',
+      rates.length === 0,
+      rates.length ? `bloqué : ${rates.join(', ')}`
+        : `${ETAPES.length} passages — six tableaux découpés ne font pas un chapitre `
+          + 'tant qu’on ne passe pas de l’un à l’autre')
+
+    /*
+     * LA REGLE QUI FAIT TOUT : mourir renvoie a l'entree du tableau COURANT.
+     *
+     * On entre dans un tableau, on avance dedans, on meurt : on doit repartir
+     * de l'entree de CE tableau, pas du depart du chapitre. C'est ce qui rend
+     * la mort assez bon marche pour qu'on accepte de mourir deux cents fois.
+     */
+    const suivi = new Salles(m.salles, TUILE)
+    suivi.poser(3 * TUILE, 31 * TUILE)
+    const entreeDepart = suivi.reprise()
+    suivi.suivre(25 * TUILE, 31 * TUILE)
+    const entreeFaille = suivi.reprise()
+    // On avance loin dans le second tableau : la reprise ne doit pas suivre.
+    suivi.suivre(37 * TUILE, 24 * TUILE)
+    check('mourir renvoie à l’entrée du tableau courant, pas au départ du chapitre',
+      suivi.nom === 'faille'
+      && JSON.stringify(suivi.reprise()) === JSON.stringify(entreeFaille)
+      && JSON.stringify(entreeFaille) !== JSON.stringify(entreeDepart),
+      `entré dans « faille » en ${entreeFaille.x},${entreeFaille.y} ; le départ était `
+      + `${entreeDepart.x},${entreeDepart.y}`)
+    check('et l’entrée ne bouge pas tant qu’on reste dans le tableau',
+      suivi.changements === 1,
+      'un point de reprise qui suivrait le héros supprimerait toute conséquence à la mort')
+
+    /*
+     * LE CONTRAT « UNE POINTE TUE » TIENT APRES LA PREMIERE MORT.
+     *
+     * Il ne tenait pas. L'espece donnait un point de vie, le reglage `pvHeros`
+     * en donnait trois, et c'est le reglage qui servait a l'affichage ET a la
+     * reapparition : trois coeurs dessines, mort au premier coup, retour avec
+     * trois points. Le defaut etait a l'ecran depuis le debut, sous forme de
+     * coeurs qu'on ne pouvait pas perdre.
+     */
+    const jeuDeur = mondeAscension()
+    check('le nombre de cœurs affiché est celui qu’on a vraiment',
+      jeuDeur.sonde().pv === 1,
+      'trois cœurs pour un héros qui meurt d’un coup, c’est un mensonge dessiné')
+
+    /*
+     * TOMBER HORS DU MONDE TUE.
+     *
+     * Sans cette regle, un trou dans un sol fait chuter indefiniment : le
+     * heros sort de la carte, plus rien ne le touche, et le jeu a l'air fige
+     * alors qu'il tourne.
+     */
+    const { readFileSync } = await import('node:fs')
+    const source = readFileSync(new URL('../src/demo/aventure.ts', import.meta.url), 'utf8')
+    check('tomber sous le monde est fatal, et pas au pixel près',
+      source.includes('MARGE_CHUTE') && /MARGE_CHUTE = \d+/.test(source),
+      'tuer là où le sol s’arrête ferait disparaître le héros sans qu’on comprenne ; '
+      + 'une carte entière plus bas ferait attendre deux secondes dans le noir')
+  }
+}
+
 console.log('\n--- une creature qui contourne ce qui la bloque ---')
 
 /*
@@ -2096,15 +2308,17 @@ console.log('\n--- un projet enregistre puis relu ---')
    * DEUXIEME fichier au premier.
    */
   {
-    const { mondeCaverne } = await import('../src/demo/mondes.ts')
-    const m = mondeCaverne()
+    // L'Ascension et non la caverne : c'est elle qui porte des salles, et un
+    // champ qu'on n'ecrit jamais ne peut pas prouver qu'il traverse.
+    const { mondeAscension: monter } = await import('../src/demo/mondes.ts')
+    const m = monter()
     const enProjet = (monde) => serialiserProjet(
       monde.id, monde.vue, new Palette(monde.id, monde.couleurs.map(depuisHex)),
       [{ nom: monde.id, carte: monde.carte }], [{ nom: 'principale', racine: monde.racine }],
       monde.animations, monde.planches, monde.projection, monde.especes,
       monde.sons ?? [], monde.dialogues ?? [],
       { sauter: ['Space', 'KeyW'] },
-      monde.musiques ?? [], monde.textes ?? {},
+      monde.musiques ?? [], monde.textes ?? {}, monde.salles ?? [],
     )
     const premier = enProjet(m)
     check('un monde emporte ses musiques et ses textes dans le fichier',
@@ -2121,7 +2335,7 @@ console.log('\n--- un projet enregistre puis relu ---')
 
     const relu = mondeDepuisProjet(JSON.parse(versTexte(premier)), 'essai.json')
     const second = enProjet(relu)
-    for (const champ of ['musiques', 'textes', 'sons', 'dialogues']) {
+    for (const champ of ['musiques', 'textes', 'sons', 'dialogues', 'salles']) {
       check(`« ${champ} » survit a enregistrer, relire, reenregistrer`,
         JSON.stringify(second[champ]) === JSON.stringify(premier[champ]),
         JSON.stringify(second[champ]) === JSON.stringify(premier[champ])

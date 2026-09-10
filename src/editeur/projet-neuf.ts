@@ -169,6 +169,10 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     // remapper est injouable pour une partie des gens, en silence.
     touches: new Entrees().planCourant(),
     musiques: [],
+    // Pas de salles : un projet neuf est un monde continu, ou la camera suit
+    // le heros partout. Le decoupage en tableaux est une decision de niveau,
+    // et l'imposer d'entree ferait croire qu'on ne peut pas s'en passer.
+    salles: [],
     // Une table par langue, vide au depart : ce qui compte est que le CHEMIN
     // existe des le premier jour. Ajouter la traduction apres coup oblige a
     // reprendre chaque texte ecrit en dur entre-temps.

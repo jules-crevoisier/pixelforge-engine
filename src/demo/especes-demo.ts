@@ -46,6 +46,31 @@ export const ESPECES_DEMO: Espece[] = [
     boite: { x: -4, y: -14, l: 8, h: 14 },
     invulnerabiliteMs: 600,
   }),
+  /**
+   * Le meme heros, mais qui meurt d'un coup.
+   *
+   * C'est le contrat de Celeste, et il tient a DEUX chiffres qui vont
+   * ensemble : un point de vie, et une reapparition presque immediate. Une
+   * pointe qui tue net dans un jeu ou l'on remarche trente secondes est
+   * insupportable ; la meme pointe dans un jeu ou l'on repart en un tiers de
+   * seconde est ce qui rend un chapitre difficile jouable.
+   *
+   * Et l'invulnerabilite tombe a zero : elle n'a plus de sens. Elle sert a
+   * survivre a un coup de trop quand on a plusieurs points de vie ; avec un
+   * seul, elle ne ferait que retarder une mort deja decidee.
+   */
+  espece('heros-ascension', {
+    nom: 'Héros (tableaux)',
+    planche: 'heros',
+    clip: 'marche-cote',
+    camp: 'heros',
+    pv: 1,
+    vitesse: 0,
+    degats: 0,
+    comportement: 'plateformeur',
+    boite: { x: -4, y: -14, l: 8, h: 14 },
+    invulnerabiliteMs: 0,
+  }),
   espece('gelee', {
     nom: 'Gelée',
     clip: 'gelee',

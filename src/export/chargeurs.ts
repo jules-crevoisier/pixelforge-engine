@@ -317,6 +317,24 @@ export interface Projet {
    * onze autres langues.
    */
   textes: Record<string, Record<string, string>>
+  /**
+   * Le decoupage du niveau en salles, en CASES. Vide : monde continu.
+   *
+   * La forme d'une salle dit trois choses : ou la camera s'arrete, ou l'on
+   * reapparait quand on meurt, et quand on change de tableau.
+   */
+  salles: Salle[]
+}
+
+/** Un tableau du niveau, en cases. Voir les fonctions plus bas. */
+export interface Salle {
+  nom: string
+  x: number
+  y: number
+  largeur: number
+  hauteur: number
+  /** Ou l'on reapparait. Null : la ou l'on est entre. */
+  reprise?: { x: number; y: number } | null
 }
 
 /**
@@ -551,6 +569,28 @@ export function caseDeCalque(
   }
 }
 
+/** Les bornes d'une salle en pixels du monde. */
+export function bornesDeSalle(
+  s: Salle, tuile: number,
+): { x: number; y: number; l: number; h: number } {
+  return { x: s.x * tuile, y: s.y * tuile, l: s.largeur * tuile, h: s.hauteur * tuile }
+}
+
+/**
+ * La salle qui contient ce point du monde, ou null.
+ *
+ * C'est la fonction dont depend tout le reste : la camera s'y borne, la mort
+ * y renvoie, et le changement de tableau s'en deduit. Deux salles qui se
+ * chevauchent la rendent ambigue — l'ordre de la liste tranche, donc rien.
+ */
+export function salleEn(p: Projet, tuile: number, x: number, y: number): Salle | null {
+  for (const s of p.salles ?? []) {
+    const b = bornesDeSalle(s, tuile)
+    if (x >= b.x && y >= b.y && x < b.x + b.l && y < b.y + b.h) return s
+  }
+  return null
+}
+
 export function musiqueNommee(p: Projet, nom: string): Musique | null {
   return p.musiques.find((m) => m.nom === nom) ?? null
 }
@@ -664,6 +704,32 @@ namespace PixelForge
             dx = (int)Math.Round(camX * fx);
             dy = (int)Math.Round(camY * fy);
         }
+    }
+
+    /// <summary>Un tableau du niveau, en cases.</summary>
+    [Serializable]
+    public class Salle
+    {
+        public string nom;
+        public int x;
+        public int y;
+        public int largeur;
+        public int hauteur;
+        /// <summary>Ou l'on reapparait. Null : la ou l'on est entre.</summary>
+        public Point reprise;
+
+        /// <summary>Les bornes de la salle en pixels du monde.</summary>
+        public void Bornes(int tuile, out int bx, out int by, out int bl, out int bh)
+        {
+            bx = x * tuile; by = y * tuile; bl = largeur * tuile; bh = hauteur * tuile;
+        }
+    }
+
+    [Serializable]
+    public class Point
+    {
+        public float x;
+        public float y;
     }
 
     /// <summary>Les deux facteurs de parallaxe d'un calque.</summary>
@@ -1138,6 +1204,8 @@ namespace PixelForge
         public Dictionary<string, List<string>> touches;
         /// <summary>Langue -> clef -> texte. La clef est l'index, pas la phrase.</summary>
         public Dictionary<string, Dictionary<string, string>> textes;
+        /// <summary>Le decoupage du niveau en salles, en cases. Vide : monde continu.</summary>
+        public List<Salle> salles;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -1160,6 +1228,23 @@ namespace PixelForge
         {
             if (especes == null) return null;
             foreach (var e in especes) if (e.id == idEspece) return e;
+            return null;
+        }
+
+        /// <summary>
+        /// La salle qui contient ce point du monde, ou null.
+        ///
+        /// La camera s'y borne, la mort y renvoie, et le changement de
+        /// tableau s'en deduit.
+        /// </summary>
+        public Salle SalleEn(int tuile, float x, float y)
+        {
+            if (salles == null) return null;
+            foreach (var s in salles)
+            {
+                if (x >= s.x * tuile && y >= s.y * tuile
+                    && x < (s.x + s.largeur) * tuile && y < (s.y + s.hauteur) * tuile) return s;
+            }
             return null;
         }
 
@@ -1227,6 +1312,8 @@ var musiques: Array = []
 var touches: Dictionary = {}
 ## Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
 var textes: Dictionary = {}
+## Le decoupage du niveau en salles, en cases. Vide : monde continu.
+var salles: Array = []
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -1253,7 +1340,24 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.musiques = brut.get("musiques", [])
 	p.touches = brut.get("touches", {})
 	p.textes = brut.get("textes", {})
+	p.salles = brut.get("salles", [])
 	return p
+
+## Les bornes d'une salle en pixels du monde.
+static func bornes_de_salle(s: Dictionary, tuile: int) -> Rect2i:
+	return Rect2i(s.get("x", 0) * tuile, s.get("y", 0) * tuile,
+		s.get("largeur", 0) * tuile, s.get("hauteur", 0) * tuile)
+
+## La salle qui contient ce point du monde, ou un dictionnaire vide.
+##
+## La camera s'y borne, la mort y renvoie, et le changement de tableau s'en
+## deduit. Deux salles qui se chevauchent la rendent ambigue.
+func salle_en(tuile: int, x: float, y: float) -> Dictionary:
+	for s in salles:
+		var b := bornes_de_salle(s, tuile)
+		if b.has_point(Vector2i(int(x), int(y))):
+			return s
+	return {}
 
 ## La musique portant ce nom, ou un dictionnaire vide.
 func musique(nom_musique: String) -> Dictionary:
@@ -2040,6 +2144,35 @@ pub struct Projet {
     /// Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
     #[serde(default)]
     pub textes: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// Le decoupage du niveau en salles, en cases. Vide : monde continu.
+    #[serde(default)]
+    pub salles: Vec<Salle>,
+}
+
+/// Un tableau du niveau, en cases.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Salle {
+    pub nom: String,
+    pub x: i32,
+    pub y: i32,
+    pub largeur: i32,
+    pub hauteur: i32,
+    /// Ou l'on reapparait. Absent : la ou l'on est entre.
+    #[serde(default)]
+    pub reprise: Option<PointMonde>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct PointMonde {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Salle {
+    /// Les bornes de la salle en pixels du monde.
+    pub fn bornes(&self, tuile: i32) -> (i32, i32, i32, i32) {
+        (self.x * tuile, self.y * tuile, self.largeur * tuile, self.hauteur * tuile)
+    }
 }
 
 /// Une suite de repliques, nommee.
@@ -2064,6 +2197,18 @@ impl Projet {
 
     pub fn espece(&self, id: &str) -> Option<&Espece> {
         self.especes.iter().find(|e| e.id == id)
+    }
+
+    /// La salle qui contient ce point du monde.
+    ///
+    /// La camera s'y borne, la mort y renvoie, et le changement de tableau
+    /// s'en deduit.
+    pub fn salle_en(&self, tuile: i32, x: f64, y: f64) -> Option<&Salle> {
+        self.salles.iter().find(|s| {
+            let (bx, by, bl, bh) = s.bornes(tuile);
+            x >= bx as f64 && y >= by as f64
+                && x < (bx + bl) as f64 && y < (by + bh) as f64
+        })
     }
 
     pub fn musique(&self, nom: &str) -> Option<&Musique> {
@@ -2138,6 +2283,8 @@ function Projet.depuis(donnees)
   self.touches = donnees.touches or {}
   -- Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
   self.textes = donnees.textes or {}
+  -- Le decoupage du niveau en salles, en cases. Vide : monde continu.
+  self.salles = donnees.salles or {}
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -2372,6 +2519,23 @@ function Projet.image_a(clip, ms)
     t = t - d
   end
   return dernier
+end
+
+-- Les bornes d'une salle en pixels du monde.
+function Projet.bornes_de_salle(s, tuile)
+  return s.x * tuile, s.y * tuile, s.largeur * tuile, s.hauteur * tuile
+end
+
+-- La salle qui contient ce point du monde, ou nil.
+--
+-- La camera s'y borne, la mort y renvoie, et le changement de tableau s'en
+-- deduit. Deux salles qui se chevauchent la rendent ambigue.
+function Projet:salle_en(tuile, x, y)
+  for _, s in ipairs(self.salles or {}) do
+    local bx, by, bl, bh = Projet.bornes_de_salle(s, tuile)
+    if x >= bx and y >= by and x < bx + bl and y < by + bh then return s end
+  end
+  return nil
 end
 
 -- La musique portant ce nom, ou nil.
@@ -2755,6 +2919,8 @@ class Projet:
     touches: dict[str, list[str]] = field(default_factory=dict)
     #: Langue -> clef -> texte. La clef est l'index, PAS la phrase francaise.
     textes: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: Le decoupage du niveau en salles, en cases. Vide : monde continu.
+    salles: list[dict[str, Any]] = field(default_factory=list)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -2776,6 +2942,18 @@ class Projet:
 
     def espece_du_noeud(self, noeud: Noeud) -> Espece | None:
         return self.espece(noeud.espece) if noeud.espece else None
+
+    def salle_en(self, tuile: int, x: float, y: float) -> dict[str, Any] | None:
+        """La salle qui contient ce point du monde, ou None.
+
+        La camera s'y borne, la mort y renvoie, et le changement de tableau
+        s'en deduit. Deux salles qui se chevauchent la rendent ambigue.
+        """
+        for s in self.salles:
+            bx, by = s[\"x\"] * tuile, s[\"y\"] * tuile
+            if bx <= x < bx + s[\"largeur\"] * tuile and by <= y < by + s[\"hauteur\"] * tuile:
+                return s
+        return None
 
     def musique(self, nom: str) -> dict[str, Any] | None:
         for m in self.musiques:
@@ -2842,7 +3020,7 @@ class Projet:
             projection=projection, especes=especes,
             sons=d.get("sons", []), dialogues=d.get("dialogues", []),
             musiques=d.get("musiques", []), touches=d.get("touches", {}),
-            textes=d.get("textes", {}),
+            textes=d.get("textes", {}), salles=d.get("salles", []),
         )
 #: « la4 » rend 440. Un silence ou une note inconnue rend zero.
 _DEMI_TONS = {
