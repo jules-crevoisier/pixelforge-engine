@@ -34,6 +34,7 @@ const { creerNoeud } = await import('../src/scene/noeud.ts')
 const { clip, clipRegulier, imageA } = await import('../src/runtime/animation.ts')
 const { decrirePlanche } = await import('../src/export/format.ts')
 const { ISO, caseVersMonde } = await import('../src/noyau/projection.ts')
+const { espece } = await import('../src/runtime/entites.ts')
 
 /* Un projet minuscule mais complet : un mur, une collision, un noeud. */
 const carte = new Carte(5, 3, 16)
@@ -49,6 +50,7 @@ const racine = creerNoeud('noeud', 'salle')
 const heros = creerNoeud('sprite', 'heros')
 heros.x = 40
 heros.y = 32
+heros.espece = 'gelee'
 racine.enfants.push(heros)
 
 /* Trois clips choisis pour couvrir les trois modes de bouclage, et des durees
@@ -80,6 +82,13 @@ const PLANCHE = decrirePlanche('essai', [
   ['...', '...', '...', '..a'],
 ], { a: '#ff0000', b: '#00ff00' }, 2, 3, 4)
 
+/* Deux especes : une qui poursuit et blesse, une qui ne fait que se ramasser.
+ * Ce sont les deux extremes du catalogue. */
+const ESPECES = [
+  espece('gelee', { nom: 'Gelée', pv: 2, vitesse: 34, degats: 1, comportement: 'bond', vigilance: 90 }),
+  espece('coeur', { nom: 'Cœur', camp: 'neutre', degats: 0, soigne: 1, comportement: 'immobile' }),
+]
+
 const projet = serialiserProjet(
   'demo', { largeur: 320, hauteur: 180 },
   new Palette('donjon', ['#14101a', '#7a7466'].map(depuisHex)),
@@ -89,6 +98,7 @@ const projet = serialiserProjet(
   // Une projection isometrique : c'est celle ou les portages divergent, et
   // celle qu'une projection orthogonale ne distinguerait pas d'une erreur.
   ISO(32, 16),
+  ESPECES,
 )
 
 /* La table de reference des cases : ou chaque case se pose a l'ecran. */
@@ -126,7 +136,7 @@ if (dispo('python3')) {
   writeFileSync(join(dir, 'essai.py'), `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(dir)})
-from projet_charge import Projet, VIDE
+from projet_charge import Projet, Espece, VIDE
 
 p = Projet.charger(${JSON.stringify(join(dir, 'projet.json'))})
 c = p.cartes[0]
@@ -153,6 +163,8 @@ sortie = {
     "case": [p.planche("essai").largeurCase, p.planche("essai").hauteurCase],
     "pixels": [p.planche("essai").pixel(e["i"], e["x"], e["y"]) for e in ${JSON.stringify(PIXELS_POS)}],
     "projection": p.projection.mode,
+    "especes": [f"{e.id}:{e.comportement}:{e.degats}:{e.soigne}" for e in p.especes],
+    "especeDuHeros": (p.espece_du_noeud(p.scenes[0]["racine"].enfants[0]) or Espece(id="?")).id,
     "cases": [list(p.projection.case_vers_monde(e["cx"], e["cy"])) for e in ${JSON.stringify(CASES_POS)}],
 }
 print(json.dumps(sortie))
@@ -175,6 +187,10 @@ print(json.dumps(sortie))
       v.solide_1_1 === true && v.solide_0_0 === false && v.solide_hors === true)
     check('Python retrouve le noeud et sa position',
       v.heros[0] === 'heros' && v.heros[1] === 40 && v.heros[2] === 32, v.heros.join(' '))
+    check('Python retrouve le catalogue des especes, et celle que porte un noeud',
+      v.especes.join(' ') === ESPECES.map((e) => `${e.id}:${e.comportement}:${e.degats}:${e.soigne}`).join(' ')
+      && v.especeDuHeros === 'gelee',
+      `${v.especes.join(', ')} · le noeud « heros » est une ${v.especeDuHeros}`)
     check('Python retrouve les clips, leur suite et leurs evenements',
       v.clips.join(',') === CLIPS.map((c) => c.nom).join(',')
       && v.suite_attaque === 'marche' && v.evenements_marche.length === 2,
@@ -375,14 +391,17 @@ for (const [cible, marqueurs] of [
   ['csharp', ['class Projet', 'public const int VIDE = -1', 'DeplierCases', 'namespace PixelForge',
     'class Clip', 'public int ImageA(int ms)', 'OrdreDeLecture', 'aller-retour',
     'class Planche', 'public string Pixel(int index, int x, int y)',
-    'class Projection', 'public void CaseVersMonde']],
+    'class Projection', 'public void CaseVersMonde',
+    'class Espece', 'public string comportement']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
     'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
-    'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde']],
+    'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde',
+    'func espece(', 'static func comportement_de', 'func espece_du_noeud']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
     'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
     'function Projet.pixel_de_planche', 'function Projet:planche(',
-    'function Projet.case_vers_monde']],
+    'function Projet.case_vers_monde', 'function Projet:espece(',
+    'function Projet.comportement_de']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

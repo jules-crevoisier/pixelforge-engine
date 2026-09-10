@@ -91,6 +91,30 @@ c'est une règle de jeu : sans elle, les vingt-deux créatures de l'étage
 convergent dès la première seconde et le joueur les affronte toutes dans le
 couloir de départ.
 
+## Les entités sont des données
+
+![L'outil Entité et sa palette](docs/entites.png)
+
+L'outil **Entité** montre les espèces du projet en vignettes ; on clique pour
+poser, clic droit pour retirer. L'outil **Tuile** fait de même avec la planche,
+pour les cas où l'autotiling ne sait pas deviner.
+
+Poser une créature, c'est **ajouter un nœud à la scène**. Rien d'autre. Le
+peuplement s'accorde tout seul au pas suivant — on peut donc éditer pendant que
+le jeu tourne. Et comme c'est un nœud, ça part dans le fichier de projet avec
+tout le reste.
+
+Une espèce est entièrement en données : sa vie, sa vitesse, ses dégâts, sa
+boîte, ce qu'elle rend quand on la ramasse, et son **intention** sous forme de
+nom — `immobile`, `patrouille`, `poursuite`, `bond`, `joueur`, `plateformeur`.
+Un fichier ne peut pas contenir de fonction ; un nom, si, et il se porte dans
+les six langages.
+
+Le **héros en est une**, et ce n'est pas une coquetterie : tant qu'il naissait
+d'un appel de fonction, un projet relu n'avait personne à diriger. Maintenant un
+étage enregistré se rouvre avec ses vingt-trois entités, elles bougent encore,
+et l'on peut y jouer. C'est ce que le banc vérifie, sans navigateur.
+
 ## Le scripting, dans l'éditeur
 
 ![L'atelier de scripts](docs/atelier.png)
@@ -155,12 +179,13 @@ seconde.
 - boucle à pas fixe avec plafond de rattrapage
 - collisions axe par axe, pixel par pixel — pas de traversée de mur
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
-- édition : pinceau de terrain, gomme, collision, déplacement de la vue — et le
-  pinceau vise le bon losange en isométrique, pas la case d'à côté
+- édition : terrain, gomme, collision, tuile précise, entités, déplacement de la
+  vue — et le pinceau vise le bon losange en isométrique, pas la case d'à côté
 - projet enregistré et relu dans un dossier local, planches et projection comprises
 - scripting embarqué : écrire le comportement d'un nœud dans l'éditeur, à chaud
+- entités en données : catalogue d'espèces, intentions nommées, placement à la
+  souris, et le héros lui-même est une entité
 - combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
-- créatures avec intention — la gelée bondit par à-coups, la chauve-souris fonce
 - génération d'étages en salles, reproductible depuis une graine
 - caméra verrouillée sur la salle, avec glissement à vitesse constante
 - Tiled et LDtk, dans les deux sens
@@ -180,13 +205,15 @@ planche en PNG encodé serait plus compacte et opaque dans un dépôt : un diff
 dirait « l'image a changé », et rien de plus. En lettres, il montre le pixel qui
 a bougé.
 
-Un projet relu se **joue**, il ne s'affiche pas seulement : les scripts écrits
-dans l'atelier sont recompilés depuis leur source. Ce qui ne revient pas, et
-qu'on préfère dire : les comportements des mondes de démonstration sont écrits
-en TypeScript et vivent dans le code du moteur, pas dans le fichier. Un étage
-relu redevient une salle qu'on parcourt sans créatures. Un fichier de projet ne
-peut pas contenir du code compilé, et prétendre le contraire ferait croire à une
-fidélité qui n'existe pas.
+Un projet relu se **joue**, il ne s'affiche pas seulement : les entités
+reviennent et bougent, le héros répond au clavier, et les scripts écrits dans
+l'atelier sont recompilés depuis leur source.
+
+Ce qui ne revient pas, et qu'on préfère dire : un comportement qui ne s'exprime
+par aucun nom du catalogue — l'aventure, l'épée, les cœurs de l'interface — est
+écrit en TypeScript et vit dans le code du moteur. Un fichier ne peut pas
+contenir du code compilé, et prétendre le contraire ferait croire à une fidélité
+qui n'existe pas.
 
 ## « Marche avec tous les langages »
 
@@ -225,9 +252,9 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 115 vérifications : mondes, animations, combat, étages, scripts, projets
-npm run banc:langages   # 49 vérifications des chargeurs et de leur accord
-npm run fumee           # 20 vérifications de l'éditeur, dans un vrai navigateur
+npm run banc:mondes     # 122 vérifications : mondes, animations, combat, étages, scripts, projets
+npm run banc:langages   # 50 vérifications des chargeurs et de leur accord
+npm run fumee           # 25 vérifications de l'éditeur, dans un vrai navigateur
 npm run build
 ```
 

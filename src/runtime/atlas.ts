@@ -27,6 +27,14 @@ export interface Atlas {
   hauteur: number
   /** Nombre de cases par rangee. */
   colonnes: number
+  /**
+   * Nombre de dessins reellement peints.
+   *
+   * La planche est un rectangle : quarante-neuf tuiles sur huit colonnes en
+   * occupent cinquante-six. Sans ce compte, une palette proposerait sept cases
+   * vides que rien ne distingue d'une tuile transparente.
+   */
+  cases: number
 }
 
 export function rectDeTuile(a: Atlas, index: number): { sx: number; sy: number } {
@@ -70,7 +78,7 @@ export function atlasDepuisLettres(
     }
   })
 
-  return { canevas: c, largeur, hauteur, colonnes }
+  return { canevas: c, largeur, hauteur, colonnes, cases: dessins.length }
 }
 
 /**

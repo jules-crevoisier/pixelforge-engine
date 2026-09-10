@@ -103,6 +103,14 @@ export function dureeDe(clip: Clip): number {
 }
 
 export class Lecteur {
+  /**
+   * Les clips connus.
+   *
+   * Publique et en lecture : un appelant doit pouvoir DEMANDER si un clip
+   * existe avant de le jouer. Sans cela il faudrait que `jouer` signale son
+   * echec, et chaque appel deviendrait un test — pour une question qui se pose
+   * une fois sur mille.
+   */
   readonly clips = new Map<string, Clip>()
   private courant: Clip | null = null
   /** Rang dans l'ordre de lecture, et non index de planche. */

@@ -5,6 +5,7 @@ import type { Palette } from '../noyau/palette.ts'
 import { versHex } from '../noyau/palette.ts'
 import type { Clip } from '../runtime/animation.ts'
 import type { Projection } from '../noyau/projection.ts'
+import type { Espece } from '../runtime/entites.ts'
 import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
 
 /**
@@ -34,6 +35,13 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **4** — les especes. Une carte et une scene disaient OU se trouvent les
+ * creatures, jamais ce qu'elles sont : leur vie, leur vitesse et leur
+ * intention vivaient dans le code du moteur. Un projet relu redevenait une
+ * salle vide. Les especes sont entierement des donnees — l'intention y est un
+ * NOM pris dans une liste courte et documentee — et c'est ce qui rend un
+ * projet enregistre reellement jouable.
+ *
  * **3** — les planches de dessins, et la projection. Sans les planches, un
  * fichier decrivait une carte sans dire a quoi ses tuiles ressemblent ; sans la
  * projection, un projet isometrique se rouvrait orthogonal — la carte etait
@@ -54,7 +62,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 3
+export const VERSION_FORMAT = 4
 
 export interface ProjetSerialise {
   version: number
@@ -71,6 +79,15 @@ export interface ProjetSerialise {
   planches: PlancheSerialisee[]
   /** Comment le monde se montre : orthogonal, isometrique, hexagonal. */
   projection: Projection
+  /**
+   * Le catalogue des especes.
+   *
+   * Un noeud de la scene qui porte une propriete `espece` designe l'une
+   * d'elles ; tout ce qu'elle est — vie, vitesse, degats, boite, intention —
+   * se lit ici. L'intention est un nom : un fichier ne peut pas contenir de
+   * fonction, et un nom se porte dans les six langages.
+   */
+  especes: Espece[]
 }
 
 /**
@@ -223,6 +240,7 @@ export function serialiserProjet(
   projection: Projection = {
     mode: 'orthogonale', regard: 'dessus', largeurTuile: 16, hauteurTuile: 16, hauteurBloc: 0,
   },
+  especes: Espece[] = [],
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -234,6 +252,7 @@ export function serialiserProjet(
     animations: animations.map(serialiserAnimation),
     planches: planches.map((p) => ({ ...p, cle: { ...p.cle }, dessins: p.dessins.map((d) => [...d]) })),
     projection: { ...projection },
+    especes: especes.map((e) => ({ ...e, boite: { ...e.boite }, plateforme: { ...e.plateforme } })),
   }
 }
 

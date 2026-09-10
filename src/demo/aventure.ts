@@ -2,10 +2,12 @@ import { creerNoeud, type Noeud, type NoeudSprite } from '../scene/noeud.ts'
 import type { ContexteJeu, Jeu } from '../runtime/jeu.ts'
 import type { Ecran } from '../runtime/ecran.ts'
 import { Combat, visibleSousInvulnerabilite, type Vitalite } from '../runtime/combat.ts'
-import { Lecteur } from '../runtime/animation.ts'
+import { Lecteur, type Clip } from '../runtime/animation.ts'
+import { type Projection, ORTHO_DESSUS } from '../noyau/projection.ts'
 import { rect } from '../noyau/pixel.ts'
 import { rectDeTuile, type Atlas } from '../runtime/atlas.ts'
-import { Troupe, clipsCreatures } from './creatures.ts'
+import { Peuplement, type Espece } from '../runtime/entites.ts'
+import { clipsDemo, ESPECES_DEMO } from './especes-demo.ts'
 import { COEUR_PLEIN, COEUR_PERDU } from './art-creatures.ts'
 import { TUILE } from './art.ts'
 
@@ -45,12 +47,19 @@ const POUSSEE = 190
 export interface OptionsAventure {
   pvHeros?: number
   surMort?: () => void
+  /** Le catalogue employe. Par defaut celui de la demonstration. */
+  especes?: Espece[]
+  /** Les clips. Par defaut tous ceux de la demonstration, heros compris. */
+  clips?: Clip[]
+  /** La projection, pour les entites dirigees au clavier. */
+  projection?: Projection
+  tuile?: number
 }
 
 export class Aventure {
   readonly combat = new Combat()
-  readonly troupe: Troupe
-  readonly lecteurTaillade = new Lecteur(clipsCreatures())
+  readonly peuplement: Peuplement
+  readonly lecteurTaillade = new Lecteur(clipsDemo())
   private heros: NoeudSprite
   private vieHeros: Vitalite
   private taillade: NoeudSprite
@@ -59,12 +68,17 @@ export class Aventure {
   private surMort: (() => void) | null
   /** Ce que le joueur a abattu, pour la barre d'etat. */
   abattus = 0
+  /** Ce qu'il a ramasse. */
+  ramasses = 0
 
   constructor(racine: Noeud, heros: NoeudSprite, opts: OptionsAventure = {}) {
     this.heros = heros
     this.pvMax = opts.pvHeros ?? 3
     this.surMort = opts.surMort ?? null
-    this.troupe = new Troupe(racine, this.combat)
+    this.peuplement = new Peuplement(
+      racine, this.combat, opts.especes ?? ESPECES_DEMO, opts.clips ?? clipsDemo(),
+      opts.projection ?? ORTHO_DESSUS(opts.tuile ?? TUILE), opts.tuile ?? TUILE,
+    )
 
     this.vieHeros = this.combat.inscrire(heros.id, {
       max: this.pvMax,
@@ -127,7 +141,11 @@ export class Aventure {
       this.reposArme = REPOS_ARME_MS
     }
 
-    this.troupe.avancer(c, this.heros, dtMs)
+    // La scene est la verite : une entite ajoutee par l'editeur entre dans le
+    // jeu au pas suivant, une entite retiree en sort. Rien a prevenir.
+    this.peuplement.synchroniser()
+    this.peuplement.avancer(c, this.heros, dtMs)
+    this.ramasser(c)
 
     for (const impact of this.combat.avancer(dtMs)) {
       if (impact.cible === this.heros.id) {
@@ -138,7 +156,7 @@ export class Aventure {
         if (corps) c.bouger(corps as never, impact.pousseeX * 0.06, impact.pousseeY * 0.06)
         if (impact.fatal && this.surMort) this.surMort()
       } else if (impact.fatal) {
-        if (this.troupe.tuer(impact.cible)) this.abattus++
+        if (this.peuplement.tuer(impact.cible)) this.abattus++
       }
     }
 
@@ -151,11 +169,37 @@ export class Aventure {
     this.heros.visible = visibleSousInvulnerabilite(this.vieHeros.invulnerable)
   }
 
-  /** Remet la vie, vide la troupe et efface les frappes en vol. */
+  /**
+   * Ce que le heros ramasse en passant dessus.
+   *
+   * Un coeur au sol est une entite comme une autre : ce qui le distingue est
+   * une valeur dans sa description, `soigne`. Inventer un systeme d'objets a
+   * cote du systeme d'entites reviendrait a ecrire deux fois le placement, la
+   * serialisation et le rendu.
+   */
+  private ramasser(c: ContexteJeu): void {
+    void c
+    const b = this.vieHeros.boite
+    const touches = this.peuplement.quiTouche(
+      this.heros.x + b.x, this.heros.y + b.y, b.l, b.h,
+    )
+    for (const n of touches) {
+      const e = this.peuplement.especeDeNoeud(n.id)
+      if (!e || e.soigne <= 0) continue
+      if (this.vieHeros.pv >= this.pvMax) continue
+      this.vieHeros.pv = Math.min(this.pvMax, this.vieHeros.pv + e.soigne)
+      this.peuplement.tuer(n.id)
+      this.ramasses++
+    }
+  }
+
+  /** Remet la vie, vide le peuplement et efface les frappes en vol. */
   reinitialiser(): void {
-    this.troupe.vider()
+    this.peuplement.vider()
     this.combat.reinitialiser()
+    this.peuplement.oublier()
     this.abattus = 0
+    this.ramasses = 0
     this.reposArme = 0
     this.taillade.visible = false
     this.lecteurTaillade.reinitialiser()

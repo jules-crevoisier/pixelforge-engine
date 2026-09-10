@@ -70,6 +70,43 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.check('#voirCollision'); await p.waitForTimeout(150); await p.uncheck('#voirCollision')
 }
 
+// Les outils Entité et Tuile
+{
+  await p.selectOption('#monde', 'donjon')
+  await p.waitForTimeout(280)
+  const compter = () => p.evaluate(() => {
+    let n = 0
+    const f = (x) => { if (x.espece) n++; x.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(150)
+  const especes = await p.$$eval('#paletteGrille button', b => b.length)
+  ok('la palette d\'entités montre les espèces', especes >= 3, `${especes} espèces`)
+
+  const boutons = await p.$$('#paletteGrille button')
+  await boutons[boutons.length - 2].click()
+  const c = await p.$eval('#vue', e => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  const avant = await compter()
+  await p.mouse.click(c[0] + c[2] * 0.45, c[1] + c[3] * 0.45)
+  await p.waitForTimeout(100)
+  const pose = await compter()
+  ok('un clic pose une entité', pose === avant + 1, `${avant} -> ${pose}`)
+
+  await p.mouse.click(c[0] + c[2] * 0.45, c[1] + c[3] * 0.45, { button: 'right' })
+  await p.waitForTimeout(100)
+  ok('un clic droit la retire', (await compter()) === avant, `retour à ${avant}`)
+
+  await p.click('[data-outil="tuile"]')
+  await p.waitForTimeout(150)
+  const tuiles = await p.$$eval('#paletteGrille button', b => b.length)
+  ok('la palette de tuiles montre la planche', tuiles > 10, `${tuiles} tuiles`)
+  await p.click('[data-outil="terrain"]')
+  await p.waitForTimeout(100)
+  ok('et elle disparaît avec l\'outil', !(await p.isVisible('#paletteGrille')))
+}
+
 // L'atelier
 await p.click('#basculeAtelier'); await p.waitForTimeout(150)
 ok('l\'atelier s\'ouvre', await p.isVisible('#scriptSource'))

@@ -21,7 +21,7 @@ import { mondeVersCase } from '../noyau/projection.ts'
  * pose donc la collision du meme geste, et le mode « collision » permet de la
  * corriger ensuite : un tapis qui ne bloque pas, un trou invisible qui bloque.
  */
-export type Outil = 'terrain' | 'gomme' | 'collision' | 'main'
+export type Outil = 'terrain' | 'gomme' | 'collision' | 'tuile' | 'entite' | 'main'
 
 export interface EtatEdition {
   outil: Outil
@@ -38,12 +38,32 @@ export interface EtatEdition {
    * variantes identiques.
    */
   tuileFixe: number
+  /**
+   * L'espece que l'outil « entite » pose, et la tuile que l'outil « tuile »
+   * peint. Deux choix qui vivent dans l'etat de l'edition et non dans le
+   * bouton : on veut pouvoir changer d'outil et retrouver son choix.
+   */
+  espece: string | null
+  tuileChoisie: number
+  /** Le calque que l'outil « tuile » peint, par son nom. */
+  calqueChoisi: string | null
 }
 
 export class Edition {
   readonly etat: EtatEdition = {
     outil: 'terrain', calque: null, montrerCollision: false, tuileFixe: 0,
+    espece: null, tuileChoisie: 0, calqueChoisi: null,
   }
+
+  /**
+   * Ce que l'edition fait quand on pose ou retire une entite.
+   *
+   * L'edition ne connait ni le peuplement ni le catalogue : elle sait
+   * seulement qu'un clic a eu lieu a tel endroit du monde. C'est l'editeur qui
+   * decide ce que cela veut dire — et c'est ce qui permet a un monde sans
+   * entites de simplement ne pas brancher ce crochet.
+   */
+  surEntite: ((cx: number, cy: number, retirer: boolean) => void) | null = null
   private jeu: Jeu
   private carte: Carte
   private peint = false
@@ -95,7 +115,12 @@ export class Edition {
     // Le bouton droit retire, comme partout ailleurs. Et sur un terrain deja
     // present, le premier appui decide : on retire. Sans cette regle, un
     // glissement sur une zone melangee pose et retire alternativement.
-    this.pose = bouton === 2 ? false : !this.etatDe(c.cx, c.cy)
+    // L'outil « entite » pose au clic gauche et retire au clic droit, sans
+    // regarder ce qu'il y a deja : une entite n'occupe pas une case, plusieurs
+    // peuvent se superposer, et « inverser » n'aurait pas de sens.
+    this.pose = this.etat.outil === 'entite' || this.etat.outil === 'tuile'
+      ? bouton !== 2
+      : (bouton === 2 ? false : !this.etatDe(c.cx, c.cy))
     this.dernierePosition = null
     this.appliquer(c.cx, c.cy)
   }
@@ -113,6 +138,9 @@ export class Edition {
     const c = this.caseSous(pageX, pageY)
     if (!c) return
     if (this.dernierePosition && this.dernierePosition.cx === c.cx && this.dernierePosition.cy === c.cy) return
+    // On ne seme pas d'entites en glissant : une par clic, sinon un geste
+    // depose trente creatures qu'il faut retirer une par une.
+    if (this.etat.outil === 'entite') return
     this.appliquer(c.cx, c.cy)
   }
 
@@ -131,6 +159,28 @@ export class Edition {
   private appliquer(cx: number, cy: number): void {
     this.dernierePosition = { cx, cy }
     const i = this.carte.index(cx, cy)
+
+    if (this.etat.outil === 'entite') {
+      // On passe la CASE et non un point. Une entite est ancree a ses pieds :
+      // le point vise tombe sur le bord de sa boite ou juste a cote, et un
+      // test ponctuel la rate une fois sur deux. Une case designe sans
+      // ambiguite ce qu'on croit montrer.
+      this.surEntite?.(cx, cy, !this.pose)
+      this.jeu.dessiner()
+      return
+    }
+
+    if (this.etat.outil === 'tuile') {
+      const calque = this.carte.calques.find((q) => q.nom === this.etat.calqueChoisi)
+        ?? this.etat.calque
+      if (!calque) return
+      // La tuile precise, sans autotiling : c'est le geste qu'on garde pour
+      // les cas particuliers, la ou le voisinage ne sait pas deviner.
+      calque.cases[i] = this.pose ? this.etat.tuileChoisie : VIDE
+      if (calque.presence) calque.presence[i] = this.pose ? 1 : 0
+      this.jeu.dessiner()
+      return
+    }
 
     if (this.etat.outil === 'collision') {
       this.carte.solides[i] = this.pose ? 1 : 0

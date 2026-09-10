@@ -144,6 +144,40 @@ export interface Projection {
   hauteurBloc: number
 }
 
+export interface Boite { x: number; y: number; l: number; h: number }
+
+/**
+ * Une espece : ce qu'une entite EST, entierement en donnees.
+ *
+ * L'intention est un nom — 'immobile', 'patrouille', 'poursuite', 'bond',
+ * 'joueur', 'plateformeur'. Un fichier ne peut pas contenir de fonction ; un
+ * nom, si. Un noeud de la scene dont les proprietes portent une espece designe
+ * l'une d'elles.
+ */
+export interface Espece {
+  id: string
+  nom: string
+  planche: string
+  clip: string
+  camp: string
+  pv: number
+  vitesse: number
+  degats: number
+  soigne: number
+  comportement: string
+  vigilance: number
+  boite: Boite
+  ancreX: number
+  ancreY: number
+  invulnerabiliteMs: number
+  clipsDiriges: boolean
+  /**
+   * Reglages du controleur, pour une espece de comportement 'plateformeur'.
+   * Ce qui n'y figure pas garde la valeur par defaut du moteur.
+   */
+  plateforme: Record<string, number>
+}
+
 export interface Projet {
   version: number
   nom: string
@@ -154,6 +188,7 @@ export interface Projet {
   animations: Clip[]
   planches: Planche[]
   projection: Projection
+  especes: Espece[]
 }
 
 /**
@@ -256,6 +291,16 @@ export function clipNomme(p: Projet, nom: string): Clip | null {
 
 export function plancheNommee(p: Projet, nom: string): Planche | null {
   return p.planches.find((t) => t.nom === nom) ?? null
+}
+
+export function especeNommee(p: Projet, id: string): Espece | null {
+  return p.especes.find((e) => e.id === id) ?? null
+}
+
+/** L'espece d'un noeud de la scene, s'il en porte une. */
+export function especeDuNoeud(p: Projet, n: Noeud): Espece | null {
+  const id = n.proprietes?.espece
+  return typeof id === 'string' ? especeNommee(p, id) : null
 }
 
 /**
@@ -442,6 +487,38 @@ namespace PixelForge
         }
     }
 
+    [Serializable]
+    public class Boite
+    {
+        public float x;
+        public float y;
+        public float l;
+        public float h;
+    }
+
+    /// <summary>Ce qu'une entite EST, entierement en donnees. L'intention est un nom.</summary>
+    [Serializable]
+    public class Espece
+    {
+        public string id;
+        public string nom;
+        public string planche;
+        public string clip;
+        public string camp;
+        public int pv;
+        public float vitesse;
+        public int degats;
+        public int soigne;
+        public string comportement;
+        public float vigilance;
+        public Boite boite;
+        public int ancreX;
+        public int ancreY;
+        public int invulnerabiliteMs;
+        public bool clipsDiriges;
+        public Dictionary<string, float> plateforme;
+    }
+
     /// <summary>Comment le monde se montre. Le mode et le regard sont independants.</summary>
     [Serializable]
     public class Projection
@@ -515,6 +592,7 @@ namespace PixelForge
         public List<Clip> animations;
         public List<Planche> planches;
         public Projection projection;
+        public List<Espece> especes;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -530,6 +608,13 @@ namespace PixelForge
         {
             if (planches == null) return null;
             foreach (var t in planches) if (t.nom == nomPlanche) return t;
+            return null;
+        }
+
+        public Espece Espece(string idEspece)
+        {
+            if (especes == null) return null;
+            foreach (var e in especes) if (e.id == idEspece) return e;
             return null;
         }
     }
@@ -553,6 +638,7 @@ var scenes: Array = []
 var animations: Array = []
 var planches: Array = []
 var projection: Dictionary = {}
+var especes: Array = []
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -573,7 +659,27 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.animations = brut.get("animations", [])
 	p.planches = brut.get("planches", [])
 	p.projection = brut.get("projection", {})
+	p.especes = brut.get("especes", [])
 	return p
+
+## L'espece portant cet identifiant, ou un dictionnaire vide.
+## L'intention y est un NOM : "immobile", "patrouille", "poursuite", "bond",
+## "joueur", "plateformeur". Un fichier ne peut pas porter de fonction.
+func espece(id_espece: String) -> Dictionary:
+	for e in especes:
+		if e.get("id", "") == id_espece:
+			return e
+	return {}
+
+## Le comportement d'une espece. Une espece sans intention declaree ne bouge
+## pas : c'est le seul defaut qui ne surprend personne.
+static func comportement_de(une_espece: Dictionary) -> String:
+	return une_espece.get("comportement", "immobile")
+
+## L'espece que porte un noeud de la scene, ou un dictionnaire vide.
+func espece_du_noeud(noeud: Dictionary) -> Dictionary:
+	var id = noeud.get("proprietes", {}).get("espece", "")
+	return espece(id) if typeof(id) == TYPE_STRING and id != "" else {}
 
 ## Le clip portant ce nom, ou un dictionnaire vide.
 func clip(nom_clip: String) -> Dictionary:
@@ -925,6 +1031,38 @@ impl Projection {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct Boite {
+    pub x: f64,
+    pub y: f64,
+    pub l: f64,
+    pub h: f64,
+}
+
+/// Ce qu'une entite EST, entierement en donnees. L'intention est un nom :
+/// "immobile", "patrouille", "poursuite", "bond", "joueur", "plateformeur".
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Espece {
+    pub id: String,
+    pub nom: String,
+    pub planche: String,
+    pub clip: String,
+    pub camp: String,
+    pub pv: i32,
+    pub vitesse: f64,
+    pub degats: i32,
+    pub soigne: i32,
+    pub comportement: String,
+    pub vigilance: f64,
+    pub boite: Boite,
+    pub ancre_x: i32,
+    pub ancre_y: i32,
+    pub invulnerabilite_ms: i64,
+    pub clips_diriges: bool,
+    pub plateforme: std::collections::HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Projet {
     pub version: i32,
     pub nom: String,
@@ -935,6 +1073,7 @@ pub struct Projet {
     pub animations: Vec<Clip>,
     pub planches: Vec<Planche>,
     pub projection: Projection,
+    pub especes: Vec<Espece>,
 }
 
 impl Projet {
@@ -948,6 +1087,10 @@ impl Projet {
 
     pub fn planche(&self, nom: &str) -> Option<&Planche> {
         self.planches.iter().find(|p| p.nom == nom)
+    }
+
+    pub fn espece(&self, id: &str) -> Option<&Espece> {
+        self.especes.iter().find(|e| e.id == id)
     }
 }
 `
@@ -980,6 +1123,7 @@ function Projet.depuis(donnees)
     mode = "orthogonale", regard = "dessus",
     largeurTuile = 16, hauteurTuile = 16, hauteurBloc = 0,
   }
+  self.especes = donnees.especes or {}
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -1018,6 +1162,21 @@ function Projet:clip(nom)
     if a.nom == nom then return a end
   end
   return nil
+end
+
+-- L'espece portant cet identifiant, ou nil. L'intention y est un NOM :
+-- "immobile", "patrouille", "poursuite", "bond", "joueur", "plateformeur".
+function Projet:espece(id)
+  for _, e in ipairs(self.especes or {}) do
+    if e.id == id then return e end
+  end
+  return nil
+end
+
+-- Le comportement d'une espece. Une espece sans intention declaree ne bouge
+-- pas : c'est le seul defaut qui ne surprend personne.
+function Projet.comportement_de(espece)
+  return espece.comportement or "immobile"
 end
 
 -- Case -> coin haut-gauche de son dessin, en pixels.
@@ -1285,6 +1444,29 @@ class Planche:
 
 
 @dataclass
+class Espece:
+    """Ce qu'une entite EST, entierement en donnees. L'intention est un nom."""
+
+    id: str
+    nom: str = ""
+    planche: str = "creatures"
+    clip: str = ""
+    camp: str = "ennemi"
+    pv: int = 1
+    vitesse: float = 0.0
+    degats: int = 0
+    soigne: int = 0
+    comportement: str = "immobile"
+    vigilance: float = 0.0
+    boite: dict[str, float] = field(default_factory=dict)
+    ancreX: int = 8
+    ancreY: int = 16
+    invulnerabiliteMs: int = 220
+    clipsDiriges: bool = False
+    plateforme: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class Projet:
     version: int
     nom: str
@@ -1295,6 +1477,7 @@ class Projet:
     animations: list[Clip] = field(default_factory=list)
     planches: list[Planche] = field(default_factory=list)
     projection: Projection = field(default_factory=Projection)
+    especes: list[Espece] = field(default_factory=list)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -1307,6 +1490,16 @@ class Projet:
             if t.nom == nom:
                 return t
         return None
+
+    def espece(self, ident: str) -> Espece | None:
+        for e in self.especes:
+            if e.id == ident:
+                return e
+        return None
+
+    def espece_du_noeud(self, noeud: Noeud) -> Espece | None:
+        ident = noeud.proprietes.get("espece")
+        return self.espece(ident) if isinstance(ident, str) else None
 
     @staticmethod
     def charger(chemin: str) -> "Projet":
@@ -1339,10 +1532,11 @@ class Projet:
         ]
         planches = [Planche(**t) for t in d.get("planches", [])]
         projection = Projection(**d["projection"]) if d.get("projection") else Projection()
+        especes = [Espece(**e) for e in d.get("especes", [])]
         return Projet(
             version=d["version"], nom=d["nom"], vue=d["vue"], palette=d["palette"],
             cartes=cartes, scenes=scenes, animations=animations, planches=planches,
-            projection=projection,
+            projection=projection, especes=especes,
         )
 `
 }

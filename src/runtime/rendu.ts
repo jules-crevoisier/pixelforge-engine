@@ -145,6 +145,9 @@ function releverSprites(
   liste.forEach((s, i) => {
     const atlas = sprites.get(s.n.source)
     if (!atlas) return
+    // Une image negative veut dire « aucune » : un lecteur d'animation sans
+    // clip en rend une. La dessiner piocherait avant le debut de la planche.
+    if (s.n.image < 0) return
     const e = projeter(p, s.x, s.y, tuile)
     sortie.push({
       // Le sprite est repere par ses pieds, en cases : c'est la meme unite que

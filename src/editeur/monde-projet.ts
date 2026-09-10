@@ -6,6 +6,8 @@ import type { Clip } from '../runtime/animation.ts'
 import type { Projection } from '../noyau/projection.ts'
 import { compiler } from '../script/atelier.ts'
 import type { Monde } from '../demo/mondes.ts'
+import { Combat } from '../runtime/combat.ts'
+import { Peuplement } from '../runtime/entites.ts'
 
 /**
  * Un monde reconstruit depuis un fichier de projet.
@@ -53,7 +55,19 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
   }))
 
   const depart = heros ? { x: heros.x, y: heros.y } : { x: 0, y: 0 }
+  const departs = sprites.map((n) => ({ n, x: n.x, y: n.y }))
   const projection = { ...p.projection } as Projection
+  const combat = new Combat()
+  const peuplement = new Peuplement(
+    racine, combat, p.especes ?? [], animations, projection, premiere.tuile,
+  )
+  // Le joueur : la premiere entite dont l'intention est de se laisser diriger.
+  // C'est elle que la camera suit et que les autres poursuivent.
+  const dirige = sprites.find((n) => {
+    const id = (n as unknown as { espece?: string }).espece
+    const e = id ? peuplement.especeDe(id) : null
+    return e && (e.comportement === 'joueur' || e.comportement === 'plateformeur')
+  }) ?? heros
   let notes = ''
 
   return {
@@ -69,6 +83,8 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
     depart,
     couleurs: p.palette.couleurs,
     animations,
+    especes: p.especes ?? [],
+    peuplement,
     planches: p.planches,
     tuilePinceau: 0,
     installer(jeu) {
@@ -99,14 +115,27 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
       }
       brancher(racine)
       notes = fautes.length ? ` · ${fautes.length} script(s) refusé(s)` : ''
-      if (heros) jeu.suivreNoeud(heros.nom)
+      if (dirige) jeu.suivreNoeud(dirige.nom)
+
+      // Les entites : un seul script, pose sur la racine, qui les fait toutes
+      // vivre. Un script par entite obligerait a en poser un a chaque fois
+      // qu'on en ajoute une dans l'editeur — et a l'oublier une fois sur deux.
+      jeu.scripts.set(racine.nom, (c) => {
+        peuplement.synchroniser()
+        peuplement.avancer(c, dirige ?? { x: 0, y: 0 }, c.dt * 1000)
+        for (const impact of combat.avancer(c.dt * 1000)) {
+          if (impact.fatal) peuplement.tuer(impact.cible)
+        }
+      })
     },
     reinitialiser() {
-      if (!heros) return
-      heros.x = depart.x
-      heros.y = depart.y
+      // Toutes les entites reprennent leur place, pas seulement le heros : une
+      // creature laissee ou elle etait tombee fausserait le deuxieme essai.
+      for (const d of departs) { d.n.x = d.x; d.n.y = d.y; d.n.visible = true }
+      combat.reinitialiser()
+      peuplement.oublier()
     },
     etat: () => `projet relu · ${cartes.length} carte(s) · ${p.planches.length} planche(s)`
-      + ` · ${p.animations.length} clip(s)${notes}`,
+      + ` · ${p.animations.length} clip(s) · ${peuplement.nombre} entité(s)${notes}`,
   }
 }

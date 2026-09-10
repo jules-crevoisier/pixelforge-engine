@@ -1,5 +1,6 @@
 import { Jeu } from '../runtime/jeu.ts'
 import { Palette, depuisHex } from '../noyau/palette.ts'
+import { atlasDepuisLettres } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil } from './edition.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT } from '../export/format.ts'
@@ -7,6 +8,8 @@ import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { MONDES, type Monde } from '../demo/mondes.ts'
 import { Atelier } from './atelier-panneau.ts'
 import { mondeDepuisProjet } from './monde-projet.ts'
+import { Palette as PalettePanneau } from './palette-panneau.ts'
+import { retirerDe } from '../runtime/entites.ts'
 import * as dossier from '../io/dossier.ts'
 
 /**
@@ -97,12 +100,57 @@ function installer(nouveau: Monde): void {
     projection: monde.projection,
   })
   monde.installer(jeu)
+  // Toute planche du projet devient une source de sprites, meme si le monde ne
+  // l'a pas branchee lui-meme. Sans cela, une entite posee dans l'editeur avec
+  // une planche que le monde n'employait pas ne se dessine pas — et l'on croit
+  // que le clic n'a rien fait.
+  for (const t of monde.planches) {
+    if (jeu.sprites.has(t.nom)) continue
+    jeu.sprites.set(t.nom,
+      atlasDepuisLettres(t.dessins, t.cle, t.largeurCase, t.colonnes, t.hauteurCase))
+  }
   palette = new Palette(monde.id, monde.couleurs.map(depuisHex))
 
   const outilPrecedent = edition?.etat.outil ?? 'terrain'
   edition = new Edition(jeu, monde.carte)
   edition.etat.montrerCollision = voirCollision.checked
   edition.changerCarte(monde.carte, monde.tuilePinceau)
+  edition.etat.espece = monde.especes.find((e) => e.degats > 0)?.id
+    ?? monde.especes[0]?.id ?? null
+  edition.etat.calqueChoisi = monde.carte.calques[monde.carte.calques.length - 1]?.nom ?? null
+
+  /**
+   * Poser et retirer une entite.
+   *
+   * Poser, c'est ajouter un NOEUD a la scene ; retirer, c'est l'en oter. Le
+   * peuplement s'accorde tout seul au pas suivant — c'est ce qui permet
+   * d'editer pendant que le jeu tourne sans rien avoir a prevenir.
+   */
+  edition.surEntite = (cx, cy, retirer) => {
+    const peuplement = monde.peuplement
+    if (!peuplement) { verdict.textContent = 'Ce monde n’accueille pas d’entités.'; return }
+    const t = monde.carte.tuile
+    if (retirer) {
+      // Tout ce que la CASE recouvre, et non ce qui touche un point : une
+      // entite est ancree a ses pieds, et le point vise tombe sur le bord de sa
+      // boite ou juste a cote.
+      const dedans = peuplement.quiTouche(cx * t, cy * t, t, t)
+      const n = dedans[dedans.length - 1] ?? peuplement.sous(cx * t + t / 2, cy * t + t - 1)
+      if (n) {
+        // On passe par la scene si `tuer` ne connait pas l'entite : elle peut
+        // n'avoir jamais ete adoptee — posee pendant que le jeu est arrete.
+        if (!peuplement.tuer(n.id)) retirerDe(monde.racine, n)
+      }
+      majEtat()
+      return
+    }
+    if (!edition.etat.espece) return
+    // Les pieds au bas de la case : c'est la convention d'ancrage de tout le
+    // moteur, et c'est ce qui aligne l'entite sur le sol qu'elle foule.
+    peuplement.poser(edition.etat.espece, cx * t + t / 2, cy * t + t)
+    majEtat()
+  }
+
   choisirOutil(outilPrecedent)
 
   jeu.cadrer()
@@ -157,6 +205,7 @@ function projetCourant() {
     monde.animations,
     monde.planches,
     monde.projection,
+    monde.especes,
   )
 }
 
@@ -254,12 +303,34 @@ selectMonde.addEventListener('change', () => charger(selectMonde.value))
 /* L'edition                                                           */
 /* ------------------------------------------------------------------ */
 
+/** La palette de l'outil courant : especes a poser, tuiles a peindre. */
+const palettePanneau = new PalettePanneau(
+  {
+    panneau: document.getElementById('palette') as HTMLElement,
+    titre: document.getElementById('paletteTitre') as HTMLElement,
+    grille: document.getElementById('paletteGrille') as HTMLElement,
+    note: document.getElementById('paletteNote') as HTMLElement,
+  },
+  () => jeu,
+  (v) => {
+    if (v.espece !== undefined) edition.etat.espece = v.espece
+    if (v.tuile !== undefined) edition.etat.tuileChoisie = v.tuile
+    if (v.calque !== undefined) edition.etat.calqueChoisi = v.calque
+  },
+)
+
 function choisirOutil(o: Outil): void {
   edition.etat.outil = o
   for (const b of outils.querySelectorAll('button')) {
     b.classList.toggle('actif', (b as HTMLElement).dataset.outil === o)
   }
   canevas.classList.toggle('main', o === 'main')
+  palettePanneau.montrer(o, monde.especes, monde.peuplement ?? null, {
+    espece: edition.etat.espece,
+    tuile: edition.etat.tuileChoisie,
+    calque: edition.etat.calqueChoisi,
+  })
+  if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() }
 }
 outils.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button')
@@ -323,7 +394,16 @@ function dessinerCollision(): void {
 
 function majEtat(): void {
   const c = edition.compter()
-  verdict.textContent = `palette : ${palette.taille} couleurs · ${c.terrain} posées · ${c.solides} cases solides`
+  const entites = compterEntites(monde.racine)
+  verdict.textContent = `${palette.taille} couleurs · ${c.terrain} posées`
+    + ` · ${c.solides} solides${entites ? ` · ${entites} entité(s)` : ''}`
+}
+
+/** Les noeuds de la scene qui portent une espece. */
+function compterEntites(n: { enfants: unknown[] }): number {
+  let total = (n as { espece?: string }).espece ? 1 : 0
+  for (const e of n.enfants) total += compterEntites(e as { enfants: unknown[] })
+  return total
 }
 
 /* ------------------------------------------------------------------ */

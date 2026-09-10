@@ -4,15 +4,14 @@ import type { Vue } from '../runtime/ecran.ts'
 import type { Jeu, ContexteJeu } from '../runtime/jeu.ts'
 import { atlasDepuisLettres, couleursDe } from '../runtime/atlas.ts'
 import {
-  type Projection, ORTHO_DESSUS, ORTHO_COTE, ISO, deprojeter,
+  type Projection, ORTHO_DESSUS, ORTHO_COTE, ISO,
 } from '../noyau/projection.ts'
-import { Plateformeur, REGLAGES_DEFAUT, lireEntrees } from '../runtime/plateforme.ts'
+import { REGLAGES_DEFAUT } from '../runtime/plateforme.ts'
 import {
   TUILE, CLE_DONJON, CLE_HEROS, PLANCHE_DONJON, PLANCHE_HEROS, COLONNES_HEROS,
-  DIR_BAS, DIR_HAUT, DIR_DROITE,
-  TEMPS_REPOS, TEMPS_MARCHE, imageHeros,
+  DIR_BAS, DIR_DROITE, TEMPS_REPOS, imageHeros,
 } from './art.ts'
-import { Lecteur, clipRegulier, type Clip } from '../runtime/animation.ts'
+import type { Clip } from '../runtime/animation.ts'
 import { CLE_CAVERNE, PLANCHE_CAVERNE, TUILE_FOND, TUILE_LANTERNE } from './art-cote.ts'
 import {
   CLE_ISO, PLANCHE_ISO, LARGEUR_ISO, HAUTEUR_ISO, HAUTEUR_DESSIN_ISO,
@@ -20,6 +19,9 @@ import {
 } from './art-iso.ts'
 import { construireDonjon } from './donjon.ts'
 import { decrirePlanche, type PlancheSerialisee } from '../export/format.ts'
+import { Peuplement, type Espece as EspeceJeu } from '../runtime/entites.ts'
+import { Combat } from '../runtime/combat.ts'
+import { ESPECES_DEMO, clipsDemo } from './especes-demo.ts'
 import { engendrerPlan, Hasard, type SallePlan } from '../niveau/plan.ts'
 import { Aventure } from './aventure.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
@@ -57,6 +59,15 @@ export interface Monde {
   readonly couleurs: string[]
   /** Les clips d'animation, pour que l'export les emporte avec le reste. */
   readonly animations: Clip[]
+  /** Le catalogue des especes, pour que l'export et l'editeur les connaissent. */
+  readonly especes: EspeceJeu[]
+  /**
+   * Le peuplement, quand le monde en a un.
+   *
+   * C'est par lui que l'editeur pose et retire des entites. Un monde sans
+   * peuplement — il n'y en a plus — se contenterait de ne pas proposer l'outil.
+   */
+  readonly peuplement?: Peuplement
   /**
    * Les planches de dessins.
    *
@@ -84,92 +95,46 @@ export interface Monde {
 }
 
 /**
- * Les clips du heros : un repos et une marche par direction.
+ * Le script unique qui fait vivre tout un peuplement.
  *
- * Les evenements « pas » sont poses sur les deux CONTACTS du cycle, ceux ou le
- * pied touche vraiment le sol — rangs 0 et 2. C'est la que va le bruit de pas,
- * la poussiere, la trace. Les poser sur les passages donnerait un bruit de pas
- * au moment ou le pied est en l'air, et personne ne saurait dire pourquoi la
- * marche sonne faux.
+ * Un script PAR entite obligerait a en poser un a chaque fois qu'on en ajoute
+ * une dans l'editeur — et a l'oublier une fois sur deux. Celui-ci est pose sur
+ * la racine de la scene et suffit a tous : il accorde le peuplement sur ce que
+ * porte la scene, le fait avancer, et retire ce qui meurt.
  */
-function clipsHeros(): Clip[] {
-  const clips: Clip[] = []
-  const pas = [{ image: 0, nom: 'pas' }, { image: 2, nom: 'pas' }]
-  for (const [nom, dir] of [['bas', DIR_BAS], ['cote', DIR_DROITE], ['haut', DIR_HAUT]] as const) {
-    clips.push(clipRegulier(`repos-${nom}`, [imageHeros(dir, TEMPS_REPOS)], 1000))
-    clips.push(clipRegulier(`marche-${nom}`, TEMPS_MARCHE.map((t) => imageHeros(dir, t)), 130,
-      { evenements: pas }))
+function scriptPeuplement(
+  peuplement: Peuplement, combat: Combat, cible: () => { x: number; y: number },
+  surEvenement: (nom: string) => void = () => {},
+): (c: ContexteJeu) => void {
+  return (c) => {
+    const dtMs = c.dt * 1000
+    peuplement.synchroniser()
+    for (const e of peuplement.avancer(c, cible(), dtMs)) surEvenement(e.nom)
+    for (const impact of combat.avancer(dtMs)) {
+      if (impact.fatal) peuplement.tuer(impact.cible)
+    }
   }
-  // En l'air, on tient une pose : jambes ecartees a la montee, ramassees a la
-  // descente. Deux dessins suffisent a rendre un saut lisible, et une marche
-  // qui continue en plein vol est le defaut qui trahit le plus vite un
-  // controleur branche a la va-vite.
-  clips.push(clipRegulier('saut', [imageHeros(DIR_DROITE, 1)], 1000))
-  clips.push(clipRegulier('chute', [imageHeros(DIR_DROITE, 3)], 1000))
-  clips.push(clipRegulier('mur', [imageHeros(DIR_DROITE, TEMPS_REPOS)], 1000))
-  return clips
-}
-
-/** Le nom du clip de marche pour une direction d'ecran. */
-function clipDirection(ax: number, ay: number): { clip: string; miroir: boolean } {
-  if (ay > 0) return { clip: 'bas', miroir: false }
-  if (ay < 0) return { clip: 'haut', miroir: false }
-  return { clip: 'cote', miroir: ax < 0 }
 }
 
 /* ------------------------------------------------------------------ */
 /* 1. Le donjon : vu de dessus, orthogonal                             */
 /* ------------------------------------------------------------------ */
 
-const VITESSE_DESSUS = 70
-
 /**
- * Le script du heros vu de dessus.
- *
- * Il est ecrit une seule fois et sert AUSSI a la citadelle isometrique : la
- * seule difference est que la direction demandee au clavier y est d'abord
- * ramenee dans le monde orthogonal. Sans cette conversion, appuyer sur
- * « droite » dans une vue isometrique deplace en diagonale a l'ecran — le
- * defaut qui rend injouable la moitie des jeux isometriques amateurs.
+ * Le heros marche a soixante-dix pixels par seconde, et cela ne s'ecrit plus
+ * ici : c'est une valeur du catalogue des especes. Voir `especes-demo.ts`.
  */
-function scriptDessus(
-  p: Projection, tuile: number, vitesse: number, lecteur: Lecteur,
-  surEvenement: (nom: string) => void = () => {},
-) {
-  let derniere = 'bas'
-  return (c: ContexteJeu, n: Noeud): void => {
-    const sprite = n as NoeudSprite
-    const corps = n.enfants.find((e) => e.type === 'corps') as NoeudCorps | undefined
-    if (!corps) return
-
-    const a = c.entrees.axe()
-    if (a.x || a.y) {
-      // La direction du clavier est celle de l'ECRAN. On la ramene dans le
-      // monde, puis on la normalise : sans cela on avance 1,41 fois plus vite
-      // en biais, ce qui est le defaut le plus repandu des jeux vus de dessus.
-      const d = deprojeter(p, a.x, a.y, tuile)
-      const norme = Math.hypot(d.x, d.y) || 1
-      c.bouger(corps, (d.x / norme) * vitesse * c.dt, (d.y / norme) * vitesse * c.dt)
-
-      // La direction verticale l'emporte : de dos ou de face se lit mieux
-      // qu'un profil, et en diagonale on veut voir le visage.
-      const v = clipDirection(a.x, a.y)
-      derniere = v.clip
-      sprite.miroir = v.miroir
-      lecteur.jouer(`marche-${v.clip}`)
-    } else {
-      lecteur.jouer(`repos-${derniere}`)
-    }
-    for (const e of lecteur.avancer(c.dt * 1000)) surEvenement(e)
-    sprite.image = lecteur.image
-  }
-}
 
 export function mondeDonjon(): Monde {
   const d = construireDonjon()
   const projection = ORTHO_DESSUS(TUILE)
-  const animations = clipsHeros()
-  const lecteur = new Lecteur(animations)
+  const animations = clipsDemo()
+  const combat = new Combat()
+  const peuplement = new Peuplement(d.racine, combat, ESPECES_DEMO, animations, projection, TUILE)
+  // Le heros est une ENTITE, comme tout le reste. C'est ce qui lui permet de
+  // survivre a un enregistrement : le fichier dit « ce noeud est un heros », et
+  // le catalogue dit ce qu'un heros sait faire.
+  ;(d.heros as unknown as { espece: string }).espece = 'heros'
   let pas = 0
   return {
     id: 'donjon',
@@ -181,12 +146,15 @@ export function mondeDonjon(): Monde {
     racine: d.racine,
     heros: d.heros,
     depart: d.depart,
-    couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS)],
+    couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS), ...couleursDe(CLE_CREATURES)],
     animations,
     planches: [
       decrirePlanche('donjon', PLANCHE_DONJON, CLE_DONJON, 8, TUILE),
       decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+      decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
+    especes: ESPECES_DEMO,
+    peuplement,
     tuilePinceau: 0,
     installer(jeu) {
       jeu.cartes.set('salle', { carte: d.carte, atlas: atlasDepuisLettres(PLANCHE_DONJON, CLE_DONJON, TUILE, 8) })
@@ -195,8 +163,9 @@ export function mondeDonjon(): Monde {
       // vrai jeu ils declencheraient un bruit et une trace au sol. Le lecteur
       // ne les appelle pas lui-meme : il les REND, et c'est ce qui lui permet
       // d'etre eprouve au banc sans navigateur.
-      jeu.scripts.set('heros', scriptDessus(projection, TUILE, VITESSE_DESSUS, lecteur,
-        (e) => { if (e === 'pas') pas++ }))
+      jeu.scripts.set(d.racine.nom, scriptPeuplement(
+        peuplement, combat, () => d.heros, (e) => { if (e === 'pas') pas++ },
+      ))
       jeu.suivreNoeud('heros')
       jeu.margeCamera = { x: 32, y: 20 }
     },
@@ -205,10 +174,11 @@ export function mondeDonjon(): Monde {
       d.heros.y = d.depart.y
       d.heros.image = imageHeros(DIR_BAS, TEMPS_REPOS)
       d.heros.miroir = false
-      lecteur.reinitialiser()
+      combat.reinitialiser()
+      peuplement.oublier()
       pas = 0
     },
-    etat: () => `vue de dessus · tri par y · ${lecteur.nom ?? 'repos'} · ${pas} pas`,
+    etat: () => `vue de dessus · tri par y · ${peuplement.nombre} entité(s) · ${pas} pas`,
   }
 }
 
@@ -308,11 +278,11 @@ export function mondeCaverne(): Monde {
   heros.enfants.push(corps)
   racine.enfants.push(heros)
 
-  const controleur = new Plateformeur()
   const projection = ORTHO_COTE(TUILE)
-  const animations = clipsHeros()
-  const lecteur = new Lecteur(animations)
-  let dernier = controleur.diagnostic()
+  const animations = clipsDemo()
+  const combat = new Combat()
+  const peuplement = new Peuplement(racine, combat, ESPECES_DEMO, animations, projection, TUILE)
+  ;(heros as unknown as { espece: string }).espece = 'heros-cote'
   let pas = 0
 
   return {
@@ -325,12 +295,15 @@ export function mondeCaverne(): Monde {
     racine,
     heros,
     depart,
-    couleurs: [...couleursDe(CLE_CAVERNE), ...couleursDe(CLE_HEROS)],
+    couleurs: [...couleursDe(CLE_CAVERNE), ...couleursDe(CLE_HEROS), ...couleursDe(CLE_CREATURES)],
     animations,
     planches: [
       decrirePlanche('caverne', PLANCHE_CAVERNE, CLE_CAVERNE, 8, TUILE),
       decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+      decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
+    especes: ESPECES_DEMO,
+    peuplement,
     tuilePinceau: TUILE_FOND,
     installer(jeu) {
       jeu.cartes.set('caverne', { carte, atlas: atlasDepuisLettres(PLANCHE_CAVERNE, CLE_CAVERNE, TUILE, 8) })
@@ -340,54 +313,28 @@ export function mondeCaverne(): Monde {
       // devant, en tombant on veut voir arriver le sol. C'est le reglage de
       // camera qui distingue le plus un jeu de plateforme d'une vue de dessus.
       jeu.margeCamera = { x: 24, y: 34 }
-      jeu.scripts.set('heros', (c, n) => {
-        const sprite = n as NoeudSprite
-        const e = lireEntrees(c.entrees)
-        // Le controleur ne connait ni la scene ni les noeuds : il recoit une
-        // grille solide et un corps. C'est ce qui permet de l'eprouver au banc
-        // sans navigateur, et de le reutiliser tel quel dans un export.
-        const boite = { x: corps.boiteX, y: corps.boiteY, l: corps.boiteL, h: corps.boiteH }
-        const mobile = { x: sprite.x, y: sprite.y, boite }
-        controleur.avancer(carte, mobile, c.dt, e.dirX, e.sauteDemande, e.sauteTenu, e.dash, e.dirY)
-        sprite.x = mobile.x
-        sprite.y = mobile.y
-        if (e.dirX) sprite.miroir = e.dirX < 0
-        dernier = controleur.diagnostic()
-
-        // L'etat du controleur choisit le clip, et rien d'autre : c'est lui
-        // qui sait s'il y a un mur sous la main ou du vide sous les pieds. Un
-        // script qui deciderait a partir des touches se tromperait des le
-        // premier saut — on appuie sur « droite » aussi bien au sol qu'en l'air.
-        if (dernier.etat === 'mur') lecteur.jouer('mur')
-        else if (!dernier.auSol) lecteur.jouer(dernier.vy < 0 ? 'saut' : 'chute')
-        else if (Math.abs(dernier.vx) > 4) lecteur.jouer('marche-cote')
-        else lecteur.jouer('repos-cote')
-
-        // La cadence du pas suit la VITESSE. Une marche a cadence fixe sur un
-        // personnage qui accelere donne l'impression qu'il patine : les pieds
-        // ne suivent pas le sol. On etire donc le temps de l'animation dans le
-        // meme rapport que la vitesse.
-        const facteur = dernier.auSol
-          ? Math.min(1, Math.abs(dernier.vx) / controleur.r.vitesse)
-          : 1
-        for (const ev of lecteur.avancer(c.dt * 1000 * facteur)) if (ev === 'pas') pas++
-        sprite.image = lecteur.image
-      })
+      // Le heros est une entite de comportement « plateformeur » : tout le
+      // controleur — coyote, tampon, hauteur variable, saut mural, dash —
+      // vient du catalogue, et un projet enregistre le retrouve.
+      jeu.scripts.set(racine.nom, scriptPeuplement(
+        peuplement, combat, () => heros, (e) => { if (e === 'pas') pas++ },
+      ))
     },
     reinitialiser() {
       heros.x = depart.x
       heros.y = depart.y
       heros.image = imageHeros(DIR_DROITE, TEMPS_REPOS)
       heros.miroir = false
-      controleur.reinitialiser()
-      lecteur.reinitialiser()
-      dernier = controleur.diagnostic()
+      combat.reinitialiser()
+      peuplement.oublier()
       pas = 0
     },
-    etat: () =>
-      `${dernier.etat} · vx ${Math.round(dernier.vx)} · vy ${Math.round(dernier.vy)}`
-      + ` · ${lecteur.nom ?? 'repos'} · ${pas} pas`
-      + `${dernier.coinCorrige ? ' · coin corrigé' : ''}`,
+    etat: () => {
+      const d = peuplement.diagnosticDe(heros.id)
+      if (!d) return `arrêté · ${pas} pas`
+      return `${d.etat} · vx ${Math.round(d.vx)} · vy ${Math.round(d.vy)} · ${pas} pas`
+        + `${d.coinCorrige ? ' · coin corrigé' : ''}`
+    },
   }
 }
 
@@ -479,8 +426,10 @@ export function mondeCitadelle(): Monde {
   racine.enfants.push(heros)
 
   const projection = ISO(LARGEUR_ISO, HAUTEUR_DESSIN_ISO - HAUTEUR_ISO)
-  const animations = clipsHeros()
-  const lecteur = new Lecteur(animations)
+  const animations = clipsDemo()
+  const combat = new Combat()
+  const peuplement = new Peuplement(racine, combat, ESPECES_DEMO, animations, projection, TUILE)
+  ;(heros as unknown as { espece: string }).espece = 'heros'
   let pas = 0
 
   return {
@@ -493,12 +442,15 @@ export function mondeCitadelle(): Monde {
     racine,
     heros,
     depart,
-    couleurs: [...couleursDe(CLE_ISO), ...couleursDe(CLE_HEROS)],
+    couleurs: [...couleursDe(CLE_ISO), ...couleursDe(CLE_HEROS), ...couleursDe(CLE_CREATURES)],
     animations,
     planches: [
       decrirePlanche('citadelle', PLANCHE_ISO, CLE_ISO, 6, LARGEUR_ISO, HAUTEUR_DESSIN_ISO),
       decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+      decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
+    especes: ESPECES_DEMO,
+    peuplement,
     tuilePinceau: ISO_MUR,
     installer(jeu) {
       jeu.cartes.set('citadelle', {
@@ -506,8 +458,9 @@ export function mondeCitadelle(): Monde {
         atlas: atlasDepuisLettres(PLANCHE_ISO, CLE_ISO, LARGEUR_ISO, 6, HAUTEUR_DESSIN_ISO),
       })
       jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
-      jeu.scripts.set('heros', scriptDessus(projection, TUILE, VITESSE_DESSUS, lecteur,
-        (e) => { if (e === 'pas') pas++ }))
+      jeu.scripts.set(racine.nom, scriptPeuplement(
+        peuplement, combat, () => heros, (e) => { if (e === 'pas') pas++ },
+      ))
       jeu.suivreNoeud('heros')
       jeu.margeCamera = { x: 40, y: 24 }
     },
@@ -516,10 +469,11 @@ export function mondeCitadelle(): Monde {
       heros.y = depart.y
       heros.image = imageHeros(DIR_BAS, TEMPS_REPOS)
       heros.miroir = false
-      lecteur.reinitialiser()
+      combat.reinitialiser()
+      peuplement.oublier()
       pas = 0
     },
-    etat: () => `isométrique · tri par cx + cy · ${lecteur.nom ?? 'repos'} · ${pas} pas`,
+    etat: () => `isométrique · tri par cx + cy · ${peuplement.nombre} entité(s) · ${pas} pas`,
   }
 }
 
@@ -556,8 +510,7 @@ export function mondeEtage(graine = 1): Monde {
     tuileSol: TUILE_SOL, tuileMarque: TUILE_SORTIE,
   })
   const projection = ORTHO_DESSUS(TUILE)
-  const animations = clipsHeros()
-  const lecteur = new Lecteur(animations)
+  const animations = clipsDemo()
 
   const racine = creerNoeud('noeud', 'etage')
   const noeudCarte = creerNoeud('carte', 'decor') as Noeud & { source: string }
@@ -580,7 +533,10 @@ export function mondeEtage(graine = 1): Monde {
   racine.enfants.push(heros)
 
   let visitees = new Set<SallePlan>([plan.depart])
-  const aventure = new Aventure(racine, heros, { pvHeros: 5 })
+  const aventure = new Aventure(racine, heros, {
+    pvHeros: 5, clips: animations, projection, tuile: TUILE,
+  })
+  ;(heros as unknown as { espece: string }).espece = 'heros'
 
   /**
    * Peuple l'etage.
@@ -603,8 +559,12 @@ export function mondeEtage(graine = 1): Monde {
           const cx = o.x + 2 + h.entier(etage.largeurSalle - 4)
           const cy = o.y + 2 + h.entier(etage.hauteurSalle - 4)
           if (etage.carte.solide(cx, cy)) continue
-          const espece = h.entier(3) === 0 ? 'chauve-souris' : 'gelee'
-          aventure.troupe.ajouter(espece, cx * TUILE + TUILE / 2, cy * TUILE + TUILE)
+          // Poser une creature, c'est ajouter un NOEUD a la scene. Elle part
+          // donc dans le fichier de projet avec tout le reste, et l'editeur
+          // peut en poser d'autres par le meme chemin.
+          const tirage = h.entier(10)
+          const quoi = tirage === 0 ? 'coeur' : (tirage < 4 ? 'chauve-souris' : 'gelee')
+          aventure.peuplement.poser(quoi, cx * TUILE + TUILE / 2, cy * TUILE + TUILE)
           pose = true
         }
       }
@@ -635,6 +595,8 @@ export function mondeEtage(graine = 1): Monde {
       decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
       decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
     ],
+    especes: ESPECES_DEMO,
+    peuplement: aventure.peuplement,
     tuilePinceau: 0,
     installer(jeu) {
       jeu.cartes.set('etage', {
@@ -644,11 +606,11 @@ export function mondeEtage(graine = 1): Monde {
       jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
       jeu.sprites.set('creatures',
         atlasDepuisLettres(PLANCHE_CREATURES, CLE_CREATURES, TUILE, COLONNES_CREATURES))
-      const marcher = scriptDessus(projection, TUILE, VITESSE_DESSUS, lecteur)
-      jeu.scripts.set('heros', (c, n) => {
-        const a = c.entrees.axe()
-        if (a.x || a.y) regard = { x: a.x, y: a.y }
-        if (!aventure.mort) marcher(c, n)
+      // Le heros marche parce qu'il est une entite de comportement « joueur » ;
+      // l'aventure, elle, ne s'occupe que de ce qui n'est pas dans le
+      // catalogue : l'epee, les coeurs, la mort.
+      jeu.scripts.set('heros', (c) => {
+        regard = aventure.peuplement.regardDe(heros.id)
         aventure.avancer(c, regard)
       })
       jeu.suivreNoeud('heros')
@@ -665,7 +627,6 @@ export function mondeEtage(graine = 1): Monde {
       heros.image = imageHeros(DIR_BAS, TEMPS_REPOS)
       heros.miroir = false
       heros.visible = true
-      lecteur.reinitialiser()
       visitees = new Set([plan.depart])
       regard = { x: 0, y: 1 }
       aventure.reinitialiser()
@@ -676,18 +637,19 @@ export function mondeEtage(graine = 1): Monde {
       mort: aventure.mort,
       frappes: aventure.combat.frappes.length,
       frappesHeros: aventure.combat.frappes.filter((f) => f.camp === 'heros').length,
-      creatures: aventure.troupe.vivantes,
+      creatures: aventure.peuplement.nombre,
       abattus: aventure.abattus,
+      ramasses: aventure.ramasses,
       regard,
       heros: { x: heros.x, y: heros.y },
-      creaturesProches: aventure.troupe.positions()
+      creaturesProches: aventure.peuplement.positions()
         .filter((q) => Math.hypot(q.x - heros.x, q.y - heros.y) < 60).length,
     }),
     etat: () => {
       const s = etage.salleEn(heros.x, heros.y)
       return `${aventure.mort ? '☠ mort' : `${aventure.pv}/${aventure.max} ♥`}`
         + ` · ${NOM_ROLE[s?.role ?? 'commune']} · ${visitees.size}/${plan.salles.length} salles`
-        + ` · ${aventure.troupe.vivantes} créatures, ${aventure.abattus} abattues`
+        + ` · ${aventure.peuplement.nombre} entités, ${aventure.abattus} abattues`
         + ` · boss à ${plan.boss.distance} salles`
     },
   }

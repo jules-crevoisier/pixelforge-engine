@@ -19,6 +19,8 @@
         <button data-outil="terrain" class="actif">Mur</button>
         <button data-outil="gomme">Gomme</button>
         <button data-outil="collision">Collision</button>
+        <button data-outil="tuile">Tuile</button>
+        <button data-outil="entite">Entité</button>
         <button data-outil="main">Main</button>
       </div>
       <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
@@ -32,6 +34,11 @@
       <button id="exporter">Exporter</button>
     </header>
     <div class="corps">
+      <aside class="palette" id="palette" hidden>
+        <p class="palette-titre" id="paletteTitre"></p>
+        <div class="palette-grille" id="paletteGrille"></div>
+        <p class="palette-note" id="paletteNote"></p>
+      </aside>
       <main class="scene">
         <canvas id="vue"></canvas>
       </main>

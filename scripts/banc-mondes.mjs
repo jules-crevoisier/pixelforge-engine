@@ -760,7 +760,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
 {
   const { creerNoeud } = await import('../src/scene/noeud.ts')
   const { Aventure } = await import('../src/demo/aventure.ts')
-  const { RAYON_ACTIVITE } = await import('../src/demo/creatures.ts')
+  const { RAYON_ACTIVITE } = await import('../src/runtime/entites.ts')
 
   /** Un contexte de jeu minimal : de quoi faire tourner l'aventure sans DOM. */
   const monter = () => {
@@ -807,7 +807,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
     ['en dessous', 0, 14, { x: 0, y: 1 }],
   ]) {
     const e = monter()
-    e.av.troupe.ajouter('gelee', 100 + dx, 100 + dy)
+    e.av.peuplement.poser('gelee', 100 + dx, 100 + dy)
     let coups = 0
     for (let i = 0; i < 90; i++) {
       e.frapper(i % 24 === 0)
@@ -822,7 +822,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
   // Et le sens inverse : ce qui est derriere ne doit PAS etre touche.
   {
     const e = monter()
-    e.av.troupe.ajouter('gelee', 100 - 26, 100)
+    e.av.peuplement.poser('gelee', 100 - 26, 100)
     for (let i = 0; i < 60; i++) { e.frapper(i % 24 === 0); e.av.avancer(e.ctx, { x: 1, y: 0 }) }
     check('mais elle ne touche pas ce qui est derriere',
       e.av.abattus === 0, `${e.av.abattus} abattue(s) dans le dos`)
@@ -831,7 +831,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
   // Une creature abattue disparait entierement : noeud, vitalite, lecteur.
   {
     const e = monter()
-    const n = e.av.troupe.ajouter('gelee', 108, 100)
+    const n = e.av.peuplement.poser('gelee', 108, 100)
     const avant = e.racine.enfants.length
     for (let i = 0; i < 90 && e.av.abattus === 0; i++) {
       e.frapper(i % 24 === 0)
@@ -839,14 +839,58 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
     }
     check('une creature abattue quitte la scene ET le systeme de combat',
       e.av.abattus === 1 && e.racine.enfants.length === avant - 1
-      && !e.av.combat.vies.has(n.id) && e.av.troupe.vivantes === 0,
+      && !e.av.combat.vies.has(n.id) && e.av.peuplement.nombre === 0,
       'une vitalite orpheline continuerait de recevoir des coups')
+  }
+
+  // Une entite est un NOEUD : posee, elle entre dans le jeu au pas suivant ;
+  // retiree de la scene, elle en sort, vitalite comprise. C'est ce qui permet
+  // a l'editeur d'en ajouter sans rien prevenir.
+  {
+    const e = monter()
+    const n = e.av.peuplement.poser('gelee', 200, 200)
+    e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('une entite posee dans la scene entre dans le jeu toute seule',
+      e.av.peuplement.nombre === 1 && e.av.combat.vies.has(n.id),
+      'la scene est la verite, et rien de l\'inverse')
+
+    // On la retire a la main, comme le ferait la gomme de l'editeur.
+    const { retirerDe } = await import('../src/runtime/entites.ts')
+    retirerDe(e.racine, n)
+    e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('et retiree de la scene, elle en sort — vitalite comprise',
+      e.av.peuplement.nombre === 0 && !e.av.combat.vies.has(n.id),
+      'une vitalite orpheline continuerait de recevoir des coups depuis nulle part')
+  }
+
+  // Un ramassage est une entite comme une autre : ce qui le distingue est une
+  // valeur dans sa description, pas un deuxieme systeme.
+  {
+    const e = monter()
+    e.av.peuplement.poser('gelee', 106, 100)
+    for (let i = 0; i < 240 && e.av.pv === 3; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    const blesse = e.av.pv
+    e.av.peuplement.vider()
+    e.av.peuplement.poser('coeur', 100, 100)
+    for (let i = 0; i < 10; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('un coeur pose au sol se ramasse et rend un point de vie',
+      blesse < 3 && e.av.pv === blesse + 1 && e.av.ramasses === 1,
+      `${blesse} pv, puis ${e.av.pv}`)
+
+    // Et il ne se ramasse pas quand on est au complet : sinon on le gaspille
+    // sans s'en apercevoir.
+    const plein = monter()
+    plein.av.peuplement.poser('coeur', 100, 100)
+    for (let i = 0; i < 10; i++) plein.av.avancer(plein.ctx, { x: 1, y: 0 })
+    check('mais pas quand la vie est deja pleine',
+      plein.av.ramasses === 0 && plein.av.peuplement.nombre === 1,
+      'le ramasser pour rien serait le perdre')
   }
 
   // La distance d'activite : une creature loin ne bouge pas et ne frappe pas.
   {
     const e = monter()
-    const loin = e.av.troupe.ajouter('gelee', 100 + RAYON_ACTIVITE + 60, 100)
+    const loin = e.av.peuplement.poser('gelee', 100 + RAYON_ACTIVITE + 60, 100)
     const x0 = loin.x
     for (let i = 0; i < 120; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
     check('une creature hors de portee reste chez elle',
@@ -854,7 +898,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
       'sinon les vingt-deux creatures de l\'etage convergent des la premiere seconde')
 
     const proche = monter()
-    const pres = proche.av.troupe.ajouter('gelee', 100 + 40, 100)
+    const pres = proche.av.peuplement.poser('gelee', 100 + 40, 100)
     for (let i = 0; i < 120; i++) proche.av.avancer(proche.ctx, { x: 1, y: 0 })
     check('une creature a portee, elle, vient et mord',
       pres.x !== 100 + 40 && proche.av.pv < 3, `${proche.av.pv} pv sur 3`)
@@ -871,7 +915,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
     racine.enfants.push(heros)
     let morts = 0
     const av = new Aventure(racine, heros, { pvHeros: 1, surMort: () => morts++ })
-    av.troupe.ajouter('gelee', 106, 100)
+    av.peuplement.poser('gelee', 106, 100)
     const ctx = {
       dt: 1 / 60,
       entrees: { consommer: () => false, axe: () => ({ x: 0, y: 0 }), tenue: () => false },
@@ -1129,6 +1173,68 @@ console.log('\n--- un projet enregistre puis relu ---')
       'ancre, source, boite de collision et script')
   }
 
+  // Le vrai gain des entites en donnees : un etage enregistre garde ses
+  // creatures, et elles bougent encore a la relecture.
+  {
+    const { mondeEtage } = await import('../src/demo/mondes.ts')
+    const m = mondeEtage(7)
+    const projet = serialiserProjet(
+      m.id, m.vue, new Palette(m.id, m.couleurs.map(depuisHex)),
+      [{ nom: m.id, carte: m.carte }], [{ nom: 'principale', racine: m.racine }],
+      m.animations, m.planches, m.projection, m.especes,
+    )
+    const compter = (n) => {
+      let t = n.proprietes?.espece ? 1 : 0
+      for (const e of n.enfants ?? []) t += compter(e)
+      return t
+    }
+    const dedans = compter(projet.scenes[0].racine)
+    check('un etage enregistre emporte ses creatures',
+      dedans > 10 && projet.especes.length >= 3,
+      `${dedans} entités dans la scène, ${projet.especes.length} espèces au catalogue`)
+
+    const relu = mondeDepuisProjet(JSON.parse(versTexte(projet)), 'essai.json')
+    const especes = new Map(relu.especes.map((e) => [e.id, e]))
+    check('et le catalogue relu decrit toujours ce qu\'elles font',
+      especes.get('gelee')?.comportement === 'bond'
+      && especes.get('heros')?.comportement === 'joueur'
+      && especes.get('coeur')?.soigne === 1,
+      'l\'intention est un NOM : un fichier ne peut pas porter de fonction')
+
+    // Et elles VIVENT : on fait tourner le monde relu sans navigateur.
+    const { Combat } = await import('../src/runtime/combat.ts')
+    const { Peuplement } = await import('../src/runtime/entites.ts')
+    const combat = new Combat()
+    const peuplement = new Peuplement(
+      relu.racine, combat, relu.especes, relu.animations, relu.projection, relu.carte.tuile,
+    )
+    peuplement.synchroniser()
+    const avant = peuplement.positions().map((q) => `${q.x},${q.y}`)
+    const ctx = {
+      dt: 1 / 60,
+      entrees: { axe: () => ({ x: 1, y: 0 }), tenue: () => false, consommer: () => false },
+      racine: relu.racine, carte: relu.carte, pas: 0, trouver: () => null,
+      bouger: (corps, dx, dy) => {
+        const hote = (n) => {
+          for (const e of n.enfants) { if (e.id === corps.id) return n; const r = hote(e); if (r) return r }
+          return null
+        }
+        const h = hote(relu.racine)
+        if (h) { h.x += dx; h.y += dy }
+        return { dx, dy, bloque: false }
+      },
+    }
+    const heros = peuplement.positions().length
+      ? relu.racine.enfants.find((n) => n.espece === 'heros')
+      : null
+    for (let i = 0; i < 60; i++) peuplement.avancer(ctx, heros ?? { x: 0, y: 0 }, 1000 / 60)
+    const apres = peuplement.positions().map((q) => `${q.x},${q.y}`)
+    const bougees = apres.filter((q, i) => q !== avant[i]).length
+    check('les creatures d\'un etage relu bougent encore',
+      peuplement.nombre === dedans && bougees > 0,
+      `${peuplement.nombre} entités adoptées, ${bougees} ont bougé en une seconde`)
+  }
+
   // Une propriete inconnue du lecteur ne doit pas disparaitre en silence :
   // perdre des donnees sans rien dire est pire que refuser de les lire.
   {
@@ -1142,7 +1248,7 @@ console.log('\n--- un projet enregistre puis relu ---')
       'une liste blanche par type perdrait tout champ ajoute depuis')
   }
 
-  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 3,
+  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 4,
     'un chargeur d\'un autre langage doit pouvoir DIRE qu\'il ne comprend pas')
 }
 
