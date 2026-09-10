@@ -60,6 +60,10 @@ button:disabled { opacity: .45; cursor: default; }
   width: min(420px, 42vw); flex: none; display: flex; flex-direction: column;
   background: var(--bg-1); border-left: 1px solid var(--line); min-height: 0;
 }
+/* `display: flex` ecrase le `display: none` que le navigateur donne a
+   l'attribut `hidden` : sans cette regle, le panneau reste ouvert en
+   permanence et le bouton qui le ferme ne fait rien. */
+.atelier[hidden] { display: none; }
 .atelier-tete { display: flex; align-items: center; gap: 6px; padding: 7px 8px;
   border-bottom: 1px solid var(--line); }
 .atelier textarea {

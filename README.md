@@ -227,6 +227,7 @@ npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
 npm run banc:mondes     # 115 vérifications : mondes, animations, combat, étages, scripts, projets
 npm run banc:langages   # 49 vérifications des chargeurs et de leur accord
+npm run fumee           # 20 vérifications de l'éditeur, dans un vrai navigateur
 npm run build
 ```
 
@@ -235,6 +236,14 @@ npm run build
 Chaque règle est éprouvée dans les **deux sens** : sur un cas où elle doit se
 taire, et sur un cas fabriqué où elle doit parler. Un banc qui ne sait pas
 échouer ne protège rien.
+
+Un banc de plus, `npm run fumee`, ouvre l'éditeur dans un vrai navigateur :
+il charge les quatre mondes, joue dans chacun, peint une case, ouvre l'atelier,
+exporte, et refuse de passer si la console a dit quoi que ce soit. Les autres
+bancs éprouvent du calcul et ont raison de tourner en Node pur ; celui-ci
+attrape ce qui ne se voit qu'à l'écran. Il a trouvé sa première faute le jour où
+il a été écrit — une règle de style écrasait l'attribut `hidden`, et le panneau
+de scripts ne se fermait jamais.
 
 Le banc a déjà pris ce dépôt en défaut plusieurs fois — un double de test qui
 n'appliquait pas le plafond de la vraie boucle et rendait 500 pas au lieu de 5 ;
