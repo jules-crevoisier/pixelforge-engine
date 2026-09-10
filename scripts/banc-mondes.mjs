@@ -593,6 +593,78 @@ console.log('\n--- la citadelle tient debout ---')
     'sinon le heros traverserait le decor sans que rien ne le signale')
 }
 
+console.log('\n--- l\'atelier de scripts ---')
+
+{
+  const { compiler, nomsInterdits, sansChainesNiCommentaires, bouclesSansFin,
+          ERREURS_AVANT_SOMMEIL } = await import('../src/script/atelier.ts')
+
+  // La regle refuse ce qui ne passerait pas la frontiere des langages.
+  check('un script qui touche a la page est refuse',
+    !compiler('document.title = "pris"').ok
+    && !compiler('fetch("/x")').ok
+    && !compiler('window.alert(1)').ok,
+    'un script ne parle qu\'a « c » et « n » : c\'est ce qui le rend exportable')
+
+  // Et le sens inverse, qui compte autant : refuser a tort ferait cesser de
+  // croire la regle.
+  check('mais le meme mot dans un commentaire ou une chaine ne l\'est pas',
+    nomsInterdits('// on ne touche pas au document ici').length === 0
+    && nomsInterdits('n.etat.nom = "document"').length === 0
+    && nomsInterdits('n.etat.document = 1').length === 0,
+    'refuser a tort est pire que ne rien verifier')
+  check('le nettoyage garde les retours a la ligne',
+    sansChainesNiCommentaires('a\n// x\nb').split('\n').length === 3,
+    'sans quoi le numero de ligne d\'une erreur ne voudrait plus rien dire')
+
+  // Une boucle qu'on ne peut pas interrompre est refusee, pas signalee.
+  check('une boucle sans sortie est refusee',
+    bouclesSansFin('while (true) { n.x++ }') && !compiler('while (true) { n.x++ }').ok
+    && !compiler('for (;;) {}').ok,
+    'on ne peut pas interrompre du JavaScript en cours : l\'appliquer fermerait la porte')
+  check('une boucle bornee, elle, passe',
+    compiler('for (let i = 0; i < 4; i++) n.x++').ok)
+
+  // Une faute de frappe ne doit pas faire tomber la boucle de jeu.
+  {
+    const mauvais = compiler('n.x +=')
+    check('une erreur de syntaxe est rapportee, pas levee',
+      !mauvais.ok && typeof mauvais.erreur === 'string' && mauvais.script === null,
+      mauvais.erreur)
+
+    const rapports = []
+    const c = compiler('n.etat.rien.du.tout = 1', (r) => rapports.push({ ...r }))
+    const n = { etat: {} }
+    let levees = 0
+    for (let i = 0; i < 20; i++) {
+      try { c.script({}, n) } catch { levees++ }
+    }
+    check('un script qui echoue s\'endort au lieu de crier soixante fois par seconde',
+      rapports.length === ERREURS_AVANT_SOMMEIL
+      && rapports[rapports.length - 1].endormi,
+      `${rapports.length} rapports pour vingt appels`)
+    check('et l\'exception ne remonte jamais jusqu\'a la boucle de jeu',
+      levees === 0,
+      levees ? `${levees} exceptions ont traverse` : 'vingt appels, aucune levee')
+
+    // Le sens inverse : sans le filet, la meme faute fait tomber la boucle.
+    let sansFilet = 0
+    const brut = new Function('c', 'n', 'n.etat.rien.du.tout = 1')
+    try { brut({}, { etat: {} }) } catch { sansFilet++ }
+    check('sans le filet, elle la ferait tomber des le premier pas',
+      sansFilet === 1, 'et l\'on perdrait la scene a chaque faute de frappe')
+  }
+
+  // Un script juste fait ce qu'on lui demande, et n'a acces qu'a ce qu'on lui
+  // donne.
+  {
+    const c = compiler('n.x += Math.round(c.dt * 60)')
+    const n = { x: 10, etat: {} }
+    c.script({ dt: 1 / 60 }, n)
+    check('un script juste modifie son noeud', c.ok && n.x === 11, `x = ${n.x}`)
+  }
+}
+
 console.log('\n--- le combat ---')
 
 {

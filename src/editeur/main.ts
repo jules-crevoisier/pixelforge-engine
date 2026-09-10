@@ -5,6 +5,7 @@ import { Edition, type Outil } from './edition.ts'
 import { serialiserProjet, versTexte } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { MONDES, type Monde } from '../demo/mondes.ts'
+import { Atelier } from './atelier-panneau.ts'
 
 /**
  * L'editeur.
@@ -45,6 +46,30 @@ let palette: Palette
 let edition: Edition
 
 /**
+ * L'atelier de scripts.
+ *
+ * Il recoit des accesseurs et non des objets : le jeu et la scene sont
+ * reconstruits a chaque changement de monde, et lui garder une reference
+ * signifierait piloter le monde precedent sans s'en apercevoir.
+ */
+const atelier = new Atelier(
+  {
+    panneau: document.getElementById('atelier') as HTMLElement,
+    bascule: document.getElementById('basculeAtelier') as HTMLButtonElement,
+    selection: document.getElementById('scriptNoeud') as HTMLSelectElement,
+    source: document.getElementById('scriptSource') as HTMLTextAreaElement,
+    appliquer: document.getElementById('appliquerScript') as HTMLButtonElement,
+    retablir: document.getElementById('retablirScript') as HTMLButtonElement,
+    fermer: document.getElementById('fermerAtelier') as HTMLButtonElement,
+    message: document.getElementById('scriptMessage') as HTMLElement,
+    aide: document.getElementById('scriptAide') as HTMLElement,
+  },
+  () => jeu,
+  () => monde.racine,
+  () => { if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() } },
+)
+
+/**
  * Charge un monde.
  *
  * Le jeu est reconstruit et non reconfigure. On pourrait garder l'instance et
@@ -75,6 +100,7 @@ function charger(id: string): void {
   jeu.dessiner()
   dessinerCollision()
 
+  atelier.reinitialiser()
   aide.textContent = monde.aide
   info.textContent = `${monde.vue.largeur}×${monde.vue.hauteur} · ${monde.carte.largeur}×${monde.carte.hauteur} · ${monde.projection.mode}, ${monde.projection.regard}`
   majEtat()

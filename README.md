@@ -91,6 +91,37 @@ c'est une règle de jeu : sans elle, les vingt-deux créatures de l'étage
 convergent dès la première seconde et le joueur les affronte toutes dans le
 couloir de départ.
 
+## Le scripting, dans l'éditeur
+
+![L'atelier de scripts](docs/atelier.png)
+
+On choisit un nœud, on écrit son comportement, **Ctrl+Entrée**, et ça tourne —
+pendant que le jeu joue. Le nœud garde la **source**, pas la fonction compilée :
+c'est elle qui part dans le fichier de projet, qui se relit, qui figure dans un
+diff.
+
+Un script ne parle qu'à deux choses : `c`, le contexte de jeu, et `n`, son nœud.
+Écrire `document`, `fetch`, `localStorage` est **refusé**, avec la raison. Ce
+n'est pas un bac à sable de sécurité — le code vient de vous, il tourne chez
+vous, et `new Function` n'isole rien. C'est une contrainte de **conception** :
+le projet promet de tourner ailleurs, en Python, en Rust, dans Godot, et cette
+promesse ne tient que si les scripts ne parlent qu'à `c` et `n`. La règle refuse
+ce qui ne passerait pas la frontière, et elle le dit tout de suite au lieu de
+laisser découvrir le problème le jour de l'export.
+
+Elle refuse aussi `while (true)` : on ne peut pas interrompre du JavaScript en
+cours, et appliquer un script dont on **sait** qu'il fige l'onglet reviendrait à
+fermer la porte derrière la personne. Un script est appelé une fois par pas —
+c'est le moteur qui boucle.
+
+Et la règle vérifie son propre revers : le mot « document » dans un commentaire
+ou dans une chaîne ne fait rien refuser. Refuser à tort est pire que ne rien
+vérifier, parce qu'on cesse alors de croire la règle.
+
+Une erreur d'exécution ne fait pas tomber la boucle. Elle est rapportée, et
+après cinq le script se met en sommeil : répéter la même exception soixante fois
+par seconde n'apprend rien et rend la page inutilisable.
+
 ## Ce que ça veut dire, concrètement
 
 - **Tout est en pixels entiers.** Positions, caméra, échelle. Ce qui a besoin de
@@ -126,6 +157,7 @@ seconde.
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
 - édition : pinceau de terrain, gomme, collision, déplacement de la vue — et le
   pinceau vise le bon losange en isométrique, pas la case d'à côté
+- scripting embarqué : écrire le comportement d'un nœud dans l'éditeur, à chaud
 - combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
 - créatures avec intention — la gelée bondit par à-coups, la chauve-souris fonce
 - génération d'étages en salles, reproductible depuis une graine
@@ -169,7 +201,7 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 91 vérifications des mondes, animations, combat et étages
+npm run banc:mondes     # 101 vérifications des mondes, animations, combat, étages et scripts
 npm run banc:langages   # 43 vérifications des chargeurs et de leur accord
 npm run build
 ```

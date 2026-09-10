@@ -22,13 +22,32 @@
         <button data-outil="main">Main</button>
       </div>
       <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
+      <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>
       <span class="pousse"></span>
       <select id="cible" title="Langage du chargeur généré"></select>
       <button id="exporter">Exporter</button>
     </header>
-    <main class="scene">
-      <canvas id="vue"></canvas>
-    </main>
+    <div class="corps">
+      <main class="scene">
+        <canvas id="vue"></canvas>
+      </main>
+      <aside class="atelier" id="atelier" hidden>
+        <div class="atelier-tete">
+          <select id="scriptNoeud" title="Le nœud dont on écrit le script"></select>
+          <button id="appliquerScript" class="primaire" title="Ctrl+Entrée">Appliquer</button>
+          <button id="retablirScript" disabled>Rétablir</button>
+          <span class="pousse"></span>
+          <button id="fermerAtelier" title="Fermer">✕</button>
+        </div>
+        <textarea id="scriptSource" spellcheck="false" autocomplete="off"
+          aria-label="Script du nœud"></textarea>
+        <p class="atelier-message" id="scriptMessage"></p>
+        <details class="atelier-aide">
+          <summary>Ce dont un script dispose</summary>
+          <pre id="scriptAide"></pre>
+        </details>
+      </aside>
+    </div>
     <footer class="pied">
       <span id="aide"></span>
       <span class="pousse"></span>
