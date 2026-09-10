@@ -99,6 +99,23 @@ export class Entrees {
   private impose: EtatEntrees | null = null
   /** Les appuis deja consommes a ce pas, quand l'etat est impose. */
   private consommes = 0
+  /**
+   * Le pas du dernier appui consomme, PAR ACTION, pour le clavier local.
+   *
+   * ## Pourquoi par action, et non par touche
+   *
+   * La consommation supprimait l'appui de la TOUCHE — et la barre d'espace
+   * sert a « action » ET a « saut », par conception : dans un jeu vu de
+   * dessus il n'y a pas de saut, dans un jeu de plateforme l'epee et le saut
+   * cohabitent. Frapper consommait donc le saut : le heros d'un projet relu
+   * marchait contre une marche d'une case sans jamais decoller, et seul un
+   * vrai navigateur l'a montre. Le chemin RESEAU consommait deja par action
+   * — un masque de bits par rang — et les deux chemins divergeaient : la
+   * meme partie ne se rejouait pas pareil selon qu'elle etait locale ou
+   * imposee. Une seule regle, la bonne : consommer une action n'eteint
+   * qu'elle.
+   */
+  private consommesLocaux = new Map<Action, number>()
 
   constructor(plan?: Record<Action, string[]>) {
     this.definirPlan(plan ?? {
@@ -378,9 +395,14 @@ export class Entrees {
     }
     const fenetre = this.memoireEnPas(memoire)
     if (fenetre < 0) return false
+    // -Infini et non -1 : avant le premier pas, `pasCourant` vaut -1 et les
+    // appuis sont dates -1 — une sentinelle a -1 les avalerait tous.
+    const consomme = this.consommesLocaux.get(a) ?? -Infinity
     return this.touches(a).some((k) => {
       const p = this.pasAppui.get(k)
-      return p !== undefined && this.pasCourant - p <= fenetre
+      // Un appui deja consomme PAR CETTE ACTION ne compte plus ; le meme
+      // appui reste servi aux autres actions de la meme touche.
+      return p !== undefined && this.pasCourant - p <= fenetre && p > consomme
     })
   }
 
@@ -407,7 +429,12 @@ export class Entrees {
       if (r >= 0) this.consommes |= 1 << r
       return true
     }
-    for (const k of this.touches(a)) this.pasAppui.delete(k)
+    let dernier = -Infinity
+    for (const k of this.touches(a)) {
+      const p = this.pasAppui.get(k)
+      if (p !== undefined && p > dernier) dernier = p
+    }
+    this.consommesLocaux.set(a, dernier)
     return true
   }
 
@@ -446,6 +473,7 @@ export class Entrees {
   vider(): void {
     this.enfoncees.clear()
     this.pasAppui.clear()
+    this.consommesLocaux.clear()
     this.pasRelache.clear()
     this.consommes = 0
   }

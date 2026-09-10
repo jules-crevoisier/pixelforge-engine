@@ -545,24 +545,37 @@ est devenu soit une correction, soit une ligne de ce carnet.
 - **La carte d'un déclencheur** (format v14). Une zone est en cases, et deux
   cartes ont les mêmes cases : la sortie de la clairière tirait aussi dans la
   caverne. Un déclencheur nomme maintenant sa carte ; vide, il vaut partout.
+- **La mort d'un projet relu a maintenant une reprise.** Le héros mourait et
+  disparaissait — pas de réapparition, pas de cœurs, une partie ouverte sur
+  du vide. La même aventure que les mondes de démonstration sert désormais
+  les projets relus : mort et réapparition au point de reprise, balises,
+  cœurs qui s'affichent et se ramassent, épée, chute hors du monde fatale.
+  La fumée le prouve sur les pointes de la caverne : une mort, retour à
+  l'entrée, toute sa vie.
+- **Frapper mangeait le saut.** La consommation d'un appui supprimait la
+  *touche* — et la barre d'espace sert à « action » et à « saut », par
+  conception. L'épée de l'aventure consommait donc le saut : le héros
+  marchait contre une marche d'une case sans jamais décoller. La consommation
+  est maintenant **par action**, comme le chemin réseau le faisait déjà — les
+  deux chemins divergeaient, et la même partie ne se rejouait pas pareil
+  selon qu'elle était locale ou imposée. Corollaire : une interface qui
+  accepte plusieurs actions les consomme *toutes*, sans court-circuit.
+- **Le nœud éphémère.** L'effet de taillade que l'aventure pose dans la scène
+  partait dans le fichier à chaque sauvegarde — et la relecture en posait un
+  de plus par-dessus. Ce qui appartient à l'exécution porte maintenant un
+  drapeau `ephemere`, et la sérialisation le saute.
 
 **Au carnet, dans l'ordre où ça mord :**
 
-1. **La mort d'un projet relu n'a pas de reprise.** Les mondes de
-   démonstration ont leur logique de mort et de réapparition ; un projet relu
-   n'a rien — le héros meurt, disparaît, et la partie reste ouverte sur du
-   vide. Les balises `reprise` sont déjà dans le format : il manque la règle
-   qui les fait servir hors des mondes écrits à la main. C'est le prochain
-   chantier du moteur.
-2. **L'ambiante est globale.** Une surface claire et une grotte noire ne
+1. **L'ambiante est globale.** Une surface claire et une grotte noire ne
    s'expriment pas dans le même projet : la lumière se règle par projet, pas
    par carte. « Le Gouffre » s'en sort parce que tout y est souterrain.
-3. **Les salles sont globales aussi** — des cases sans carte, comme l'étaient
+2. **Les salles sont globales aussi** — des cases sans carte, comme l'étaient
    les déclencheurs avant la v14. Même remède à prévoir.
-4. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
+3. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
    traversent le fichier et se jouent, mais s'écrivent à la main. Un bloc de
    plus, sur le modèle des sons.
-5. **Rien ne termine un jeu.** `c.dire('fin')` ouvre un dialogue, puis la
+4. **Rien ne termine un jeu.** `c.dire('fin')` ouvre un dialogue, puis la
    partie continue derrière. Il manque un verbe de fin — retour au titre,
    générique — qui soit une donnée comme le reste.
 
@@ -747,14 +760,14 @@ avec un terrain.
 ```sh
 npm install
 npm run dev      # l'éditeur
-npm run banc            #  82 vérifications du moteur
+npm run banc            #  83 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 385 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
+npm run banc:mondes     # 388 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
 npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 109 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
+npm run fumee           # 110 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

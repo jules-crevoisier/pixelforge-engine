@@ -34,6 +34,15 @@ export interface Noeud {
   script: string | null
   /** Ce que le script y range. Le moteur n'y touche pas. */
   etat: Record<string, unknown>
+  /**
+   * Vrai : ce noeud appartient a l'EXECUTION, pas au projet.
+   *
+   * L'effet de taillade, une particule promue en noeud, tout ce qu'un
+   * systeme pose dans la scene pour la duree d'une partie : l'enregistrer
+   * ferait grossir le fichier a chaque sauvegarde, et rejouer un projet
+   * ouvrirait une scene peuplee de restes. La serialisation les saute.
+   */
+  ephemere?: boolean
 }
 
 export interface NoeudSprite extends Noeud {

@@ -415,7 +415,11 @@ class Pause {
     if (c.entrees.consommer('haut')) bouger(-1)
     if (c.entrees.consommer('bas')) bouger(1)
     if (c.entrees.consommer('annuler')) { this.fermer(); return }
-    if (!c.entrees.consommer('action') && !c.entrees.consommer('saut')) return
+    // Les deux se consomment TOUJOURS : la consommation est par action, et
+    // un « et » paresseux laisserait « saut » vivant quand « action » a servi
+    // — la barre d'espace validerait le menu et ferait sauter derriere.
+    const appuis = [c.entrees.consommer('action'), c.entrees.consommer('saut')]
+    if (!appuis.some(Boolean)) return
     ;(sonneur as unknown as { evenement(p: number, s: string, n: string): boolean })
       .evenement(pas, 'menu', 'valider')
     const quoi = this.menu.valider()
@@ -694,7 +698,8 @@ export function mondeCaverne(): Monde {
           if (c.entrees.consommer('haut')) dialogue.deplacer(-1)
           if (c.entrees.consommer('bas')) dialogue.deplacer(1)
           void a
-          if (c.entrees.consommer('action') || c.entrees.consommer('saut')) {
+          const valide = [c.entrees.consommer('action'), c.entrees.consommer('saut')]
+          if (valide.some(Boolean)) {
             const quoi = dialogue.valider()
             if (quoi !== 'rien') aventure.sonneur.evenement(c.pas, 'dialogue', 'valider')
             // « Redis-moi ça » relit tout : c'est le seul choix qui a un effet

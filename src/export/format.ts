@@ -393,7 +393,7 @@ export interface NoeudSerialise {
 
 const CHAMPS_COMMUNS = new Set([
   'id', 'nom', 'type', 'x', 'y', 'visible', 'enfants', 'script', 'etat',
-  'espece', 'image',
+  'espece', 'image', 'ephemere',
 ])
 
 export function serialiserNoeud(n: Noeud): NoeudSerialise {
@@ -409,7 +409,8 @@ export function serialiserNoeud(n: Noeud): NoeudSerialise {
     espece: typeof brut.espece === 'string' ? brut.espece : null,
     image: typeof brut.image === 'number' ? brut.image : 0,
     proprietes,
-    enfants: n.enfants.map(serialiserNoeud),
+    // Les noeuds ephemeres restent dehors : ils appartiennent a l'execution.
+    enfants: n.enfants.filter((e) => !e.ephemere).map(serialiserNoeud),
   }
 }
 

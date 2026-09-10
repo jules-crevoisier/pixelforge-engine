@@ -913,6 +913,36 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     ok('la musique du jeu est partie d’un déclencheur, en données',
       apres.musique === 'descente' && apres.tirs >= 2,
       `« ${apres.musique} » joue · ${apres.tirs} déclencheur(s) tirés`)
+
+    /*
+     * LA MORT D'UN PROJET RELU — la premiere ligne du carnet du jeu-temoin.
+     *
+     * Avant, le heros d'un projet relu mourait et DISPARAISSAIT : pas de
+     * reprise, pas de coeurs, une partie ouverte sur du vide. On le pose sur
+     * les pointes de la caverne, on attend que ses coeurs s'epuisent, et
+     * l'on exige qu'il REVIENNE — au point de reprise, avec toute sa vie.
+     */
+    // Le dialogue d'entree de la caverne est ouvert et GELE le monde — c'est
+    // la regle. On le lit avant de mourir : un monde gele ne blesse pas.
+    for (let i = 0; i < 4; i++) { await p.keyboard.press('Space'); await p.waitForTimeout(200) }
+    const avantMort = await p.evaluate(() => window.pfe.monde.sonde())
+    await p.evaluate(() => {
+      const f = (n) => (n.nom === 'heros' && n.espece ? n : n.enfants.map(f).find(Boolean))
+      const h = f(window.pfe.jeu.racine)
+      h.x = 25 * 16 + 8
+      h.y = 15 * 16
+    })
+    await p.waitForTimeout(4500)
+    const apresMort = await p.evaluate(() => {
+      const f = (n) => (n.nom === 'heros' && n.espece ? n : n.enfants.map(f).find(Boolean))
+      const h = f(window.pfe.jeu.racine)
+      return { ...window.pfe.monde.sonde(), heros: h ? { x: h.x, y: h.y, v: h.visible } : null }
+    })
+    ok('les pointes tuent, et le héros REVIENT — la mort d’un projet relu a une reprise',
+      apresMort.morts > (avantMort.morts ?? 0) && apresMort.heros !== null
+      && apresMort.pv === apresMort.pvMax && apresMort.heros.x < 25 * 16,
+      `${apresMort.morts} mort(s), revenu en x=${Math.round(apresMort.heros?.x ?? -1)} avec `
+      + `${apresMort.pv}/${apresMort.pvMax} cœurs — avant, il disparaissait et la partie restait ouverte sur du vide`)
     await p.click('#arreter')
     await p.waitForTimeout(250)
   }
@@ -1098,8 +1128,14 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('tomber hors du monde tue au lieu de chuter sans fin',
     ressuscite.morts > mortsAvant,
     `${mortsAvant} puis ${ressuscite.morts} morts — sans cette règle, le jeu a l’air figé alors qu’il tourne`)
+  // On tolere une case vers le BAS : quand le tableau a ete franchi en l'air
+  // — la cadence des sauts du banc en decide — l'entree est un point en
+  // vol, et le heros reapparu s'y pose puis retombe sur le sol d'en dessous
+  // avant qu'on mesure. C'est la reapparition qui est la regle, pas la
+  // gravite qui la suit.
   ok('et l’on repart de l’entrée du tableau, pas du départ du chapitre',
-    Math.abs(ressuscite.heros.x - reprise.x) < 2 && Math.abs(ressuscite.heros.y - reprise.y) < 2
+    Math.abs(ressuscite.heros.x - reprise.x) < 2
+    && ressuscite.heros.y - reprise.y > -2 && ressuscite.heros.y - reprise.y < 18
     && ressuscite.salle === 'faille',
     `revenu en ${Math.round(ressuscite.heros.x)},${Math.round(ressuscite.heros.y)} `
     + `pour une entrée en ${reprise.x},${reprise.y}`)

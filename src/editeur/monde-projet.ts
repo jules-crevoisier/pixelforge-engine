@@ -14,6 +14,7 @@ import { Dialogue } from '../runtime/dialogue.ts'
 import { Salles } from '../niveau/salles.ts'
 import { Declencheurs, type Declencheur } from '../runtime/declencheurs.ts'
 import { Eclairage } from '../runtime/lumiere.ts'
+import { Aventure } from '../demo/aventure.ts'
 import { brancherAudio } from '../demo/sons-demo.ts'
 import { brancherMusique } from '../demo/musiques-demo.ts'
 import { dessinerDialogue, ecrireCentre } from '../runtime/rendu-texte.ts'
@@ -86,10 +87,25 @@ export function mondeDepuisProjet(
   }))
 
   const depart = heros ? { x: heros.x, y: heros.y } : { x: 0, y: 0 }
-  // Les departs de TOUTES les scenes : rejouer remet aussi les creatures du
-  // niveau deux, sinon le second essai d'un jeu a deux niveaux serait fausse.
-  const departs = scenes.flatMap((sc) => recenserDans(sc.racine))
-    .map((n) => ({ n, x: n.x, y: n.y }))
+  /*
+   * Les departs de TOUTES les scenes, AVEC leur parent.
+   *
+   * Le parent, parce que le peuplement RETIRE de la scene ce qui meurt — une
+   * gelee abattue, un coeur ramasse, le heros lui-meme au reset. « Rejouer »
+   * doit donc RACCROCHER les noeuds retires, pas seulement replacer ceux qui
+   * restent : sans cela, une creature tuee au premier essai manquait au
+   * deuxieme, et un projet reenregistre apres une partie perdait son heros.
+   */
+  const departs: { n: NoeudSprite; parent: Noeud; x: number; y: number }[] = []
+  for (const sc of scenes) {
+    const visiter = (n: Noeud): void => {
+      for (const e of n.enfants) {
+        if (e.type === 'sprite') departs.push({ n: e as NoeudSprite, parent: n, x: e.x, y: e.y })
+        visiter(e)
+      }
+    }
+    visiter(sc.racine)
+  }
   const projection = { ...p.projection } as Projection
   const combat = new Combat()
   const peuplement = new Peuplement(
@@ -124,23 +140,57 @@ export function mondeDepuisProjet(
    * n'ont rien a faire dans la simulation du niveau deux, et un combat
    * partage garderait des impacts en vol d'un niveau a l'autre.
    */
-  const courant = {
-    peuplement,
-    combat,
+  interface Paire {
+    peuplement: Peuplement
+    combat: Combat
+    /**
+     * L'aventure du niveau : mort, reprise, balises, ramassages, coeurs.
+     *
+     * C'est LA regle que le jeu-temoin a inscrite au carnet : un projet relu
+     * mourait sans reapparaitre — le heros disparaissait et la partie restait
+     * ouverte sur du vide. La meme aventure que les mondes de demonstration
+     * sert maintenant les projets relus ; nulle quand la scene n'a pas de
+     * heros, et le niveau vit alors sans regle de mort, comme avant.
+     */
+    aventure: Aventure | null
+    /** Ce que l'aventure dessine — coeurs, etincelles — capture une fois. */
+    dessin: ((ctx: CanvasRenderingContext2D, ecran: Parameters<NonNullable<Jeu['apresDessin']>>[1]) => void) | null
+    /** Le heros de la scene, pour remettre la reprise a son depart. */
+    heros?: NoeudSprite
+  }
+  const courant: { paire: Paire | null; dirige: NoeudSprite | null } = {
+    paire: null,
     dirige: dirige as NoeudSprite | null,
   }
   let fluxActif = nomActif
   let titreOuvert = !!p.deroule?.titre
-  const paires = new Map<string, { peuplement: Peuplement; combat: Combat }>()
-  paires.set(nomActif, { peuplement, combat })
-  const pairePour = (nomCarte: string, r: Noeud, tuile: number) => {
-    let paire = paires.get(nomCarte)
-    if (!paire) {
+  const paires = new Map<string, Paire>()
+  const fabriquerPaire = (r: Noeud, tuile: number): Paire => {
+    const h = dirigeDans(recenserDans(r))
+    if (!h) {
       const c2 = new Combat()
-      paire = {
+      return {
         combat: c2,
         peuplement: new Peuplement(r, c2, p.especes ?? [], animations, projection, tuile),
+        aventure: null,
+        dessin: null,
       }
+    }
+    const heros2 = h
+    const av = new Aventure(r, heros2, {
+      especes: p.especes ?? [],
+      clips: animations,
+      projection,
+      tuile,
+      pvHeros: (p.especes ?? []).find((e) => e.id === (h as unknown as { espece?: string }).espece)?.pv ?? 3,
+      reapparitionMs: 700,
+    })
+    return { combat: av.combat, peuplement: av.peuplement, aventure: av, dessin: null, heros: heros2 }
+  }
+  const pairePour = (nomCarte: string, r: Noeud, tuile: number): Paire => {
+    let paire = paires.get(nomCarte)
+    if (!paire) {
+      paire = fabriquerPaire(r, tuile)
       paires.set(nomCarte, paire)
     }
     return paire
@@ -199,9 +249,41 @@ export function mondeDepuisProjet(
        * rendrait faux dans un projet qui CONTIENT le son « coup », et la
        * personne chercherait la faute dans son script au lieu du moteur.
        */
-      const sonneur = new Sonneur((p.sons ?? []).map((q) => ({ ...q })))
-      brancherAudio(sonneur, rendreSon)
-      jeu.sonneur = sonneur
+      /*
+       * UNE SEULE sortie audio pour toutes les aventures : chaque niveau a
+       * son sonneur — c'est lui qui retient ce qu'il a joue — mais ouvrir un
+       * AudioContext par niveau epuiserait la limite du navigateur au
+       * troisieme. On branche un sonneur maitre, et l'on donne sa sortie aux
+       * autres.
+       */
+      const maitre = new Sonneur()
+      brancherAudio(maitre, rendreSon)
+      const equiper = (paire: Paire): Paire => {
+        if (paire.aventure && !paire.aventure.sonneur.nombre) {
+          paire.aventure.sonneur.ajouter(...(p.sons ?? []).map((q) => ({ ...q })))
+          paire.aventure.sonneur.sortie = maitre.sortie
+        }
+        return paire
+      }
+      const activer = (paire: Paire): void => {
+        courant.paire = equiper(paire)
+        // Le sonneur du CONTEXTE est celui du niveau : c.jouer et l'aventure
+        // partagent la meme memoire de ce qui a deja sonne a ce pas.
+        jeu.sonneur = paire.aventure?.sonneur
+          ?? (jeu.sonneur ?? (() => { const q = new Sonneur((p.sons ?? []).map((r) => ({ ...r }))); q.sortie = maitre.sortie; return q })())
+        jeu.poserEntite = (esp, x, y) => paire.peuplement.poser(esp, x, y)
+        // Les coeurs et les etincelles du niveau : on capture ce que
+        // l'aventure dessine, une fois, et le dessin final du monde le
+        // rejoue — voir plus bas la chaine d'apresDessin.
+        if (paire.aventure && !paire.dessin) {
+          const avant = jeu.apresDessin
+          jeu.apresDessin = null
+          paire.aventure.installerEcran(jeu)
+          paire.dessin = jeu.apresDessin
+          jeu.apresDessin = avant
+        }
+      }
+      activer(pairePour(nomActif, racine, premiere.tuile))
       if (p.musiques?.length) {
         const musicien = new Musicien(p.musiques)
         brancherMusique(musicien, rendreMusique)
@@ -215,7 +297,6 @@ export function mondeDepuisProjet(
         dialogue.ouvrir(d.repliques)
         return true
       }
-      jeu.poserEntite = (espece, x, y) => peuplement.poser(espece, x, y)
       // Les salles du fichier bornent la camera, comme dans un monde ecrit a
       // la main. Sans cette ligne, un chapitre decoupe dans l'editeur se
       // rouvrait avec une camera qui suit partout — le decoupage semblait
@@ -235,11 +316,8 @@ export function mondeDepuisProjet(
         const r2 = sceneDe(nomCible)
         jeu.carte = cible.carte
         jeu.racine = r2
-        const paire = pairePour(nomCible, r2, cible.carte.tuile)
-        courant.peuplement = paire.peuplement
-        courant.combat = paire.combat
+        activer(pairePour(nomCible, r2, cible.carte.tuile))
         courant.dirige = dirigeDans(recenserDans(r2))
-        jeu.poserEntite = (esp, x, y) => paire.peuplement.poser(esp, x, y)
         if (courant.dirige) {
           jeu.suivreNoeud(courant.dirige.nom)
           // La camera SAUTE : glisser d'un niveau a l'autre montrerait tout
@@ -349,7 +427,11 @@ export function mondeDepuisProjet(
         // L'ecran-titre gele tout : le jeu commence quand on le demande, pas
         // pendant qu'on lit le titre.
         if (titreOuvert) {
-          if (c.entrees.consommer('action') || c.entrees.consommer('saut')) titreOuvert = false
+          // Les DEUX se consomment, sans court-circuit : depuis que la
+          // consommation est par action, un « ou » paresseux laisserait le
+          // saut vivant, et la barre d'espace validerait deux fois.
+          const passe = [c.entrees.consommer('action'), c.entrees.consommer('saut')]
+          if (passe.some(Boolean)) titreOuvert = false
           return
         }
         // Le dialogue ensuite : quand il est ouvert, le monde ne bouge plus.
@@ -359,13 +441,28 @@ export function mondeDepuisProjet(
           dialogue.avancerTemps(c.dt * 1000)
           if (c.entrees.consommer('haut')) dialogue.deplacer(-1)
           if (c.entrees.consommer('bas')) dialogue.deplacer(1)
-          if (c.entrees.consommer('action') || c.entrees.consommer('saut')) dialogue.valider()
+          const valide = [c.entrees.consommer('action'), c.entrees.consommer('saut')]
+          if (valide.some(Boolean)) dialogue.valider()
           return
         }
-        courant.peuplement.synchroniser()
-        courant.peuplement.avancer(c, courant.dirige ?? { x: 0, y: 0 }, c.dt * 1000)
-        for (const impact of courant.combat.avancer(c.dt * 1000)) {
-          if (impact.fatal) courant.peuplement.tuer(impact.cible)
+        const paire = courant.paire
+        if (!paire) return
+        if (paire.aventure) {
+          /*
+           * L'AVENTURE fait tout ce que les mondes de demonstration savaient
+           * et que les projets relus n'avaient pas : la mort et la REPRISE —
+           * a l'entree du niveau, ou a la derniere balise touchee —, la
+           * chute hors du monde, l'epee, les coeurs qui se ramassent. Un
+           * projet relu est un jeu entier, pas une scene qui se traverse.
+           */
+          paire.aventure.avancer(
+            c, paire.peuplement.regardDe(courant.dirige?.id ?? ''))
+        } else {
+          paire.peuplement.synchroniser()
+          paire.peuplement.avancer(c, courant.dirige ?? { x: 0, y: 0 }, c.dt * 1000)
+          for (const impact of paire.combat.avancer(c.dt * 1000)) {
+            if (impact.fatal) paire.peuplement.tuer(impact.cible)
+          }
         }
       })
       // La boite de texte se dessine par-dessus tout, dans le tampon du jeu :
@@ -374,6 +471,10 @@ export function mondeDepuisProjet(
       const dessinAvant = jeu.apresDessin
       jeu.apresDessin = (ctx, ecran) => {
         dessinAvant?.(ctx, ecran)
+        // Les coeurs et etincelles du NIVEAU COURANT : c'est une capture par
+        // paire, et non un branchement global, pour que changer de carte
+        // change aussi la jauge qu'on regarde.
+        courant.paire?.dessin?.(ctx, ecran)
         dessinerDialogue(ecran, dialogue, {})
         if (titreOuvert && p.deroule?.titre) {
           // Le titre en pixels du jeu, comme tout le reste : un ecran-titre
@@ -388,10 +489,30 @@ export function mondeDepuisProjet(
     reinitialiser() {
       // Toutes les entites reprennent leur place, pas seulement le heros : une
       // creature laissee ou elle etait tombee fausserait le deuxieme essai.
-      for (const d of departs) { d.n.x = d.x; d.n.y = d.y; d.n.visible = true }
+      /*
+       * L'ORDRE COMPTE. L'aventure d'abord : sa remise a zero VIDE le
+       * peuplement, c'est-a-dire retire de la scene tout ce qu'il avait
+       * adopte. Ensuite seulement on raccroche et replace chaque noeud a son
+       * depart — dans l'autre sens, le vidage retirerait ce qu'on vient de
+       * remettre. Et les reprises en dernier, une fois le heros replace.
+       */
       for (const paire of paires.values()) {
-        paire.combat.reinitialiser()
-        paire.peuplement.oublier()
+        if (paire.aventure) paire.aventure.reinitialiser()
+        else {
+          paire.combat.reinitialiser()
+          paire.peuplement.oublier()
+        }
+      }
+      for (const d of departs) {
+        d.n.x = d.x
+        d.n.y = d.y
+        d.n.visible = true
+        if (!d.parent.enfants.includes(d.n)) d.parent.enfants.push(d.n)
+      }
+      for (const paire of paires.values()) {
+        if (paire.aventure && paire.heros) {
+          paire.aventure.reapparition = { x: paire.heros.x, y: paire.heros.y }
+        }
       }
       dialogue.fermer()
       // On revient sur la carte de depart, et l'ecran-titre se rouvre :
@@ -399,8 +520,12 @@ export function mondeDepuisProjet(
       if (jeuCourant && fluxActif !== nomActif) {
         jeuCourant.carte = premiere
         jeuCourant.racine = racine
-        courant.peuplement = peuplement
-        courant.combat = combat
+        courant.paire = paires.get(nomActif) ?? courant.paire
+        if (courant.paire) {
+          jeuCourant.sonneur = courant.paire.aventure?.sonneur ?? jeuCourant.sonneur
+          const paireLa = courant.paire
+          jeuCourant.poserEntite = (esp, x, y) => paireLa.peuplement.poser(esp, x, y)
+        }
         courant.dirige = dirige
         if (dirige) { jeuCourant.suivreNoeud(dirige.nom); jeuCourant.cadrer() }
         fluxActif = nomActif
@@ -417,6 +542,10 @@ export function mondeDepuisProjet(
       titreOuvert,
       cartes: cartes.map((c) => c.nom),
       ordre: ordreDuJeu(),
+      pv: courant.paire?.aventure?.pv ?? -1,
+      pvMax: courant.paire?.aventure?.max ?? -1,
+      morts: courant.paire?.aventure?.morts ?? 0,
+      balises: courant.paire?.aventure?.balisesAtteintes ?? 0,
     }),
   }
 }

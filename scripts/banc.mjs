@@ -250,6 +250,10 @@ console.log('\n--- les entrees ---')
   // Consommer : la meme demande ne se sert pas deux fois.
   e.simulerAppui('Space')
   check('une action se consomme', e.consommer('action'))
+  check('mais une AUTRE action de la meme touche reste servie',
+    e.consommer('saut'),
+    'la barre d’espace sert a « action » et a « saut » : frapper ne doit pas manger le saut — '
+    + 'le heros d’un projet relu marchait contre une marche sans jamais decoller')
   check('et ne se sert pas deux fois', !e.consommer('action'),
     'sinon on ouvre le coffre et on le referme dans la foulee')
 

@@ -4214,6 +4214,41 @@ console.log('\n--- le jeu-temoin : « Le Gouffre » ---')
     `« ${p.deroule.titre} » s'ouvre sur son ecran-titre`)
 }
 
+/*
+ * LE NOEUD EPHEMERE : ce qui appartient a l'execution ne part pas au fichier.
+ *
+ * L'aventure pose son effet de taillade dans la scene. Sans cette regle,
+ * chaque sauvegarde d'un projet AJOUTAIT une taillade au fichier — et la
+ * relecture en posait une de plus par-dessus. La faute a ete trouvee par la
+ * fumee : le heros disparaissait d'un projet reenregistre apres une partie.
+ */
+console.log('\n--- le noeud ephemere ---')
+{
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+  const { serialiserNoeud } = await import('../src/export/format.ts')
+  const racine = creerNoeud('noeud', 'scene')
+  const heros = creerNoeud('sprite', 'heros')
+  const effet = creerNoeud('sprite', 'taillade')
+  effet.ephemere = true
+  racine.enfants.push(heros, effet)
+  const s2 = serialiserNoeud(racine)
+  check('un noeud ephemere reste hors du fichier',
+    s2.enfants.length === 1 && s2.enfants[0].nom === 'heros',
+    'la taillade appartient a l\'execution, pas au projet')
+  check('et le champ lui-meme ne part pas non plus',
+    !('ephemere' in (s2.enfants[0].proprietes ?? {})),
+    'un drapeau d\'execution serialise reviendrait comme une propriete fantome')
+  const { Aventure } = await import('../src/demo/aventure.ts')
+  const h2 = creerNoeud('sprite', 'heros2')
+  const r2 = creerNoeud('noeud', 'scene2')
+  r2.enfants.push(h2)
+  void new Aventure(r2, h2)
+  check('l\'effet de taillade de l\'aventure est ephemere',
+    r2.enfants.some((n) => n.nom === 'taillade' && n.ephemere === true)
+    && serialiserNoeud(r2).enfants.length === 1,
+    'c\'est le cas qui a fait naitre la regle')
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

@@ -197,6 +197,9 @@ export class Aventure {
     this.taillade.ancreY = TUILE / 2
     this.taillade.visible = false
     this.taillade.couche = 1
+    // L'effet appartient a l'EXECUTION : l'enregistrement ne doit pas
+    // l'emporter, sinon chaque sauvegarde ajoute une taillade au fichier.
+    this.taillade.ephemere = true
     racine.enfants.push(this.taillade)
   }
 
