@@ -119,6 +119,41 @@ check('le service ne publie aucun port sur l’hote',
   'Traefik joint le conteneur par le reseau interne ; publier un port invite un conflit')
 check('et il rejoint le reseau que Dokploy fournit',
   /dokploy-network/.test(compose) && /external:\s*true/.test(compose))
+/*
+ * CE QU'IL FAUT POUR QUE TRAEFIK TROUVE LE CONTENEUR.
+ *
+ * Un « 404 page not found » sur le domaine n'est PAS un 404 de nginx : c'est
+ * celui de Traefik, qui ne connait aucune route vers ce conteneur. Le serveur
+ * va tres bien ; c'est le chemin jusqu'a lui qui n'existe pas.
+ *
+ * Dokploy sait ajouter ces etiquettes pour une application ordinaire. Pour une
+ * application « Docker Compose », il ne les applique qu'au deploiement suivant
+ * — et tant qu'elles manquent, on obtient exactement ce 404. On les ecrit donc
+ * dans le fichier, et on verifie qu'elles s'accordent entre elles.
+ */
+const etiquettes = [...compose.matchAll(/^\s*-\s*(traefik\.[^\s]+)\s*$/gm)].map((m) => m[1])
+check('le service se declare a Traefik',
+  etiquettes.some((e) => e === 'traefik.enable=true'),
+  etiquettes.length ? `${etiquettes.length} etiquettes` : 'aucune etiquette : Traefik ignore le conteneur')
+check('et il dit sur quel reseau le joindre',
+  etiquettes.some((e) => e.startsWith('traefik.docker.network=')),
+  'sans cette ligne, Traefik peut choisir la mauvaise interface et joindre une adresse muette')
+check('une route est declaree pour un domaine',
+  etiquettes.some((e) => /routers\..*\.rule=Host\(/.test(e)),
+  'sans regle, aucune requete ne correspond — et Traefik repond « 404 page not found »')
+
+/*
+ * L'ACCORD DES TROIS PORTS. C'est une panne muette classique : nginx ecoute
+ * sur un port, le Dockerfile en expose un autre, Traefik en interroge un
+ * troisieme. Chacun a l'air juste isolement.
+ */
+const portTraefik = /loadbalancer\.server\.port=(\d+)/.exec(compose)?.[1]
+const portNginx = /listen\s+(\d+);/.exec(conf)?.[1]
+const portExpose = /EXPOSE\s+(\d+)/.exec(dockerfile)?.[1]
+check('nginx, le Dockerfile et Traefik parlent du MEME port',
+  portTraefik && portTraefik === portNginx && portNginx === portExpose,
+  `nginx ${portNginx}, EXPOSE ${portExpose}, Traefik ${portTraefik}`)
+
 check('le conteneur est en lecture seule, avec un tmpfs pour nginx',
   /read_only:\s*true/.test(compose) && /\/var\/cache\/nginx/.test(compose),
   'un site statique n’a rien a ecrire ; nginx, si — son pid et ses tampons')

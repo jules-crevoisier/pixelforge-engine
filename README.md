@@ -579,7 +579,7 @@ npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte 
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
 npm run fumee           #  86 vérifications de l'éditeur, dans un vrai navigateur
-npm run banc:image      #  26 vérifications de ce que l'image de production emporte
+npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 71 critères, et ce qu'il reste à faire
 npm run build
@@ -608,6 +608,37 @@ L'image finale ne contient que nginx et les fichiers construits : ni Node, ni
 port 8080, en système de fichiers **lecture seule** — un site statique n'a rien
 à écrire — avec un `tmpfs` pour ce que nginx, lui, doit écrire : son pid et ses
 tampons.
+
+### « 404 page not found »
+
+Ce 404-là n'est **pas** celui de nginx : c'est celui de **Traefik**, qui ne
+connaît aucune route vers le conteneur. Le serveur va très bien ; c'est le
+chemin jusqu'à lui qui n'existe pas. Un 404 de nginx dirait « 404 Not Found »
+et porterait sa signature.
+
+Dans l'ordre :
+
+1. **Redéployer.** Régler le domaine ne suffit pas — Dokploy le dit lui-même
+   dans la fenêtre : *« remember to redeploy your compose to apply the
+   changes »*. Tant que le déploiement n'a pas été refait, Traefik n'a rien vu.
+2. **Vérifier que le conteneur tourne.** Sans conteneur en marche, il n'y a
+   aucune adresse derrière la route. Les logs du déploiement le disent.
+3. Les étiquettes Traefik sont **écrites dans `docker-compose.yml`**, plus
+   laissées à l'injection : Dokploy sait les ajouter pour une application
+   ordinaire, mais pour une application de type *Docker Compose* elles
+   n'arrivent qu'au déploiement suivant. Les écrire retire cette panne du
+   tableau.
+
+Le domaine se règle par une variable, avec une valeur par défaut :
+
+```sh
+DOMAINE=mon-domaine.exemple.com      # dans les variables d'environnement Dokploy
+```
+
+`banc:image` vérifie maintenant que le service se déclare à Traefik, qu'il dit
+sur quel réseau le joindre, qu'une route existe, et — surtout — que **nginx, le
+`EXPOSE` du Dockerfile et l'étiquette Traefik parlent du même port**. Trois
+ports qui divergent est une panne muette : chacun a l'air juste isolément.
 
 ### Ce que deux bancs surveillent, et pourquoi
 

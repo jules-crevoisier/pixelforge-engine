@@ -50,16 +50,38 @@ services:
         max-size: "10m"
         max-file: "3"
 
-    # Si votre installation n'ajoute pas les labels toute seule, decommenter
-    # et remplacer le domaine. `traefik.docker.network` est indispensable :
-    # sans lui Traefik peut choisir la mauvaise interface.
-    # labels:
-    #   - traefik.enable=true
-    #   - traefik.docker.network=dokploy-network
-    #   - traefik.http.routers.pixelforge-engine.rule=Host(`moteur.exemple.com`)
-    #   - traefik.http.routers.pixelforge-engine.entrypoints=websecure
-    #   - traefik.http.routers.pixelforge-engine.tls.certresolver=letsencrypt
-    #   - traefik.http.services.pixelforge-engine.loadbalancer.server.port=8080
+    # Les etiquettes Traefik sont ECRITES ICI, et non laissees a
+    # l'orchestrateur.
+    #
+    # Dokploy sait les ajouter lui-meme pour une application ordinaire. Pour
+    # une application « Docker Compose », l'onglet Domains ne les applique
+    # qu'au prochain deploiement — et tant qu'elles manquent, Traefik ne
+    # connait aucune route vers ce conteneur et repond « 404 page not found ».
+    # C'est un 404 de TRAEFIK et non de nginx : le serveur va tres bien, c'est
+    # le chemin jusqu'a lui qui n'existe pas. Les ecrire ici retire cette
+    # panne-la du tableau.
+    #
+    # Le domaine se regle par une variable, avec une valeur par defaut : on
+    # peut donc deployer sans rien configurer, et le changer sans toucher au
+    # fichier.
+    labels:
+      - traefik.enable=true
+      # Indispensable : sans lui, Traefik peut choisir la mauvaise interface
+      # quand le conteneur est sur plusieurs reseaux, et joindre une adresse
+      # qui ne repond pas.
+      - traefik.docker.network=dokploy-network
+      - traefik.http.services.pixelforge-engine.loadbalancer.server.port=8080
+      # En clair, pour que le certificat puisse etre demande.
+      - traefik.http.routers.pixelforge-engine.rule=Host(`${DOMAINE:-pixelforge-engine.srko.fr}`)
+      - traefik.http.routers.pixelforge-engine.entrypoints=web
+      - traefik.http.routers.pixelforge-engine.middlewares=pixelforge-vers-https
+      # Et en HTTPS, avec le certificat.
+      - traefik.http.routers.pixelforge-engine-tls.rule=Host(`${DOMAINE:-pixelforge-engine.srko.fr}`)
+      - traefik.http.routers.pixelforge-engine-tls.entrypoints=websecure
+      - traefik.http.routers.pixelforge-engine-tls.tls=true
+      - traefik.http.routers.pixelforge-engine-tls.tls.certresolver=letsencrypt
+      # Personne n'a de raison d'arriver en clair : on redirige.
+      - traefik.http.middlewares.pixelforge-vers-https.redirectscheme.scheme=https
 
 # Reseau cree par Dokploy a l'installation, partage avec Traefik.
 networks:
