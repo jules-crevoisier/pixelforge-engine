@@ -872,6 +872,368 @@ console.log('\n--- l\'atelier de scripts ---')
   }
 }
 
+console.log('\n--- une creature qui contourne ce qui la bloque ---')
+
+/*
+ * « Poursuite » voulait dire « aller tout droit ». Derriere un mur, la
+ * creature poussait contre la pierre indefiniment : mesure sur la salle
+ * ci-dessous, elle n'avait pas avance d'un pixel en quinze secondes, avec un
+ * passage a une case d'elle.
+ *
+ * Ce banc a demande trois essais avant de mesurer quoi que ce soit, et les
+ * deux premiers accusaient le moteur a tort. Les deux pieges sont dans le
+ * bac d'essai ci-dessous, commentes : ils sont plus instructifs que la
+ * verification elle-meme.
+ */
+{
+  const { Carte, SOLIDE, PENTE_DROITE } = await import('../src/tuiles/tilemap.ts')
+  const { Peuplement, espece } = await import('../src/runtime/entites.ts')
+  const { Combat } = await import('../src/runtime/combat.ts')
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+  const { ORTHO_DESSUS } = await import('../src/noyau/projection.ts')
+  const { ChampDeFlux, grilleDeCarte, ligneLibre, LOIN } =
+    await import('../src/runtime/chemin.ts')
+
+  const T = 16
+
+  /**
+   * Un bac d'essai : une salle en caracteres, un heros, des creatures.
+   *
+   * Le `bouger` reproduit CE QUE FAIT LE MOTEUR, et deux details y comptent
+   * plus que tout le reste :
+   *
+   * - il CUMULE les fractions de pixel. Une creature a quarante pixels par
+   *   seconde avance de 0,67 px par image ; un deplacement tronque a l'entier
+   *   la laisse rigoureusement immobile, et l'on conclut que la navigation ne
+   *   marche pas alors que c'est la mesure qui ne marche pas.
+   * - il deplace le PARENT du corps, pas le corps. Le corps est un noeud
+   *   enfant ; le bouger lui deplace sa boite de collision en laissant le
+   *   sprite sur place, ce qui donne exactement les memes symptomes.
+   */
+  const bac = (plan, creatures, options = {}) => {
+    const carte = new Carte(plan[0].length, plan.length, T)
+    carte.ajouterCalque('sol')
+    plan.forEach((l, y) => [...l].forEach((c, x) => {
+      if (c === '#') carte.solides[carte.index(x, y)] = SOLIDE
+      if (c === '/') carte.solides[carte.index(x, y)] = PENTE_DROITE
+    }))
+    const racine = creerNoeud('noeud', 'salle')
+    const heros = creerNoeud('sprite', 'heros')
+    heros.espece = 'heros'
+    heros.x = options.heros.x; heros.y = options.heros.y
+    racine.enfants.push(heros)
+    const noeuds = creatures.map((q, i) => {
+      const n = creerNoeud('sprite', `bete${i}`)
+      n.espece = 'bete'; n.x = q.x; n.y = q.y
+      racine.enfants.push(n)
+      return n
+    })
+    const especes = [
+      espece('heros', { comportement: 'joueur', pv: 99, vitesse: 0 }),
+      espece('bete', {
+        comportement: 'poursuite', pv: 99, vitesse: 40, vigilance: 999, degats: 0,
+        ...(options.espece ?? {}),
+      }),
+    ]
+    const p = new Peuplement(racine, new Combat(), especes, [], ORTHO_DESSUS(T), T)
+    p.synchroniser()
+    const reste = new Map()
+    const ctx = {
+      dt: 1 / 60, pas: 0, racine, carte,
+      entrees: { axe: () => ({ x: 0, y: 0 }), tenue: () => false, consommer: () => false },
+      trouver: () => null,
+      bouger: (corps, dx, dy) => {
+        const proprietaire = (n) => {
+          for (const e of n.enfants) {
+            if (e.id === corps.id) return n
+            const r = proprietaire(e); if (r) return r
+          }
+          return null
+        }
+        const h = proprietaire(racine)
+        if (!h) return { dx: 0, dy: 0, bloque: false }
+        let r = reste.get(corps.id)
+        if (!r) { r = { x: 0, y: 0 }; reste.set(corps.id, r) }
+        r.x += dx; r.y += dy
+        const ex = Math.trunc(r.x); const ey = Math.trunc(r.y)
+        r.x -= ex; r.y -= ey
+        const libre = (x, y) => [[-4, -4], [3, -4], [-4, 3], [3, 3]].every(([ox, oy]) => {
+          const cx = Math.floor((x + ox) / T); const cy = Math.floor((y + oy) / T)
+          if (cx < 0 || cy < 0 || cx >= carte.largeur || cy >= carte.hauteur) return false
+          return (carte.solides[carte.index(cx, cy)] & SOLIDE) === 0
+        })
+        let bouge = false; let bloque = false
+        const sx = Math.sign(ex); const sy = Math.sign(ey)
+        for (let i = 0; i < Math.abs(ex); i++) {
+          if (libre(h.x + sx, h.y)) { h.x += sx; bouge = true } else { bloque = true; break }
+        }
+        for (let i = 0; i < Math.abs(ey); i++) {
+          if (libre(h.x, h.y + sy)) { h.y += sy; bouge = true } else { bloque = true; break }
+        }
+        return { dx: 0, dy: 0, bloque: bloque && !bouge }
+      },
+    }
+    const courir = (pas) => {
+      let plusProche = Infinity
+      for (let i = 0; i < pas; i++) {
+        ctx.pas = i
+        p.avancer(ctx, heros, 1000 / 60)
+        for (const n of noeuds) {
+          plusProche = Math.min(plusProche, Math.hypot(n.x - heros.x, n.y - heros.y))
+        }
+      }
+      return plusProche
+    }
+    return { carte, racine, heros, noeuds, p, ctx, courir }
+  }
+
+  /* Une salle a la Isaac : un mur en travers, un passage a mi-hauteur. */
+  const SALLE = [
+    '###########',
+    '#....#....#',
+    '#....#....#',
+    '#....#....#',
+    '#.........#',
+    '#....#....#',
+    '#....#....#',
+    '###########',
+  ]
+
+  {
+    const b = bac(SALLE, [{ x: 8 * T + 8, y: 2 * T + 8 }], { heros: { x: 2 * T + 8, y: 2 * T + 8 } })
+    const proche = b.courir(900)
+    check('une creature contourne le mur et rejoint sa cible',
+      proche < 8,
+      `${Math.round(proche)} px au plus pres, en partant a 96 — sans navigation elle s'arretait a 60, contre le mur`)
+    check('et elle y est vraiment, pas seulement passee a cote',
+      Math.hypot(b.noeuds[0].x - b.heros.x, b.noeuds[0].y - b.heros.y) < 8,
+      `finit a ${Math.round(Math.hypot(b.noeuds[0].x - b.heros.x, b.noeuds[0].y - b.heros.y))} px`)
+  }
+
+  /*
+   * LE REVERS. En salle ouverte, la creature doit aller DROIT : suivre un
+   * champ de case en case donnerait une marche en escalier, visible et laide.
+   * On mesure l'ecart a la ligne droite ideale.
+   */
+  {
+    const VIDE = [
+      '##########', '#........#', '#........#', '#........#',
+      '#........#', '#........#', '#........#', '##########',
+    ]
+    const b = bac(VIDE, [{ x: 8 * T, y: 6 * T }], { heros: { x: 1 * T + 8, y: 1 * T + 8 } })
+    const depart = { x: b.noeuds[0].x, y: b.noeuds[0].y }
+    const cible = { x: b.heros.x, y: b.heros.y }
+    let ecartMax = 0
+    for (let i = 0; i < 400; i++) {
+      b.ctx.pas = i
+      b.p.avancer(b.ctx, b.heros, 1000 / 60)
+      const n = b.noeuds[0]
+      // Distance du point a la droite depart-cible.
+      const vx = cible.x - depart.x; const vy = cible.y - depart.y
+      const l = Math.hypot(vx, vy)
+      ecartMax = Math.max(ecartMax, Math.abs((n.x - depart.x) * vy - (n.y - depart.y) * vx) / l)
+    }
+    check('en salle ouverte elle va tout droit, sans marche d’escalier',
+      ecartMax <= 2,
+      `${ecartMax.toFixed(1)} px d’écart maximum à la ligne droite — le champ ne sert que derrière un mur`)
+  }
+
+  /* Une cible enfermee : on ne doit ni planter, ni trembler sur place. */
+  {
+    const MURE = [
+      '###########',
+      '#...#.#...#',
+      '#...#.#...#',
+      '#...###...#',
+      '#.........#',
+      '###########',
+    ]
+    const b = bac(MURE, [{ x: 8 * T + 8, y: 1 * T + 8 }], { heros: { x: 5 * T + 8, y: 1 * T + 8 } })
+    const avant = { x: b.noeuds[0].x, y: b.noeuds[0].y }
+    b.courir(300)
+    const apres = { x: b.noeuds[0].x, y: b.noeuds[0].y }
+    check('une cible inaccessible ne fait ni planter ni trembler',
+      Number.isFinite(apres.x) && Number.isFinite(apres.y),
+      `partie de ${Math.round(avant.x)},${Math.round(avant.y)} vers ${Math.round(apres.x)},${Math.round(apres.y)} — `
+      + 'elle reprend la ligne droite, comme avant la navigation')
+  }
+
+  /* Le champ lui-meme, mesure directement. */
+  {
+    const carte = new Carte(11, 8, T)
+    carte.ajouterCalque('sol')
+    SALLE.forEach((l, y) => [...l].forEach((c, x) => {
+      if (c === '#') carte.solides[carte.index(x, y)] = SOLIDE
+    }))
+    const g = grilleDeCarte(carte)
+    const champ = new ChampDeFlux()
+    champ.calculer(g, 2, 2, 26)
+
+    check('le champ atteint l’autre côté du mur, en passant par l’ouverture',
+      champ.distanceDe(8, 2) !== LOIN && champ.distanceDe(8, 2) > champ.distanceDe(8, 4),
+      `${champ.distanceDe(8, 2)} au fond, ${champ.distanceDe(8, 4)} devant l’ouverture — le détour coûte plus cher`)
+    check('un mur n’a pas de distance', champ.distanceDe(5, 2) === LOIN)
+    check('la source est à zéro', champ.distanceDe(2, 2) === 0)
+    check('et il ne visite jamais plus de cases que la salle n’en a',
+      champ.visitees <= 11 * 8, `${champ.visitees} cases pour ${11 * 8}`)
+
+    // La portee borne le travail : c'est ce qui rend le cout independant de
+    // la taille de la carte.
+    const court = new ChampDeFlux()
+    court.calculer(g, 2, 2, 2)
+    check('la portée borne vraiment le calcul',
+      court.visitees < champ.visitees && court.distanceDe(8, 2) === LOIN,
+      `${court.visitees} cases à portée 2, contre ${champ.visitees} à portée 26`)
+
+    /*
+     * PAS DE COIN COUPE. Deux murs qui se touchent par l'angle laissent une
+     * diagonale libre en apparence : la franchir ferait passer une creature
+     * la ou aucun joueur ne passe. Cela se voit tout de suite.
+     */
+    const coin = new Carte(5, 5, T)
+    coin.ajouterCalque('sol')
+    coin.solides[coin.index(2, 1)] = SOLIDE
+    coin.solides[coin.index(1, 2)] = SOLIDE
+    const gc = grilleDeCarte(coin)
+    const cc = new ChampDeFlux()
+    cc.calculer(gc, 1, 1, 20)
+    // De 1,1 a 2,2 : la diagonale est barree par les deux murs. Le detour
+    // existe par le bas, et il coûte plus que la diagonale directe.
+    check('une diagonale ne se faufile pas entre deux coins de mur',
+      cc.distanceDe(2, 2) > 14,
+      `${cc.distanceDe(2, 2)} au lieu de 14 — 14 voudrait dire qu’elle a traversé l’angle`)
+
+    /* Une pente n'est pas un mur : on la monte. */
+    const cote = new Carte(5, 3, T)
+    cote.ajouterCalque('sol')
+    cote.solides[cote.index(2, 1)] = PENTE_DROITE
+    const gp = grilleDeCarte(cote)
+    check('une pente ne bloque pas la navigation',
+      !gp.bloque(2, 1),
+      'la confondre avec un mur ferait contourner une colline qu’on pouvait gravir')
+
+    /* La ligne de vue, et son revers. */
+    check('la ligne de vue voit ce qui est en face',
+      ligneLibre(g, 1 * T + 8, 4 * T + 8, 9 * T + 8, 4 * T + 8),
+      'la rangée de l’ouverture est dégagée d’un bout à l’autre')
+    check('et ne voit pas à travers un mur',
+      !ligneLibre(g, 1 * T + 8, 2 * T + 8, 9 * T + 8, 2 * T + 8))
+  }
+
+  /*
+   * VU DE COTE, SEUL CE QUI VOLE SE FAUFILE.
+   *
+   * Le champ suppose qu'on peut aller dans les huit directions. Une creature
+   * PESANTE dans un monde vu de cote marche : lui donner un itineraire aerien
+   * l'enverrait dans un mur en s'ELOIGNANT de sa cible — pire que
+   * l'entetement qu'on corrigeait. Une chauve-souris, elle, vole.
+   *
+   * On interroge la REGLE et non une creature en mouvement : l'observer
+   * quelques secondes puis deviner pourquoi elle a fait ce qu'elle a fait
+   * n'est pas une mesure.
+   */
+  {
+    const { peutContourner } = await import('../src/runtime/entites.ts')
+    const { ORTHO_COTE } = await import('../src/noyau/projection.ts')
+    const DESSUS = ORTHO_DESSUS(T)
+    const COTE = ORTHO_COTE(T)
+    const marcheuse = espece('m', { comportement: 'poursuite', pesante: true, vigilance: 400 })
+    const volante = espece('v', { comportement: 'poursuite', pesante: false, vigilance: 400 })
+
+    check('vue de dessus, une créature pesante contourne quand même',
+      peutContourner('poursuite', marcheuse, DESSUS, 50),
+      'vue de dessus, « pesante » ne veut rien dire : il n’y a pas de bas')
+    check('vue de côté, une créature qui VOLE contourne',
+      peutContourner('poursuite', volante, COTE, 50),
+      'une chauve-souris n’a pas de sol à suivre')
+    check('mais une créature pesante vue de côté garde la ligne droite',
+      !peutContourner('poursuite', marcheuse, COTE, 50),
+      'un itinéraire aérien l’enverrait dans un mur, en s’éloignant de sa cible')
+
+    // Le revers : on ne paie le calcul que pour qui a une cible a rejoindre.
+    const patrouille = espece('p', { comportement: 'patrouille', vigilance: 100 })
+    check('un immobile, un projectile et un porteur ne cherchent aucun chemin',
+      !peutContourner('immobile', volante, DESSUS, 10)
+      && !peutContourner('projectile', volante, DESSUS, 10)
+      && !peutContourner('porteur', volante, DESSUS, 10),
+      'leur chercher un itinéraire serait payer un calcul pour n’en rien faire')
+    check('une patrouille ne cherche un chemin que si elle a remarqué quelqu’un',
+      !peutContourner('patrouille', patrouille, DESSUS, 300)
+      && peutContourner('patrouille', patrouille, DESSUS, 50),
+      'à 300 px elle n’a rien vu ; à 50, sa vigilance de 100 la réveille')
+    check('et une patrouille sans vigilance ne remarque jamais rien',
+      !peutContourner('patrouille', espece('s', { comportement: 'patrouille' }), DESSUS, 1),
+      'vigilance nulle : elle fait son tour, quoi qu’il arrive')
+  }
+
+  /*
+   * CE QUI COMPTE POUR LE RESEAU : le champ ne garde rien.
+   *
+   * Deux parties identiques doivent donner les memes positions au pixel pres,
+   * et surtout : rembobiner puis rejouer doit rendre EXACTEMENT ce qu'on
+   * avait. Un chemin garde en memoire ferait diverger la deuxieme, et l'ecart
+   * ne se verrait qu'apres plusieurs secondes.
+   */
+  {
+    const trace = (pas) => {
+      const b = bac(SALLE, [
+        { x: 8 * T + 8, y: 2 * T + 8 }, { x: 8 * T + 8, y: 5 * T + 8 },
+      ], { heros: { x: 2 * T + 8, y: 2 * T + 8 } })
+      const out = []
+      for (let i = 0; i < pas; i++) {
+        b.ctx.pas = i
+        b.p.avancer(b.ctx, b.heros, 1000 / 60)
+        out.push(b.noeuds.map((n) => `${n.x},${n.y}`).join('|'))
+      }
+      return out
+    }
+    const a = trace(240)
+    const c = trace(240)
+    check('deux parties identiques donnent les mêmes positions, au pixel près',
+      a.join(';') === c.join(';'),
+      `${a.length} pas — sans cela, rien de ce qui suit ne veut dire quoi que ce soit`)
+
+    // Le rembobinage : on rejoue les 240 pas depuis zero et l'on compare a la
+    // premiere moitie de la trace. Le champ etant recalcule a chaque pas
+    // depuis le monde seul, la reprise ne peut pas differer.
+    const court = trace(120)
+    check('rejouer une partie plus courte donne le même début, pas à pas',
+      court.join(';') === a.slice(0, 120).join(';'),
+      '120 pas identiques — le champ ne reporte rien d’un pas sur l’autre')
+  }
+
+  /*
+   * LE COUT NE MONTE PAS AVEC LE NOMBRE D'ENNEMIS.
+   *
+   * C'est toute la raison d'un champ partage plutot que d'un chemin par
+   * creature. Une recherche par creature ferait vingt fois le travail la ou
+   * le jeu est deja charge.
+   */
+  {
+    const salle = []
+    for (let y = 0; y < 20; y++) {
+      salle.push(y === 0 || y === 19 ? '#'.repeat(30)
+        : `#${'.'.repeat(13)}#${'.'.repeat(14)}#`)
+    }
+    salle[10] = `#${'.'.repeat(28)}#`
+    const compter = (n) => {
+      const creatures = []
+      for (let i = 0; i < n; i++) {
+        creatures.push({ x: (16 + (i % 10)) * T + 8, y: (2 + Math.floor(i / 10) * 2) * T + 8 })
+      }
+      const b = bac(salle, creatures, { heros: { x: 2 * T + 8, y: 2 * T + 8 } })
+      b.ctx.pas = 0
+      b.p.avancer(b.ctx, b.heros, 1000 / 60)
+      return b.p.casesVisitees
+    }
+    const une = compter(1)
+    const trente = compter(30)
+    check('trente créatures coûtent le même champ qu’une seule',
+      une === trente && une > 100,
+      `${une} cases visitées dans les deux cas — un chemin par créature en aurait fait ${une * 30}`)
+  }
+}
+
 console.log('\n--- le combat ---')
 
 {

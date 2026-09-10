@@ -573,13 +573,13 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 229 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:mondes     # 251 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   #  87 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
-npm run banc:charge     #   9 mesures de cadence — mesurées, pas promises
+npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
 npm run fumee           #  77 vérifications de l'éditeur, dans un vrai navigateur
-npm run agent           # la grille : 61 critères, et ce qu'il reste à faire
+npm run agent           # la grille : 63 critères, et ce qu'il reste à faire
 npm run build
 ```
 
@@ -786,6 +786,56 @@ quelqu'un ajoute une ligne au menu et écrit son libellé en clair, parce que
 c'est plus court. Rien ne tombe — le menu s'affiche, en français, dans toutes
 les langues. Un contrôle lit donc la source du menu de pause et refuse toute
 chaîne posée en clair dans une entrée.
+
+### Une créature qui contourne le mur
+
+« Poursuite » voulait dire : aller vers le héros en ligne droite. Derrière un
+mur, la créature poussait contre la pierre indéfiniment. Mesuré sur une salle à
+la Isaac — un mur au milieu, un passage à **une case** — elle n'avait pas avancé
+d'un seul pixel en quinze secondes. Ce n'est pas une créature qui poursuit mal,
+c'est une créature qui ne poursuit pas.
+
+**Un champ de distance, et non un chemin par créature.** Un A\* rend un chemin
+par créature : vingt ennemis, vingt recherches, et le coût monte avec le nombre
+d'ennemis — exactement là où l'on n'en a pas les moyens, puisque c'est là que le
+jeu est chargé. Le champ renverse le problème : on parcourt la salle **une** fois
+depuis le héros, chaque case retient sa distance jusqu'à lui, et n'importe quelle
+créature n'a plus qu'à regarder ses huit voisines et descendre. Mesuré : 0,095 ms
+par pas pour toute la salle, quel que soit le nombre d'ennemis. Une recherche par
+créature en coûterait 119 — sept images pour un seul pas.
+
+**Il ne garde rien d'un pas sur l'autre**, et c'est la propriété qui compte pour
+le réseau. Un chemin gardé en mémoire est de l'état : après un rembobinage, la
+créature repartirait d'un chemin calculé dans un futur qui n'a plus lieu, et les
+deux machines divergeraient sans qu'on sache pourquoi. Le champ se recalcule
+entièrement depuis le monde du pas courant — il ne peut pas être faux d'un pas à
+l'autre parce qu'il n'est jamais reporté.
+
+Les coûts sont des **entiers** : dix pour un pas droit, quatorze pour une
+diagonale. On pourrait écrire 1 et 1,41421356 ; ce serait plus juste et moins
+sûr. Deux machines qui comparent des flottants dans un tas binaire peuvent les
+ordonner autrement dès que deux valeurs se touchent, et le champ différerait
+d'une case.
+
+**Le champ ne sert que derrière un mur.** Quand la cible est en vue, on va droit
+dessus : suivre un champ de case en case donnerait une marche d'escalier que
+l'œil repère aussitôt. Mesuré en salle ouverte : 0,8 px d'écart à la ligne
+droite. Et une diagonale ne se faufile jamais entre deux murs qui se touchent par
+l'angle — passer là où aucun joueur ne passe se voit tout de suite.
+
+**Seul ce qui se déplace librement se faufile.** Le champ suppose huit
+directions. C'est vrai vu de dessus, et vrai d'une créature qui **vole**. Ça ne
+l'est pas d'une créature pesante vue de côté : elle marche, et un itinéraire
+aérien l'enverrait dans un mur en *s'éloignant* de sa cible — pire que
+l'entêtement qu'on corrigeait. C'est le même mot que pour la pesanteur, et ce
+n'est pas un hasard : `pesante` dit « ce monde a un bas, et je lui obéis ».
+
+Ce banc a demandé trois essais avant de mesurer quoi que ce soit, et les deux
+premiers accusaient le moteur à tort : le bac d'essai tronquait les fractions de
+pixel — une créature à 0,67 px par image restait rigoureusement immobile — puis
+déplaçait la boîte de collision en laissant le sprite sur place. Les deux donnent
+exactement le symptôme qu'on cherchait. Ils sont commentés dans le banc, où ils
+sont plus instructifs que la vérification elle-même.
 
 ### Les particules ne se photographient pas
 
@@ -1046,7 +1096,7 @@ pire défaut d'une mesure.
 
 ### Où en est le projet, d'après lui
 
-    Celeste — plateforme de précision              8/8
+    Celeste — plateforme de précision             10/10
     The Binding of Isaac — salles engendrées       7/7
     Dead Cells — combat et corps                   6/6
     Faire un jeu sans lire le moteur               8/8
@@ -1054,7 +1104,7 @@ pire défaut d'une mesure.
     Ce qu'on affirme sans l'avoir mesuré           4/4
     Ce qu'un jeu de plateforme doit avoir          9/9
     Ce qu'un jeu a en plus de son gameplay        13/13
-                                          697 vérifications
+                                          723 vérifications
 
 Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
 libellés jamais en clair, accord des six portages sur les notes et les textes —

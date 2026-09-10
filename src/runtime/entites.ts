@@ -8,6 +8,9 @@ import { BLESSANTE } from '../tuiles/tilemap.ts'
 import { type Projection, ORTHO_DESSUS, deprojeter } from '../noyau/projection.ts'
 import { Plateformeur, lireEntrees, type ReglagesPlateforme } from './plateforme.ts'
 import { porter } from './corps.ts'
+import {
+  ChampDeFlux, grilleDeCarte, ligneLibre, LOIN, type GrilleChemin,
+} from './chemin.ts'
 
 /**
  * Les entites : des especes decrites en DONNEES, posees dans la scene.
@@ -273,6 +276,16 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
  */
 export const RAYON_ACTIVITE = 340
 
+/**
+ * Jusqu'ou l'on calcule le champ de navigation, en cases.
+ *
+ * Un peu plus loin que le rayon d'activite : une creature juste a la limite
+ * doit trouver un chemin des l'instant ou elle s'eveille, et non une seconde
+ * apres. Beaucoup plus loin ne servirait a rien — personne ne poursuit
+ * au-dela — et couterait toute la carte a chaque pas.
+ */
+const PORTEE_NAVIGATION = 26
+
 /** Ce qu'une case blessante retire, par defaut. */
 export const DEGATS_MATIERE = 1
 
@@ -364,6 +377,23 @@ export class Peuplement {
    * dans Celeste et retire un demi-coeur dans Isaac.
    */
   degatsMatiere = DEGATS_MATIERE
+
+  /**
+   * Le champ de navigation, recalcule une fois par pas depuis la cible.
+   *
+   * Il vit ici et non dans chaque creature : une seule traversee de la salle
+   * sert TOUT LE MONDE. Vingt ennemis coutent alors le meme prix qu'un, ce
+   * qui est exactement ce qu'on veut la ou le jeu est charge.
+   *
+   * Il ne se reporte jamais d'un pas sur l'autre : c'est ce qui le rend
+   * insensible au rembobinage. Un chemin garde en memoire serait de l'etat,
+   * et deux machines divergeraient apres une correction reseau.
+   */
+  private champ = new ChampDeFlux()
+  private grille: GrilleChemin | null = null
+  private carteDuChamp: unknown = null
+  /** Comptes, pour les bancs : combien de cases le dernier champ a coutees. */
+  get casesVisitees(): number { return this.champ.visitees }
 
   constructor(
     racine: Noeud, combat: Combat, especes: Espece[] = [], clips: Clip[] = [],
@@ -552,6 +582,61 @@ export class Peuplement {
    * de pas, une trace, un compteur, sans que le peuplement ait besoin de
    * savoir ce qu'est un son.
    */
+  /**
+   * Refait le champ de navigation depuis la cible.
+   *
+   * La grille se reconstruit quand la CARTE change, pas a chaque pas : elle
+   * ne fait que lire `solides`, et une carte qu'on repeint garde le meme
+   * objet. Ce qui se recalcule a chaque pas, c'est le champ.
+   */
+  private rafraichirNavigation(c: ContexteJeu, cible: { x: number; y: number }): void {
+    if (!c.carte) { this.grille = null; return }
+    if (this.carteDuChamp !== c.carte) {
+      this.carteDuChamp = c.carte
+      this.grille = grilleDeCarte(c.carte)
+    }
+    const g = this.grille
+    if (!g) return
+    this.champ.calculer(
+      g, Math.floor(cible.x / g.tuile), Math.floor(cible.y / g.tuile), PORTEE_NAVIGATION,
+    )
+  }
+
+  /**
+   * Ou aller pour rejoindre la cible, en tenant compte des murs.
+   *
+   * Rend un vecteur NORMALISE, ou null quand il n'y a rien de mieux a
+   * proposer que la ligne droite. Trois cas, dans cet ordre :
+   *
+   * 1. la cible est en vue : on va droit dessus. C'est ce qui se passe neuf
+   *    fois sur dix, c'est le moins cher, et c'est le plus naturel a
+   *    regarder — suivre un champ de case en case donne une marche en
+   *    escalier que l'oeil repere aussitot.
+   * 2. elle ne l'est pas, mais le champ sait ou aller : on vise le CENTRE de
+   *    la case suivante, pour ne pas raser l'angle du mur qu'on contourne.
+   * 3. le champ ne sait pas : on rend null, et l'appelant reprend la ligne
+   *    droite. C'est le comportement d'avant ce fichier, donc rien ne peut
+   *    empirer.
+   */
+  direction(v: { x: number; y: number }, cible: { x: number; y: number }):
+  { x: number; y: number } | null {
+    const g = this.grille
+    if (!g) return null
+    if (ligneLibre(g, v.x, v.y, cible.x, cible.y)) return null
+    const cx = Math.floor(v.x / g.tuile)
+    const cy = Math.floor(v.y / g.tuile)
+    if (this.champ.distanceDe(cx, cy) === LOIN) return null
+    const pas = this.champ.pasVers(g, cx, cy)
+    if (!pas) return null
+    const bx = pas.x * g.tuile + g.tuile / 2
+    const by = pas.y * g.tuile + g.tuile / 2
+    const dx = bx - v.x
+    const dy = by - v.y
+    const n = Math.hypot(dx, dy)
+    if (n < 1e-6) return null
+    return { x: dx / n, y: dy / n }
+  }
+
   avancer(
     c: ContexteJeu, cible: { x: number; y: number }, dtMs: number,
   ): { id: string; nom: string }[] {
@@ -561,6 +646,12 @@ export class Peuplement {
     // porte son passager, AVANT que le passager ne decide ou il va. L'inverse
     // le ferait decider depuis une position qui n'existe deja plus.
     this.avancerPorteurs(c, dtMs)
+    // Le champ de navigation, une fois pour toutes les creatures. On le
+    // recalcule a CHAQUE pas plutot que de le garder : garder demanderait de
+    // savoir quand il devient faux — la cible bouge, une porte s'ouvre, une
+    // caisse est poussee — et une reponse fausse a cette question-la se paie
+    // en creatures qui longent un mur disparu.
+    this.rafraichirNavigation(c, cible)
     for (const v of this.vivantes.values()) {
       const vie = this.combat.vies.get(v.noeud.id)
       // Un mort n'agit pas, ne frappe pas, et ne se fait pas frapper. Le
@@ -585,7 +676,13 @@ export class Peuplement {
       v.restant -= dtMs
       if (v.restant <= 0) { aRetirer.push(v.noeud.id); continue }
 
-      const fini = agir(v, c, dx, dy, distance, dtMs, this.projection, this.tuile)
+      const intentionCourante = v.etat ? v.etat.intention : v.espece.comportement
+      const contournement = peutContourner(intentionCourante, v.espece, this.projection, distance)
+        ? this.direction(v.noeud, cible)
+        : null
+      const fini = agir(
+        v, c, dx, dy, distance, dtMs, this.projection, this.tuile, contournement,
+      )
       if (fini) { aRetirer.push(v.noeud.id); continue }
 
       vie.x = v.noeud.x
@@ -1013,6 +1110,44 @@ export function retirerDe(racine: Noeud, cible: Noeud): boolean {
 }
 
 /**
+ * Cette entite-la a-t-elle a la fois la RAISON et le MOYEN de contourner ?
+ *
+ * ## La raison
+ *
+ * Poursuivre. Une patrouille qui n'a rien remarque, un projectile, un porteur
+ * n'ont aucune cible a rejoindre : leur chercher un itineraire serait payer un
+ * calcul a chaque pas pour n'en rien faire.
+ *
+ * ## Le moyen
+ *
+ * Le champ de navigation suppose qu'on peut aller dans les huit directions.
+ * C'est vrai vu de dessus, et vrai d'une creature qui VOLE. Ca ne l'est pas
+ * d'une creature pesante dans un monde vu de cote : elle marche, et un
+ * itineraire qui passe par les airs l'enverrait droit dans un mur — en
+ * S'ELOIGNANT de sa cible, ce qui est pire que l'entetement qu'on corrigeait.
+ * Elle garde donc la ligne droite, c'est-a-dire ce qu'elle faisait avant que
+ * la navigation existe : on ne peut rien lui faire perdre.
+ *
+ * C'est le meme mot que pour la pesanteur, et ce n'est pas un hasard :
+ * `pesante` dit « ce monde a un bas, et je lui obeis ».
+ *
+ * ## Pourquoi c'est une fonction et non trois lignes dans la boucle
+ *
+ * Parce que c'est une REGLE, et qu'une regle doit pouvoir etre interrogee
+ * seule. Ecrite dans la boucle, on ne pouvait l'eprouver qu'en observant une
+ * creature pendant quelques secondes et en devinant pourquoi elle avait fait
+ * ce qu'elle avait fait.
+ */
+export function peutContourner(
+  intention: string, espece: Espece, projection: Projection, distance: number,
+): boolean {
+  const poursuit = intention === 'poursuite'
+    || (intention === 'patrouille' && espece.vigilance > 0 && distance < espece.vigilance)
+  if (!poursuit) return false
+  return projection.regard !== 'cote' || !espece.pesante
+}
+
+/**
  * Ce que fait une entite, selon son intention.
  *
  * Les quatre tiennent dans une fonction parce qu'elles partagent tout sauf
@@ -1022,6 +1157,14 @@ export function retirerDe(racine: Noeud, cible: Noeud): boolean {
 function agir(
   v: Vivante, c: ContexteJeu, dx: number, dy: number, distance: number, dtMs: number,
   projection: Projection, tuile: number,
+  /**
+   * Ou aller pour contourner ce qui bloque, ou null pour la ligne droite.
+   *
+   * Elle est passee en argument et non lue depuis le peuplement : `agir` est
+   * une fonction libre, et lui donner acces au peuplement entier pour un
+   * vecteur ferait d'elle une methode qui s'ignore.
+   */
+  contournement: { x: number; y: number } | null = null,
 ): boolean {
   const e = v.espece
   // La pesanteur AVANT l'intention : une creature qui vient de tomber d'un
@@ -1045,8 +1188,12 @@ function agir(
       patrouiller(v, c)
       return false
     }
+    // Le contournement quand il y en a un, la ligne droite sinon. La ligne
+    // droite reste le cas ordinaire : en salle ouverte, rien ne change.
     const n = distance || 1
-    c.bouger(v.corps, (dx / n) * e.vitesse * c.dt, (dy / n) * e.vitesse * c.dt)
+    const ux = contournement ? contournement.x : dx / n
+    const uy = contournement ? contournement.y : dy / n
+    c.bouger(v.corps, ux * e.vitesse * c.dt, uy * e.vitesse * c.dt)
     return false
   }
 

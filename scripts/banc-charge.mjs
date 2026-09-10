@@ -255,6 +255,69 @@ console.log('\n--- engendrer un etage ---')
     r.ms < 100, `${r.ms.toFixed(2)} ms — on peut donc en proposer un autre sans attente`)
 }
 
+console.log('\n--- la navigation : contourner ce qui bloque ---')
+
+/*
+ * Le champ de navigation se recalcule ENTIEREMENT a chaque pas — c'est ce qui
+ * le rend insensible au rembobinage, et c'est aussi ce qui pourrait le rendre
+ * cher. On le mesure donc pour de bon, sur une salle plus grande que ce
+ * qu'aucun jeu du genre n'utilise.
+ */
+{
+  const { Carte, SOLIDE } = await import('../src/tuiles/tilemap.ts')
+  const { ChampDeFlux, grilleDeCarte, ligneLibre } = await import('../src/runtime/chemin.ts')
+
+  // Soixante cases sur quarante, avec des piliers : plus grand qu'une salle
+  // d'Isaac, et bien plus encombre.
+  const carte = new Carte(60, 40, 16)
+  carte.ajouterCalque('sol')
+  for (let y = 0; y < 40; y++) {
+    for (let x = 0; x < 60; x++) {
+      const bord = x === 0 || y === 0 || x === 59 || y === 39
+      const pilier = x % 7 === 3 && y % 5 === 2
+      if (bord || pilier) carte.solides[carte.index(x, y)] = SOLIDE
+    }
+  }
+  const g = grilleDeCarte(carte)
+  const champ = new ChampDeFlux()
+
+  const plein = mesurer('champ', (i) => champ.calculer(g, 2 + (i % 3), 2, 60), 400, 50)
+  console.log(`        champ sur 60×40, portée entière · ${plein.ms.toFixed(3)} ms · ${champ.visitees} cases`)
+  check('un champ de navigation sur une grande salle tient dans un dixième d’image',
+    plein.ms < 16.7 / 10,
+    `${plein.ms.toFixed(3)} ms pour ${champ.visitees} cases — et il sert TOUTES les créatures à la fois`)
+
+  // La portee est le reglage qui compte : c'est elle qui rend le cout
+  // independant de la taille de la carte.
+  const borne = mesurer('champ borné', (i) => champ.calculer(g, 2 + (i % 3), 2, 26), 400, 50)
+  console.log(`        champ à portée 26 · ${borne.ms.toFixed(3)} ms · ${champ.visitees} cases`)
+  check('et la portée employée par le moteur coûte moins encore',
+    borne.ms <= plein.ms + 0.01,
+    `${borne.ms.toFixed(3)} ms contre ${plein.ms.toFixed(3)} — la portée borne le travail, pas la carte`)
+
+  /*
+   * La ligne de vue, elle, se paie PAR CREATURE : c'est le seul morceau de la
+   * navigation qui monte avec le nombre d'ennemis. On verifie qu'il reste
+   * negligeable a trois cents.
+   */
+  const vues = mesurer('lignes de vue', (i) => {
+    for (let k = 0; k < 300; k++) {
+      ligneLibre(g, 40 * 16, (2 + (k % 30)) * 16, (4 + (i % 3)) * 16, 20 * 16)
+    }
+  }, 200, 20)
+  console.log(`        300 lignes de vue · ${vues.ms.toFixed(3)} ms`)
+  check('trois cents lignes de vue tiennent dans un dixième d’image',
+    vues.ms < 16.7 / 10,
+    `${vues.ms.toFixed(3)} ms — c’est la seule part de la navigation qui suive le nombre d’ennemis`)
+
+  // Et l'essentiel : le champ ne depend PAS du nombre de creatures. Un champ
+  // par creature ferait trois cents fois ce temps-la.
+  check('un champ partagé vaut trois cents recherches évitées',
+    plein.ms * 300 > 16.7,
+    `${(plein.ms * 300).toFixed(1)} ms si chaque créature cherchait pour elle — soit `
+    + `${(plein.ms * 300 / 16.7).toFixed(1)} images pour un seul pas`)
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)
