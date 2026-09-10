@@ -5,16 +5,18 @@ Un éditeur de jeux 2D **fait pour le pixel art**, de bout en bout.
 Ce n'est pas un moteur généraliste avec un mode pixel art. C'est l'inverse : la
 grille de pixels est le contrat de base, et tout le reste s'y plie.
 
-## Trois regards, un seul moteur
+## Quatre mondes, un seul moteur
 
 |  |  |
 | --- | --- |
 | **Donjon** — orthogonale, vue de dessus | **Caverne** — orthogonale, vue de côté |
 | ![Le donjon](docs/donjon.png) | ![La caverne](docs/caverne.png) |
+| **Étage engendré** — salles, caméra verrouillée | |
+| ![L'étage engendré](docs/etage.png) | |
 
 ![La citadelle isométrique](docs/citadelle.png)
 
-Les trois se choisissent dans la barre de l'éditeur et se jouent tout de suite.
+Les quatre se choisissent dans la barre de l'éditeur et se jouent tout de suite.
 Ils partagent **tout** ce qui compte : la même grille carrée de seize pixels, le
 même moteur de collision, le même héros, le même contrat de pixel. Ce qui les
 sépare tient en trois déclarations — une projection, un script, une planche de
@@ -37,6 +39,30 @@ Ce que ça achète, mode par mode :
   visible, le clic vise le bon losange jusqu'aux bords, et tuiles et personnages
   sont mêlés dans un seul tri : un mur passe devant ou derrière le héros selon
   sa case, et la réponse change à chaque pas.
+- **Salles engendrées** — un étage à la Isaac, tiré d'une graine : le boss au
+  cul-de-sac le plus loin du départ, le trésor dans une autre impasse, et la
+  caméra verrouillée sur la salle — on ne voit la suivante qu'en y entrant.
+
+### L'étage engendré, en détail
+
+La règle qui fait tout tient en une ligne : **une salle candidate est refusée
+si elle touche déjà plus d'une salle placée.** Sans elle, les salles se collent
+en pavé, il n'y a plus ni branche ni cul-de-sac, donc plus rien à découvrir et
+nulle part où mettre un trésor. Le banc le mesure : 5 impasses par étage avec
+la règle, 0 pour un pavé.
+
+Les obstacles évitent deux bandes — celle des portes horizontales, celle des
+portes verticales — qui forment une croix libre au milieu de chaque salle et
+relient à elles seules les quatre portes possibles. Aucun tirage ne peut donc
+condamner une salle. L'alternative — poser au hasard, vérifier, recommencer —
+est séduisante et mauvaise : elle rend le temps de génération imprévisible, et
+elle ne garantit rien tant qu'on n'a pas borné le nombre d'essais. Une règle
+qui rend la faute **impossible** vaut mieux qu'une règle qui la rattrape.
+
+Et la vérification qui compte n'est pas sur le plan : elle marche **case par
+case sur la vraie grille de tuiles**, depuis le départ, et exige d'atteindre le
+centre de chaque salle. 60 étages, 720 salles, aucune injoignable. Un plan peut
+être parfait et l'assemblage condamner une porte.
 
 ## Ce que ça veut dire, concrètement
 
@@ -73,6 +99,8 @@ seconde.
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
 - édition : pinceau de terrain, gomme, collision, déplacement de la vue — et le
   pinceau vise le bon losange en isométrique, pas la case d'à côté
+- génération d'étages en salles, reproductible depuis une graine
+- caméra verrouillée sur la salle, avec glissement à vitesse constante
 - Tiled et LDtk, dans les deux sens
 - export du projet et de son chargeur
 
@@ -112,7 +140,7 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 60 vérifications des mondes et des animations
+npm run banc:mondes     # 71 vérifications des mondes, animations et étages
 npm run banc:langages   # 43 vérifications des chargeurs et de leur accord
 npm run build
 ```

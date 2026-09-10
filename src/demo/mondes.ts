@@ -19,6 +19,9 @@ import {
   ISO_SOL, ISO_HERBE, ISO_EAU, ISO_MUR, ISO_CAISSE, ISO_SORTIE,
 } from './art-iso.ts'
 import { construireDonjon } from './donjon.ts'
+import { engendrerPlan, type SallePlan } from '../niveau/plan.ts'
+import { assemblerEtage } from '../niveau/assemblage.ts'
+import { TUILE_SOL, TUILE_SORTIE } from './art.ts'
 
 /**
  * Les mondes de demonstration : un par REGARD.
@@ -498,8 +501,106 @@ export function mondeCitadelle(): Monde {
  */
 export { PLAN_CAVERNE, PLAN_CITADELLE, REGLAGES_DEFAUT }
 
+/* ------------------------------------------------------------------ */
+/* 4. L'etage : des salles engendrees, camera verrouillee              */
+/* ------------------------------------------------------------------ */
+
+const NOM_ROLE: Record<string, string> = {
+  depart: 'départ', commune: 'salle', tresor: 'trésor', boutique: 'boutique', boss: 'boss',
+}
+
+/**
+ * Un etage engendre, a la maniere d'Isaac.
+ *
+ * Le monde est le meme que le donjon — vue de dessus, meme heros, meme
+ * collision. Ce qui change tient en deux choses : le niveau est ENGENDRE
+ * depuis une graine au lieu d'etre ecrit a la main, et la camera est
+ * verrouillee sur la salle au lieu de suivre le personnage. La deuxieme est ce
+ * qui fait le genre : on ne voit jamais la salle suivante avant d'y entrer.
+ */
+export function mondeEtage(graine = 1): Monde {
+  const plan = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+  const etage = assemblerEtage(plan, {
+    largeurSalle: 20, hauteurSalle: 11, tuile: TUILE,
+    tuileSol: TUILE_SOL, tuileMarque: TUILE_SORTIE,
+  })
+  const projection = ORTHO_DESSUS(TUILE)
+  const animations = clipsHeros()
+  const lecteur = new Lecteur(animations)
+
+  const racine = creerNoeud('noeud', 'etage')
+  const noeudCarte = creerNoeud('carte', 'decor') as Noeud & { source: string }
+  noeudCarte.source = 'etage'
+  racine.enfants.push(noeudCarte)
+
+  const heros = creerNoeud('sprite', 'heros') as NoeudSprite
+  heros.source = 'heros'
+  heros.ancreX = TUILE / 2
+  heros.ancreY = TUILE
+  heros.x = etage.depart.x
+  heros.y = etage.depart.y
+
+  const corps = creerNoeud('corps', 'corps') as NoeudCorps
+  corps.boiteX = -4
+  corps.boiteY = -6
+  corps.boiteL = 8
+  corps.boiteH = 6
+  heros.enfants.push(corps)
+  racine.enfants.push(heros)
+
+  let visitees = new Set<SallePlan>([plan.depart])
+
+  return {
+    id: 'etage',
+    nom: `Étage engendré — graine ${graine}`,
+    aide: 'Flèches ou ZQSD. La caméra est verrouillée sur la salle : on ne voit la suivante qu’en y entrant. Le boss est au cul-de-sac le plus loin du départ.',
+    // La vue fait EXACTEMENT une salle : 20 x 11 cases de seize pixels. Une vue
+    // plus grande montrerait le mur de la salle d'a cote, une plus petite
+    // couperait la salle en deux.
+    vue: { largeur: 20 * TUILE, hauteur: 11 * TUILE },
+    projection,
+    carte: etage.carte,
+    racine,
+    heros,
+    depart: etage.depart,
+    couleurs: [...couleursDe(CLE_DONJON), ...couleursDe(CLE_HEROS)],
+    animations,
+    tuilePinceau: 0,
+    installer(jeu) {
+      jeu.cartes.set('etage', {
+        carte: etage.carte,
+        atlas: atlasDepuisLettres(PLANCHE_DONJON, CLE_DONJON, TUILE, 8),
+      })
+      jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
+      jeu.scripts.set('heros', scriptDessus(projection, TUILE, VITESSE_DESSUS, lecteur))
+      jeu.suivreNoeud('heros')
+      jeu.cameraParSalle = { largeur: etage.largeurSalle, hauteur: etage.hauteurSalle }
+      jeu.scripts.set('etage', () => {
+        const s = etage.salleEn(heros.x, heros.y)
+        if (s) visitees.add(s)
+      })
+    },
+    reinitialiser() {
+      heros.x = etage.depart.x
+      heros.y = etage.depart.y
+      heros.image = imageHeros(DIR_BAS, TEMPS_REPOS)
+      heros.miroir = false
+      lecteur.reinitialiser()
+      visitees = new Set([plan.depart])
+    },
+    etat: () => {
+      const s = etage.salleEn(heros.x, heros.y)
+      return `${NOM_ROLE[s?.role ?? 'commune']} · ${visitees.size}/${plan.salles.length} salles`
+        + ` · boss à ${plan.boss.distance} salles du départ`
+    },
+  }
+}
+
 export const MONDES: { id: string; nom: string; construire: () => Monde }[] = [
   { id: 'donjon', nom: 'Donjon (dessus)', construire: mondeDonjon },
   { id: 'caverne', nom: 'Caverne (côté)', construire: mondeCaverne },
   { id: 'citadelle', nom: 'Citadelle (iso)', construire: mondeCitadelle },
+  // La graine est fixe pour que la demonstration soit la meme pour tout le
+  // monde : un bogue vu chez quelqu'un doit pouvoir etre revu ici.
+  { id: 'etage', nom: 'Étage engendré (salles)', construire: () => mondeEtage(7) },
 ]

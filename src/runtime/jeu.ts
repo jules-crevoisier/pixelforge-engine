@@ -59,6 +59,30 @@ export class Jeu {
   projection: Projection
   /** Marge morte de la camera, en pixels de l'ecran. */
   margeCamera = { x: 32, y: 20 }
+  /**
+   * Verrouille la camera sur une salle de cette taille, en cases.
+   *
+   * ## Deux cameras, deux jeux differents
+   *
+   * La camera qui SUIT convient a un monde continu : on voit toujours autour
+   * de soi, et le cadrage n'a pas de sens propre. La camera par SALLE dit tout
+   * autre chose : la salle est l'unite, on la voit en entier, et l'on ne sait
+   * rien de la suivante avant d'y entrer. C'est ce cadrage qui fait un Zelda,
+   * un Isaac, un Metroid — le suspense y est une consequence directe de la
+   * camera, pas d'un artifice.
+   *
+   * Elle n'a de sens qu'en projection orthogonale : en isometrique une salle
+   * rectangulaire de cases est un losange a l'ecran, et le cadrage montrerait
+   * quatre coins de vide.
+   */
+  cameraParSalle: { largeur: number; hauteur: number } | null = null
+  /**
+   * Duree du glissement d'une salle a l'autre, en secondes.
+   *
+   * Zero donne une coupe franche, comme le Zelda de 1986. Un quart de seconde
+   * donne le glissement d'Isaac. Plus long, et l'on attend.
+   */
+  dureeTransition = 0.28
   cartes = new Map<string, { carte: Carte; atlas: Atlas }>()
   sprites = new Map<string, Atlas>()
   /** Scripts par nom de noeud. */
@@ -80,6 +104,15 @@ export class Jeu {
 
   suivreNoeud(nom: string | null): void { this.cibleCamera = nom }
 
+  /** Le coin de la salle qui contient ce point du monde, en pixels. */
+  private coinSalle(x: number, y: number): { x: number; y: number } | null {
+    const s = this.cameraParSalle
+    if (!s) return null
+    const lp = s.largeur * this.carte.tuile
+    const hp = s.hauteur * this.carte.tuile
+    return { x: Math.floor(x / lp) * lp, y: Math.floor(y / hp) * hp }
+  }
+
   /**
    * Pose la camera sur sa cible d'un coup, sans marge morte.
    *
@@ -93,6 +126,8 @@ export class Jeu {
     if (!this.cibleCamera) return
     const c = trouverParNom(this.racine, this.cibleCamera)
     if (!c) return
+    const coin = this.coinSalle(c.x, c.y)
+    if (coin) { this.camera.x = coin.x; this.camera.y = coin.y; return }
     const p = projeter(this.projection, c.x, c.y, this.carte.tuile)
     this.camera.x = p.x - this.ecran.vue.largeur / 2
     this.camera.y = p.y - this.ecran.vue.hauteur / 2
@@ -123,7 +158,36 @@ export class Jeu {
     }
     if (this.cibleCamera) {
       const c = trouverParNom(this.racine, this.cibleCamera)
-      if (c) {
+      if (c && this.cameraParSalle) {
+        // Le cadrage par salle : la camera vise le coin de la salle occupee,
+        // et y glisse. On vise le coin et non le centre du heros — sinon le
+        // cadrage bougerait a l'interieur de la salle, ce qui est exactement
+        // ce qu'on ne veut pas.
+        const coin = this.coinSalle(c.x, c.y)
+        if (coin) {
+          const dt = this.boucle.pasMs / 1000
+          if (this.dureeTransition <= 0) {
+            this.camera.x = coin.x
+            this.camera.y = coin.y
+          } else {
+            // Un glissement a vitesse constante, et non un lissage
+            // exponentiel : le lissage n'arrive jamais tout a fait, et la
+            // camera continue de ramper d'un demi-pixel bien apres que le
+            // joueur a repris la main.
+            const dx = coin.x - this.camera.x
+            const dy = coin.y - this.camera.y
+            const reste = Math.hypot(dx, dy)
+            const pas = (Math.hypot(this.ecran.vue.largeur, this.ecran.vue.hauteur) / this.dureeTransition) * dt
+            if (reste <= pas) {
+              this.camera.x = coin.x
+              this.camera.y = coin.y
+            } else {
+              this.camera.x += (dx / reste) * pas
+              this.camera.y += (dy / reste) * pas
+            }
+          }
+        }
+      } else if (c) {
         // La camera vit dans le repere de l'ECRAN : elle cadre ce qu'on voit,
         // pas ou l'on est. Suivre la cible en coordonnees orthogonales
         // marcherait de dessus et deraperait en isometrique, ou avancer d'une

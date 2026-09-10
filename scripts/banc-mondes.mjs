@@ -591,10 +591,185 @@ console.log('\n--- la citadelle tient debout ---')
     'sinon le heros traverserait le decor sans que rien ne le signale')
 }
 
-console.log('\n--- les trois mondes se construisent tous ---')
+console.log('\n--- l\'etage engendre ---')
 
 {
-  for (const construire of [mondeDonjon, () => caverne, mondeCitadelle]) {
+  const { engendrerPlan, sallesAtteignables, Hasard } =
+    await import('../src/niveau/plan.ts')
+  const { assemblerEtage } = await import('../src/niveau/assemblage.ts')
+
+  // La graine, d'abord. Un niveau qu'on ne peut pas reproduire est un niveau
+  // qu'on ne peut pas corriger : « il y avait un mur infranchissable » devient
+  // une histoire au lieu d'un rapport.
+  {
+    const a = engendrerPlan(1234, { salles: 12 })
+    const b = engendrerPlan(1234, { salles: 12 })
+    const empreinte = (p) => p.salles.map((s) => `${s.cx},${s.cy},${s.role}`).sort().join('|')
+    check('la meme graine rend le meme etage', empreinte(a) === empreinte(b),
+      `${a.salles.length} salles, empreinte identique`)
+    const c = engendrerPlan(1235, { salles: 12 })
+    check('et deux graines voisines rendent deux etages differents',
+      empreinte(a) !== empreinte(c),
+      'les bits de poids faible d\'un generateur congruentiel sont mauvais : ' +
+      'un modulo 2 rendait le meme etage pour toutes les graines')
+
+    // La preuve directe du defaut repare : le dernier bit d'un generateur
+    // congruentiel alterne strictement, quelle que soit la graine. Le tirage
+    // par bits de poids fort, lui, varie.
+    const parModulo = []
+    const g = new Hasard(99)
+    for (let i = 0; i < 16; i++) parModulo.push(g.suivant() % 2)
+    const parBitsForts = []
+    const g2 = new Hasard(99)
+    for (let i = 0; i < 16; i++) parBitsForts.push(g2.entier(2))
+    const alterne = (t) => t.every((v, i) => i === 0 || v !== t[i - 1])
+    check('le modulo alterne strictement, les bits de poids fort non',
+      alterne(parModulo) && !alterne(parBitsForts),
+      `modulo ${parModulo.join('')} · poids fort ${parBitsForts.join('')}`)
+  }
+
+  // Le plan tient debout : connexite, boss au plus loin, nombre respecte.
+  {
+    let deconnectes = 0
+    let bossMalPlace = 0
+    let manquants = 0
+    for (let graine = 1; graine <= 120; graine++) {
+      const p = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+      if (sallesAtteignables(p).size !== p.salles.length) deconnectes++
+      if (p.salles.length !== 12) manquants++
+      const plusLoin = Math.max(...p.salles.map((s) => s.distance))
+      const impasses = p.salles.filter((s) => s !== p.depart && s.voisines.filter(Boolean).length === 1)
+      // Le boss est le cul-de-sac le plus lointain. S'il y a des impasses, il
+      // en est une ; et aucune impasse n'est plus loin que lui.
+      if (impasses.length && (!impasses.includes(p.boss)
+          || impasses.some((s) => s.distance > p.boss.distance))) bossMalPlace++
+      void plusLoin
+    }
+    check('toutes les salles du plan sont reliees au depart', deconnectes === 0,
+      deconnectes ? `${deconnectes} etages coupes sur 120` : '120 graines')
+    check('le nombre de salles demande est atteint', manquants === 0,
+      manquants ? `${manquants} etages incomplets` : '12 salles a chaque fois')
+    check('le boss est au cul-de-sac le plus loin du depart', bossMalPlace === 0,
+      bossMalPlace ? `${bossMalPlace} etages mal places`
+        : 'en nombre de salles parcourues, et non a vol d\'oiseau')
+  }
+
+  // Et le sens inverse : sans la regle du voisinage unique, l'etage se colle
+  // en pave et il n'y a plus ni branche ni cul-de-sac ou cacher un tresor.
+  {
+    let avecRegle = 0
+    let sansRegle = 0
+    for (let graine = 1; graine <= 40; graine++) {
+      const p = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+      avecRegle += p.salles.filter((s) => s.voisines.filter(Boolean).length === 1).length
+      // Un pave de 4 x 3 : ce que donne la croissance sans la regle.
+      const pave = []
+      for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) pave.push({ x, y })
+      sansRegle += pave.filter((c) => {
+        const n = pave.filter((o) => Math.abs(o.x - c.x) + Math.abs(o.y - c.y) === 1).length
+        return n === 1
+      }).length
+    }
+    check('la regle du voisinage unique donne des branches et des culs-de-sac',
+      avecRegle / 40 > sansRegle / 40,
+      `${(avecRegle / 40).toFixed(1)} impasses par etage contre ${(sansRegle / 40).toFixed(1)} pour un pave`)
+  }
+
+  // La verification qui compte vraiment : sur la VRAIE grille de tuiles, en
+  // marchant case par case, chaque salle est-elle atteignable ? Le plan peut
+  // etre parfait et l'assemblage condamner une porte avec un bloc.
+  {
+    let etagesCoupes = 0
+    let pire = ''
+    for (let graine = 1; graine <= 60; graine++) {
+      const plan = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+      const e = assemblerEtage(plan)
+      const c = e.carte
+      const vus = new Uint8Array(c.cases)
+      const dx = Math.floor(e.depart.x / c.tuile)
+      const dy = Math.floor(e.depart.y / c.tuile) - 1
+      const file = [[dx, dy]]
+      vus[c.index(dx, dy)] = 1
+      while (file.length) {
+        const [x, y] = file.pop()
+        for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + ax
+          const ny = y + ay
+          if (!c.dedans(nx, ny) || vus[c.index(nx, ny)] || c.solide(nx, ny)) continue
+          vus[c.index(nx, ny)] = 1
+          file.push([nx, ny])
+        }
+      }
+      const manquees = plan.salles.filter((s) => {
+        const o = e.coinDe(s)
+        return !vus[c.index(o.x + Math.floor(e.largeurSalle / 2), o.y + Math.floor(e.hauteurSalle / 2))]
+      })
+      if (manquees.length) { etagesCoupes++; pire ||= `graine ${graine} : ${manquees.length} salles` }
+    }
+    check('en marchant case par case, aucune salle n\'est injoignable',
+      etagesCoupes === 0,
+      etagesCoupes ? `${etagesCoupes} etages sur 60, ${pire}` : '60 etages, 720 salles')
+  }
+
+  // Une porte percee d'un seul cote laisse un mur invisible d'une case : le
+  // joueur se cogne dans ce qui a l'air d'etre une ouverture.
+  {
+    const plan = engendrerPlan(7, { salles: 12, largeur: 9, hauteur: 7 })
+    const e = assemblerEtage(plan)
+    const c = e.carte
+    let percees = 0
+    let borgnes = 0
+    for (const s of plan.salles) {
+      const o = e.coinDe(s)
+      for (let d = 0; d < 4; d++) {
+        const v = s.voisines[d]
+        if (!v) continue
+        percees++
+        const dir = [[1, 0], [0, 1], [-1, 0], [0, -1]][d]
+        let cote = 0
+        if (dir[0] !== 0) {
+          const x = dir[0] > 0 ? o.x + e.largeurSalle - 1 : o.x
+          const y = o.y + Math.floor((e.hauteurSalle - 3) / 2) + 1
+          if (!c.solide(x, y)) cote++
+          if (!c.solide(x + dir[0], y)) cote++
+        } else {
+          const y = dir[1] > 0 ? o.y + e.hauteurSalle - 1 : o.y
+          const x = o.x + Math.floor((e.largeurSalle - 2) / 2)
+          if (!c.solide(x, y)) cote++
+          if (!c.solide(x, y + dir[1])) cote++
+        }
+        if (cote !== 2) borgnes++
+      }
+    }
+    check('chaque porte perce LES DEUX murs mitoyens', borgnes === 0,
+      borgnes ? `${borgnes} portes borgnes sur ${percees}` : `${percees} passages`)
+  }
+
+  // Les cellules sans salle restent solides : on ne doit pas pouvoir sortir de
+  // l'etage par un trou dans la grille.
+  {
+    const plan = engendrerPlan(3, { salles: 8, largeur: 9, hauteur: 7 })
+    const e = assemblerEtage(plan)
+    let percees = 0
+    for (let cy = 0; cy < plan.hauteur; cy++) {
+      for (let cx = 0; cx < plan.largeur; cx++) {
+        if (plan.salles.some((s) => s.cx === cx && s.cy === cy)) continue
+        const o = { x: cx * e.largeurSalle, y: cy * e.hauteurSalle }
+        for (let y = 0; y < e.hauteurSalle; y++) {
+          for (let x = 0; x < e.largeurSalle; x++) if (!e.carte.solide(o.x + x, o.y + y)) percees++
+        }
+      }
+    }
+    check('les cellules sans salle restent pleines', percees === 0,
+      percees ? `${percees} cases traversables hors salle` : 'on commence plein et l\'on creuse')
+  }
+}
+
+console.log('\n--- les quatre mondes se construisent tous ---')
+
+{
+  const { mondeEtage } = await import('../src/demo/mondes.ts')
+  for (const construire of [mondeDonjon, () => caverne, mondeCitadelle, () => mondeEtage(7)]) {
     const m = construire()
     check(`${m.id} : ${m.projection.mode} vue de ${m.projection.regard}, ${m.carte.largeur}x${m.carte.hauteur}`,
       m.carte.calques.length > 0 && m.couleurs.length > 0 && m.heros.source === 'heros'
