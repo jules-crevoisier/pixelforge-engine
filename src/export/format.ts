@@ -186,12 +186,31 @@ export interface NoeudSerialise {
   y: number
   visible: boolean
   script: string | null
-  /** Les champs propres au type, tels quels. */
+  /**
+   * L'espece de ce noeud, et l'image qu'il montre.
+   *
+   * Ces deux-la sont REMONTES a cote des champs communs au lieu de rester dans
+   * le sac des proprietes, et ce n'est pas un caprice : ce sont exactement les
+   * deux valeurs qu'il faut pour dessiner une entite, et beaucoup de lecteurs
+   * ne savent pas lire un dictionnaire libre. `JsonUtility`, celui d'Unity,
+   * n'en lit aucun ; une structure Rust non plus, sans travail
+   * supplementaire. Les remonter fait que le paquet Unity marche sans qu'on
+   * ait a livrer un analyseur JSON complet avec.
+   *
+   * Ils ne sont PAS dupliques dans les proprietes : deux endroits pour une
+   * meme valeur, c'est un jour ou les deux ne disent pas la meme chose.
+   */
+  espece: string | null
+  image: number
+  /** Les autres champs propres au type, tels quels. */
   proprietes: Record<string, unknown>
   enfants: NoeudSerialise[]
 }
 
-const CHAMPS_COMMUNS = new Set(['id', 'nom', 'type', 'x', 'y', 'visible', 'enfants', 'script', 'etat'])
+const CHAMPS_COMMUNS = new Set([
+  'id', 'nom', 'type', 'x', 'y', 'visible', 'enfants', 'script', 'etat',
+  'espece', 'image',
+])
 
 export function serialiserNoeud(n: Noeud): NoeudSerialise {
   const proprietes: Record<string, unknown> = {}
@@ -199,9 +218,13 @@ export function serialiserNoeud(n: Noeud): NoeudSerialise {
     if (CHAMPS_COMMUNS.has(k)) continue
     proprietes[k] = v
   }
+  const brut = n as unknown as { espece?: string; image?: number }
   return {
     id: n.id, nom: n.nom, type: n.type, x: n.x, y: n.y, visible: n.visible,
-    script: n.script, proprietes,
+    script: n.script,
+    espece: typeof brut.espece === 'string' ? brut.espece : null,
+    image: typeof brut.image === 'number' ? brut.image : 0,
+    proprietes,
     enfants: n.enfants.map(serialiserNoeud),
   }
 }
@@ -319,6 +342,8 @@ export function relireNoeud(s: NoeudSerialise): Noeud {
   n.visible = s.visible
   n.script = s.script
   Object.assign(n, s.proprietes)
+  if (s.espece) (n as unknown as { espece: string }).espece = s.espece
+  if (typeof s.image === 'number') (n as unknown as { image: number }).image = s.image
   n.enfants = (s.enfants ?? []).map(relireNoeud)
   return n
 }

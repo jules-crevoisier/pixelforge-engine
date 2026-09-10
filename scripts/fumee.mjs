@@ -120,9 +120,18 @@ await p.selectOption('#cible', 'python')
 await p.click('#exporter')
 await p.waitForTimeout(900)
 ok('l\'export produit deux fichiers', telecharges.length === 2, telecharges.join(', '))
+
+await p.selectOption('#cible', 'paquet:godot')
+await p.click('#exporter')
+await p.waitForTimeout(1600)
+ok('un projet Godot part en une seule archive',
+  telecharges.length === 3 && telecharges[2].endsWith('-godot.zip'), telecharges[2])
+ok('et la barre d\'état dit ce qu\'elle contient',
+  /\d+ fichiers/.test(await p.textContent('#verdict')), await p.textContent('#verdict'))
 await p.click('#enregistrer')
 await p.waitForTimeout(900)
-ok('Enregistrer telecharge le projet faute de dossier', telecharges.length === 3, telecharges.join(', '))
+ok('Enregistrer telecharge le projet faute de dossier',
+  telecharges.length === 4 && telecharges[3].endsWith('.json'), telecharges.join(', '))
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length

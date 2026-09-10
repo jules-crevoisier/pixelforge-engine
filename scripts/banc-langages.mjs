@@ -414,6 +414,145 @@ for (const [cible, marqueurs] of [
 check('chaque cible annoncee produit un chargeur non vide',
   CIBLES.every((c) => chargeur(c.id, projet).length > 400), `${CIBLES.length} cibles`)
 
+console.log('\n--- les paquets Godot et Unity ---')
+
+{
+  const { paquetGodot, paquetUnity, PAQUETS } = await import('../src/export/moteurs.ts')
+  const { zipper, crc32, versOctets } = await import('../src/export/paquet.ts')
+  const { encoderPng, planchePixels } = await import('../src/export/png.ts')
+
+  // Le CRC-32, d'abord : c'est lui qui decide si une archive s'ouvre, et il
+  // sert aussi aux morceaux du PNG. Une valeur connue vaut mieux qu'un
+  // sentiment — celle de « 123456789 » est publiee avec le format.
+  check('le CRC-32 rend la valeur de reference',
+    crc32(versOctets('123456789')) === 0xcbf43926,
+    `0x${crc32(versOctets('123456789')).toString(16)} — la valeur publiee avec le format`)
+
+  // Le PNG : sa structure se relit sans bibliotheque.
+  {
+    const img = planchePixels(
+      [['ab', '.a'], ['ba', 'b.']], { a: '#ff0000', b: '#00ff00' }, 2, 2, 1)
+    const png = encoderPng(img.largeur, img.hauteur, img.pixels)
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+    check('le PNG porte sa signature', signature.every((v, i) => png[i] === v))
+
+    // Chaque morceau porte son CRC, calcule sur le TYPE et les donnees — pas
+    // sur la longueur. C'est la faute la plus courante quand on ecrit un PNG a
+    // la main, et elle rend le fichier illisible sans rien expliquer.
+    let i = 8
+    const types = []
+    let fautifs = 0
+    const vue = new DataView(png.buffer, png.byteOffset, png.byteLength)
+    while (i < png.length) {
+      const n = vue.getUint32(i, false)
+      const type = String.fromCharCode(png[i + 4], png[i + 5], png[i + 6], png[i + 7])
+      types.push(type)
+      const couvert = png.subarray(i + 4, i + 8 + n)
+      if (vue.getUint32(i + 8 + n, false) !== crc32(couvert)) fautifs++
+      i += 12 + n
+    }
+    check('ses morceaux sont dans l\'ordre et leurs CRC tombent juste',
+      types.join(',') === 'IHDR,IDAT,IEND' && fautifs === 0,
+      `${types.join(', ')} — ${fautifs} CRC faux`)
+
+    // Et le sens inverse : un CRC calcule sur la longueur en plus est faux.
+    const faux = crc32(png.subarray(8, 8 + 4 + 13))
+    check('un CRC qui engloberait la longueur serait different',
+      faux !== vue.getUint32(8 + 8 + 13, false),
+      'c\'est exactement la faute que la verification ci-dessus attrape')
+
+    check('l\'image fait la taille annoncee',
+      vue.getUint32(16, false) === 2 && vue.getUint32(20, false) === 4,
+      `${vue.getUint32(16, false)}x${vue.getUint32(20, false)} pour 1 colonne de 2 dessins`)
+  }
+
+  // L'archive : on la relit avec son propre repertoire central.
+  {
+    const entrees = [
+      { chemin: 'a.txt', contenu: versOctets('bonjour') },
+      { chemin: 'd/b.json', contenu: versOctets('{"x":1}') },
+    ]
+    const z = zipper(entrees)
+    const v = new DataView(z.buffer, z.byteOffset, z.byteLength)
+    // La fin du repertoire central est le dernier bloc de vingt-deux octets.
+    const fin = z.length - 22
+    check('l\'archive porte sa signature de fin et le bon compte',
+      v.getUint32(fin, true) === 0x06054b50 && v.getUint16(fin + 10, true) === 2,
+      `${v.getUint16(fin + 10, true)} entrées`)
+    check('et chaque entree porte sa signature locale',
+      v.getUint32(0, true) === 0x04034b50)
+
+    // Reproductible : deux exports du meme projet donnent le meme octet. Sans
+    // date figee, impossible de dire si un export a change quelque chose.
+    const encore = zipper(entrees)
+    check('deux archives du meme contenu sont identiques octet pour octet',
+      z.length === encore.length && z.every((o, i) => o === encore[i]),
+      'la date est figee : un horodatage rendrait tout export different')
+  }
+
+  // Le paquet Godot : ce qu'il reference doit exister.
+  for (const [nom, entrees] of [['Godot', paquetGodot(projet)], ['Unity', paquetUnity(projet)]]) {
+    const chemins = new Set(entrees.map((e) => e.chemin))
+    const texte = new TextDecoder()
+    const manquants = []
+    for (const e of entrees) {
+      if (/\.(png|zip)$/.test(e.chemin)) continue
+      const contenu = texte.decode(e.contenu)
+      // Tout chemin cite dans un fichier engendre doit se trouver dans le
+      // paquet. Une reference cassee est la faute la plus courante d'un
+      // generateur de projet, et la seule qu'on decouvre a l'ouverture.
+      for (const m of contenu.matchAll(/res:\/\/([\w./%-]+)/g)) {
+        // Un chemin construit a l'execution — « planches/%s.png » — ne peut
+        // pas etre verifie ici. On le laisse passer plutot que de l'accuser a
+        // tort : c'est le nom de la planche qui le complete, et le projet.json
+        // dit deja quelles planches existent.
+        if (m[1].includes('%')) continue
+        if (!chemins.has(m[1])) manquants.push(`${e.chemin} -> res://${m[1]}`)
+      }
+    }
+    check(`${nom} : tout chemin cite existe dans le paquet`,
+      manquants.length === 0,
+      manquants.length ? manquants.slice(0, 2).join(' | ')
+        : `${entrees.length} fichiers, ${chemins.size} chemins`)
+
+    const json = entrees.find((e) => e.chemin === 'projet.json')
+    let lu = null
+    try { lu = JSON.parse(texte.decode(json.contenu)) } catch { /* reste null */ }
+    check(`${nom} : son projet.json se relit`,
+      lu !== null && lu.version === projet.version && lu.especes.length === projet.especes.length,
+      lu ? `version ${lu.version}, ${lu.especes.length} espèces` : 'illisible')
+
+    // Le chemin « planches/%s.png » se complete a l'execution avec le nom de
+    // la planche. On verifie donc que chaque nom du projet a bien son fichier :
+    // c'est la seule facon de savoir que ce chemin construit tombera juste.
+    const pngs = new Set(entrees
+      .filter((e) => e.chemin.endsWith('.png'))
+      .map((e) => e.chemin.replace('planches/', '').replace('.png', '')))
+    const sansImage = projet.planches.filter((t) => !pngs.has(t.nom))
+    check(`${nom} : chaque planche du projet a son PNG, sous son nom`,
+      sansImage.length === 0 && pngs.size === projet.planches.length,
+      sansImage.length ? `manque : ${sansImage.map((t) => t.nom).join(', ')}`
+        : `${[...pngs].join(', ')}`)
+  }
+
+  // Les entites remontees : c'est ce qui rend le paquet Unity lisible par
+  // JsonUtility, qui ne sait pas lire un dictionnaire libre.
+  {
+    const racine = projet.scenes[0].racine
+    const portees = []
+    const parcourir = (n) => { if (n.espece) portees.push(n.espece); (n.enfants ?? []).forEach(parcourir) }
+    parcourir(racine)
+    check('l\'espece et l\'image sont remontees a cote des champs communs',
+      portees.length > 0 && racine.enfants[0].espece === 'gelee'
+      && typeof racine.enfants[0].image === 'number'
+      && racine.enfants[0].proprietes.espece === undefined,
+      'et pas dupliquees : deux endroits pour une valeur, c\'est un jour ou ils divergent')
+  }
+
+  check('chaque paquet annonce est produit', PAQUETS.length === 2,
+    PAQUETS.map((q) => q.nom).join(', '))
+}
+
 console.log('\n--- Tiled, dans les deux sens ---')
 
 {

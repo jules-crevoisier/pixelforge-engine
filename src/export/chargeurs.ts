@@ -86,6 +86,10 @@ export interface Noeud {
   y: number
   visible: boolean
   script: string | null
+  /** L'espece de ce noeud, ou null. C'est ce qui fait d'un sprite une entite. */
+  espece: string | null
+  /** L'image de planche qu'il montre. */
+  image: number
   proprietes: Record<string, unknown>
   enfants: Noeud[]
 }
@@ -299,8 +303,7 @@ export function especeNommee(p: Projet, id: string): Espece | null {
 
 /** L'espece d'un noeud de la scene, s'il en porte une. */
 export function especeDuNoeud(p: Projet, n: Noeud): Espece | null {
-  const id = n.proprietes?.espece
-  return typeof id === 'string' ? especeNommee(p, id) : null
+  return n.espece ? especeNommee(p, n.espece) : null
 }
 
 /**
@@ -392,6 +395,10 @@ namespace PixelForge
         public int y;
         public bool visible;
         public string script;
+        /// <summary>L'espece de ce noeud. C'est ce qui fait d'un sprite une entite.</summary>
+        public string espece;
+        /// <summary>L'image de planche qu'il montre.</summary>
+        public int image;
         public List<Noeud> enfants;
     }
 
@@ -678,7 +685,7 @@ static func comportement_de(une_espece: Dictionary) -> String:
 
 ## L'espece que porte un noeud de la scene, ou un dictionnaire vide.
 func espece_du_noeud(noeud: Dictionary) -> Dictionary:
-	var id = noeud.get("proprietes", {}).get("espece", "")
+	var id = noeud.get("espece", "")
 	return espece(id) if typeof(id) == TYPE_STRING and id != "" else {}
 
 ## Le clip portant ce nom, ou un dictionnaire vide.
@@ -876,6 +883,10 @@ pub struct Noeud {
     pub y: i32,
     pub visible: bool,
     pub script: Option<String>,
+    /// L'espece de ce noeud. C'est ce qui fait d'un sprite une entite.
+    pub espece: Option<String>,
+    /// L'image de planche qu'il montre.
+    pub image: i32,
     pub enfants: Vec<Noeud>,
 }
 
@@ -1334,6 +1345,8 @@ class Noeud:
     y: int
     visible: bool
     script: str | None = None
+    espece: str | None = None
+    image: int = 0
     proprietes: dict[str, Any] = field(default_factory=dict)
     enfants: list["Noeud"] = field(default_factory=list)
 
@@ -1342,6 +1355,7 @@ def _noeud(d: dict[str, Any]) -> Noeud:
     return Noeud(
         id=d["id"], nom=d["nom"], type=d["type"], x=d["x"], y=d["y"],
         visible=d["visible"], script=d.get("script"),
+        espece=d.get("espece"), image=d.get("image", 0),
         proprietes=d.get("proprietes", {}),
         enfants=[_noeud(e) for e in d.get("enfants", [])],
     )
@@ -1498,8 +1512,7 @@ class Projet:
         return None
 
     def espece_du_noeud(self, noeud: Noeud) -> Espece | None:
-        ident = noeud.proprietes.get("espece")
-        return self.espece(ident) if isinstance(ident, str) else None
+        return self.espece(noeud.espece) if noeud.espece else None
 
     @staticmethod
     def charger(chemin: str) -> "Projet":

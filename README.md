@@ -188,6 +188,7 @@ seconde.
 - combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
 - génération d'étages en salles, reproductible depuis une graine
 - caméra verrouillée sur la salle, avec glissement à vitesse constante
+- export d'un projet Godot 4 ou d'un dossier Unity, en une archive
 - Tiled et LDtk, dans les deux sens
 - export du projet et de son chargeur
 
@@ -214,6 +215,49 @@ par aucun nom du catalogue — l'aventure, l'épée, les cœurs de l'interface �
 écrit en TypeScript et vit dans le code du moteur. Un fichier ne peut pas
 contenir du code compilé, et prétendre le contraire ferait croire à une fidélité
 qui n'existe pas.
+
+## Un projet Godot ou Unity, en un fichier
+
+Le menu d'export propose deux familles, et les sépare :
+
+**Un projet qui s'ouvre.** *Projet Godot 4 (.zip)* donne un dossier avec son
+`project.godot`, ses PNG, son JSON et le code qui les lit — on l'ouvre dans
+Godot et on lance. *Dossier Unity (.zip)* se copie dans `Assets/` et se branche
+sur un GameObject vide.
+
+**Un chargeur à brancher.** Les six langages ci-dessous, pour qui écrit son
+propre moteur.
+
+### Pourquoi les données à l'exécution, et pas des ressources natives
+
+On pourrait écrire un `.tscn` avec son TileMap déjà rempli. Ce serait plus
+impressionnant à l'ouverture, et ce serait fragile : le contenu binaire d'un
+TileMap Godot a changé entre 4.2 et 4.3, et un asset Unity demande un GUID de
+meta que rien ne nous autorise à inventer. **Un export qui casse à la version
+suivante du moteur d'accueil est pire qu'un export honnête.**
+
+Le paquet porte donc les données et le code qui les lit, dans la langue du
+moteur. Les API d'exécution — `TileSet.new()`, `Sprite2D`, `SpriteRenderer` —
+sont stables depuis des années. Ce qu'on perd : la carte n'apparaît qu'au
+lancement. Pour des ressources natives et éditables, l'export **Tiled** existe,
+et c'est le chemin que Godot comme Unity recommandent eux-mêmes.
+
+### Ce que le banc vérifie, et ce qu'il ne peut pas
+
+Ni Godot ni Unity ne sont installés ici, donc **aucun des deux paquets n'est
+ouvert au banc**. Ce qui l'est : le CRC-32 contre sa valeur de référence
+publiée, la structure du PNG morceau par morceau avec ses CRC, la lecture de
+l'archive par son propre répertoire central, et — la vérification qui compte —
+**tout chemin `res://` cité par un fichier engendré doit exister dans le
+paquet**. Une référence cassée est la faute la plus courante d'un générateur de
+projet, et la seule qu'on ne découvre qu'à l'ouverture.
+
+Le ZIP et le PNG sont écrits à la main, sans dépendance et sans compression. Le
+format autorise les deux : blocs stockés côté ZIP, flux zlib de blocs stockés
+côté PNG. Écrire deflate demanderait trois cents lignes de plus à éprouver pour
+des fichiers qui vivront dans une archive. Et la date des entrées est figée :
+sans cela, deux exports du même projet donnent deux fichiers différents, et l'on
+ne peut plus dire si quelque chose a changé.
 
 ## « Marche avec tous les langages »
 
@@ -253,8 +297,8 @@ npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
 npm run banc:mondes     # 122 vérifications : mondes, animations, combat, étages, scripts, projets
-npm run banc:langages   # 50 vérifications des chargeurs et de leur accord
-npm run fumee           # 25 vérifications de l'éditeur, dans un vrai navigateur
+npm run banc:langages   # 66 vérifications : chargeurs, accord entre langages, paquets
+npm run fumee           # 27 vérifications de l'éditeur, dans un vrai navigateur
 npm run build
 ```
 

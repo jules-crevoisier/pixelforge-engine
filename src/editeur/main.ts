@@ -5,6 +5,8 @@ import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil } from './edition.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
+import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
+import { zipper } from '../export/paquet.ts'
 import { MONDES, type Monde } from '../demo/mondes.ts'
 import { Atelier } from './atelier-panneau.ts'
 import { mondeDepuisProjet } from './monde-projet.ts'
@@ -437,12 +439,31 @@ boutonArreter.addEventListener('click', arreter)
 /* ------------------------------------------------------------------ */
 
 const selectCible = document.getElementById('cible') as HTMLSelectElement
-for (const c of CIBLES) {
-  const o = document.createElement('option')
-  o.value = c.id
-  o.textContent = c.nom
-  o.title = c.note
-  selectCible.appendChild(o)
+{
+  // Deux familles, et on le dit : d'un cote un chargeur a brancher dans son
+  // propre programme, de l'autre un projet qui s'ouvre. Melanger les deux dans
+  // une liste plate ferait choisir « C# » a qui voulait un projet Unity.
+  const paquets = document.createElement('optgroup')
+  paquets.label = 'Un projet qui s’ouvre'
+  for (const c of PAQUETS) {
+    const o = document.createElement('option')
+    o.value = `paquet:${c.id}`
+    o.textContent = c.nom
+    o.title = c.note
+    paquets.appendChild(o)
+  }
+  selectCible.appendChild(paquets)
+
+  const codes = document.createElement('optgroup')
+  codes.label = 'Un chargeur à brancher'
+  for (const c of CIBLES) {
+    const o = document.createElement('option')
+    o.value = c.id
+    o.textContent = c.nom
+    o.title = c.note
+    codes.appendChild(o)
+  }
+  selectCible.appendChild(codes)
 }
 
 /**
@@ -461,14 +482,47 @@ function telecharger(nom: string, contenu: string, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-document.getElementById('exporter')?.addEventListener('click', () => {
-  const cible = selectCible.value as Cible
+document.getElementById('exporter')?.addEventListener('click', () => { void exporter() })
+
+/**
+ * Exporte.
+ *
+ * Un paquet part en une seule archive : un projet Godot fait neuf fichiers, et
+ * les telecharger un par un donnerait neuf confirmations. Un chargeur, lui,
+ * part avec les donnees qu'il sait lire — deux fichiers, et c'est tout.
+ */
+async function exporter(): Promise<void> {
+  const choix = selectCible.value
   const p = projetCourant()
+
+  if (choix.startsWith('paquet:')) {
+    const id = choix.slice(7)
+    const entrees = id === 'godot' ? paquetGodot(p) : paquetUnity(p)
+    const nom = `${p.nom}-${id}.zip`
+    const octets = zipper(entrees)
+    if (travail) {
+      try {
+        await dossier.ecrireOctets(travail, nom, octets)
+        verdict.textContent = `${travail.name}/${nom} — ${entrees.length} fichiers,`
+          + ` ${Math.round(octets.length / 1024)} Ko`
+        return
+      } catch (e) {
+        verdict.textContent = e instanceof Error ? e.message : String(e)
+        return
+      }
+    }
+    dossier.telechargerOctets(nom, octets)
+    verdict.textContent = `${nom} — ${entrees.length} fichiers,`
+      + ` ${Math.round(octets.length / 1024)} Ko`
+    return
+  }
+
+  const cible = choix as Cible
   telecharger(`${p.nom}.json`, versTexte(p), 'application/json')
   const fichier = CIBLES.find((c) => c.id === cible)?.fichier ?? 'projet.txt'
   telecharger(fichier, chargeur(cible, p), 'text/plain')
-  verdict.textContent = `exporté : ${monde.id}.json + ${fichier}`
-})
+  verdict.textContent = `exporté : ${p.nom}.json + ${fichier}`
+}
 
 /* ------------------------------------------------------------------ */
 /* La mesure, et le premier chargement                                 */

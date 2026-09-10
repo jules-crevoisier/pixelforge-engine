@@ -27,7 +27,10 @@
  * TypeScript. On declare le strict necessaire plutot que d'ajouter une
  * dependance de types pour cinq methodes. */
 interface PoigneeFichier {
-  createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }>
+  createWritable(): Promise<{
+    write(d: string | Uint8Array): Promise<void>
+    close(): Promise<void>
+  }>
   getFile(): Promise<{ text(): Promise<string> }>
 }
 export interface PoigneeDossier {
@@ -69,6 +72,17 @@ export async function ecrire(d: PoigneeDossier, nom: string, contenu: string): P
   const f = await d.getFileHandle(nom, { create: true })
   const w = await f.createWritable()
   await w.write(contenu)
+  await w.close()
+}
+
+/** La meme chose, pour du binaire : une archive, une image. */
+export async function ecrireOctets(
+  d: PoigneeDossier, nom: string, octets: Uint8Array,
+): Promise<void> {
+  if (!await autorise(d)) throw new Error(`Écriture refusée dans « ${d.name} ».`)
+  const f = await d.getFileHandle(nom, { create: true })
+  const w = await f.createWritable()
+  await w.write(octets)
   await w.close()
 }
 
@@ -143,6 +157,18 @@ export async function rappeler(): Promise<PoigneeDossier | null> {
 /** Telecharge un fichier : le recours quand il n'y a pas de dossier. */
 export function telecharger(nom: string, contenu: string, type = 'application/json'): void {
   const url = URL.createObjectURL(new Blob([contenu], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nom
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** Telecharge du binaire : une archive, une image. */
+export function telechargerOctets(nom: string, octets: Uint8Array, type = 'application/zip'): void {
+  // `slice()` : le Blob veut un ArrayBuffer bien a lui, et un Uint8Array peut
+  // etre une vue sur un tampon plus grand.
+  const url = URL.createObjectURL(new Blob([octets.slice().buffer as ArrayBuffer], { type }))
   const a = document.createElement('a')
   a.href = url
   a.download = nom

@@ -1183,8 +1183,11 @@ console.log('\n--- un projet enregistre puis relu ---')
       [{ nom: m.id, carte: m.carte }], [{ nom: 'principale', racine: m.racine }],
       m.animations, m.planches, m.projection, m.especes,
     )
+    // L'espece est remontee a cote des champs communs, et non dans le sac des
+    // proprietes : c'est ce qui permet a un lecteur qui ne sait pas lire un
+    // dictionnaire libre — celui d'Unity — de dessiner quand meme les entites.
     const compter = (n) => {
-      let t = n.proprietes?.espece ? 1 : 0
+      let t = n.espece ? 1 : 0
       for (const e of n.enfants ?? []) t += compter(e)
       return t
     }
