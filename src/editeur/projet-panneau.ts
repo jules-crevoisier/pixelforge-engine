@@ -12,6 +12,8 @@ import {
   ajouterDeclencheurProjet, reglerDeclencheurProjet, retirerDeclencheurProjet,
   ajouterCarteProjet, renommerCarteProjet, retirerCarteProjet, reglerDerouleProjet,
   reglerAmbianteCarteProjet,
+  ajouterDialogueProjet, reglerDialogueProjet, retirerDialogueProjet,
+  ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
 import { chevauchements } from '../niveau/salles.ts'
@@ -67,6 +69,8 @@ export interface CrochetsProjet {
   sons(): Son[]
   /** Fait entendre un son. */
   ecouter(s: Son): void
+  /** Joue une musique entiere, une fois, pour l'oreille de qui l'ecrit. */
+  ecouterMusique(m: import('../runtime/musique.ts').Musique): void
 }
 
 const bouton = (texte: string, titre: string, action: () => void): HTMLButtonElement => {
@@ -144,7 +148,7 @@ export class PanneauProjet {
    * Des onglets rendent chaque section atteignable en un clic — au prix d'un
    * clic de plus pour celle qu'on regardait.
    */
-  private onglet: 'carte' | 'dessin' | 'animations' | 'sons' | 'especes' = 'carte'
+  private onglet: 'carte' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes' = 'carte'
   /** La planche et la case qu'on dessine. */
   private plancheEditee = 0
   private caseEditee = 0
@@ -198,7 +202,8 @@ export class PanneauProjet {
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
     else if (this.onglet === 'animations') this.blocAnimations()
-    else this.blocSons()
+    else if (this.onglet === 'textes') this.blocDialogues(p)
+    else { this.blocSons(); this.blocMusiques(p) }
   }
 
   private onglets(): void {
@@ -206,7 +211,7 @@ export class PanneauProjet {
     barre.className = 'onglets'
     const items: [typeof this.onglet, string][] = [
       ['carte', 'Carte'], ['dessin', 'Dessin'], ['animations', 'Animations'],
-      ['sons', 'Sons'], ['especes', 'Espèces'],
+      ['sons', 'Sons'], ['textes', 'Textes'], ['especes', 'Espèces'],
     ]
     for (const [id, nom] of items) {
       const b = bouton(nom, nom, () => { this.onglet = id; this.montrer() })
@@ -1219,6 +1224,150 @@ export class PanneauProjet {
    * entendre chaque essai. Le reglage deviendrait si penible que personne ne
    * toucherait aux sons livres.
    */
+  /**
+   * Les musiques du projet, en notes — enfin editables la ou tout le reste
+   * s'edite. Elles vivaient dans le fichier et se jouaient, mais ne
+   * s'ecrivaient qu'a la main : la derniere ligne du carnet du jeu-temoin.
+   *
+   * ## Pourquoi les notes s'editent en TEXTE
+   *
+   * « do4 - mi4 - sol4 » se lit, se copie, se transpose a l'oeil. Un piano
+   * dessine serait plus seduisant et dix fois plus de code pour ecrire les
+   * memes huit notes — et il faudrait quand meme du texte pour les partager.
+   */
+  private blocMusiques(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Musiques')
+    const liste = document.createElement('div')
+    liste.className = 'liste'
+    for (const m of p.musiques ?? []) {
+      const carte = document.createElement('div')
+      carte.className = 'ligne'
+      carte.style.flexWrap = 'wrap'
+      const nom = document.createElement('input')
+      nom.value = m.nom
+      nom.style.width = '92px'
+      nom.title = 'Le nom de la musique : c.musique(nom) la lance.'
+      nom.addEventListener('change', () => {
+        const voulu = nom.value.trim()
+        if (!voulu || (p.musiques ?? []).some((q) => q !== m && q.nom === voulu)) { this.montrer(); return }
+        this.appliquer(reglerMusiqueProjet(this.frais(), m.nom, { nom: voulu }), `Musique « ${voulu} »`)
+      })
+      const tempo = document.createElement('input')
+      tempo.type = 'number'
+      tempo.value = String(m.tempo)
+      tempo.style.width = '56px'
+      tempo.title = 'Temps par minute.'
+      tempo.addEventListener('change', () => {
+        this.appliquer(reglerMusiqueProjet(this.frais(), m.nom, { tempo: Number(tempo.value) }),
+          `« ${m.nom} » : ${tempo.value} bpm`)
+      })
+      const boucle = document.createElement('input')
+      boucle.type = 'checkbox'
+      boucle.checked = m.boucle
+      boucle.title = 'Cochée : elle reprend au début à la fin. Une victoire ne boucle pas.'
+      boucle.addEventListener('change', () => {
+        this.appliquer(reglerMusiqueProjet(this.frais(), m.nom, { boucle: boucle.checked }),
+          `« ${m.nom} » : ${boucle.checked ? 'en boucle' : 'une fois'}`)
+      })
+      carte.append(nom, tempo, boucle,
+        bouton('▶', 'Écouter la musique entière', () => this.crochets.ecouterMusique(m)),
+        bouton('✕', 'Retirer cette musique', () => {
+          this.appliquer(retirerMusiqueProjet(this.frais(), m.nom), `Musique « ${m.nom} » retirée`)
+        }))
+      m.voies.forEach((v, iv) => {
+        const notes = document.createElement('input')
+        notes.value = v.notes.join(' ')
+        notes.style.width = '100%'
+        notes.spellcheck = false
+        notes.title = 'Les notes, séparées par des espaces. « . » : silence. « - » : la note se prolonge.'
+        notes.addEventListener('change', () => {
+          const voies = m.voies.map((q, j) => (j === iv
+            ? { ...q, notes: notes.value.trim().split(/\s+/).filter(Boolean) } : q))
+          this.appliquer(reglerMusiqueProjet(this.frais(), m.nom, { voies }),
+            `« ${m.nom} » : voie ${iv + 1} réécrite`)
+        })
+        carte.appendChild(notes)
+      })
+      liste.appendChild(carte)
+    }
+    d.appendChild(liste)
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(bouton('+ Musique',
+      'Une musique de plus, avec une voie qui joue déjà — c’est en écoutant qu’on écrit la suite.',
+      () => this.appliquer(ajouterMusiqueProjet(this.frais()), 'Musique ajoutée')))
+    d.appendChild(actions)
+  }
+
+  /**
+   * Les dialogues : le TEXTE du jeu, la ou tout le reste s'edite.
+   *
+   * Une replique par champ, dans l'ordre ou elles se lisent. Le « qui »
+   * reste vide pour un narrateur — c'est le cas de loin le plus courant.
+   */
+  private blocDialogues(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Dialogues')
+    for (const q of p.dialogues ?? []) {
+      const carte = document.createElement('div')
+      carte.className = 'ligne'
+      carte.style.flexWrap = 'wrap'
+      const nom = document.createElement('input')
+      nom.value = q.nom
+      nom.style.width = '104px'
+      nom.title = 'Le nom de la suite : c.dire(nom) l’ouvre.'
+      nom.addEventListener('change', () => {
+        const voulu = nom.value.trim()
+        if (!voulu || (p.dialogues ?? []).some((r) => r !== q && r.nom === voulu)) { this.montrer(); return }
+        this.appliquer(reglerDialogueProjet(this.frais(), q.nom, { nom: voulu }), `Dialogue « ${voulu} »`)
+      })
+      carte.append(nom,
+        bouton('+ Réplique', 'Une réplique de plus, à la fin', () => {
+          const repliques = [...q.repliques, { qui: '', texte: '', choix: [] as never[] }]
+          this.appliquer(reglerDialogueProjet(this.frais(), q.nom,
+            { repliques: repliques as never }), `« ${q.nom} » : réplique ajoutée`)
+        }),
+        bouton('✕', 'Retirer ce dialogue', () => {
+          this.appliquer(retirerDialogueProjet(this.frais(), q.nom), `Dialogue « ${q.nom} » retiré`)
+        }))
+      q.repliques.forEach((r, ir) => {
+        const ligne = document.createElement('div')
+        ligne.style.display = 'flex'
+        ligne.style.width = '100%'
+        ligne.style.gap = '4px'
+        const texte = document.createElement('input')
+        texte.value = r.texte
+        texte.style.flex = '1'
+        texte.title = `Réplique ${ir + 1}. Un appui l’affiche en entier, un autre passe à la suite.`
+        texte.addEventListener('change', () => {
+          const repliques = q.repliques.map((r2, j) => (j === ir ? { ...r2, texte: texte.value } : r2))
+          this.appliquer(reglerDialogueProjet(this.frais(), q.nom,
+            { repliques: repliques as never }), `« ${q.nom} » : réplique ${ir + 1}`)
+        })
+        const oterR = bouton('✕', 'Retirer cette réplique', () => {
+          const repliques = q.repliques.filter((_r2, j) => j !== ir)
+          this.appliquer(reglerDialogueProjet(this.frais(), q.nom,
+            { repliques: repliques as never }), `« ${q.nom} » : réplique retirée`)
+        })
+        ligne.append(texte, oterR)
+        carte.appendChild(ligne)
+      })
+      d.appendChild(carte)
+    }
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(bouton('+ Dialogue',
+      'Une suite de répliques de plus. c.dire(son nom) l’ouvrira.',
+      () => this.appliquer(ajouterDialogueProjet(this.frais()), 'Dialogue ajouté')))
+    d.appendChild(actions)
+    if (!(p.dialogues ?? []).length) {
+      const note = document.createElement('p')
+      note.className = 'dos-vide'
+      note.textContent = 'Le texte du jeu est du contenu, comme une carte : il vit dans le fichier, '
+        + 'pas dans le code. c.dire(’nom’) ouvre une suite ; le monde s’arrête pendant qu’on lit.'
+      d.appendChild(note)
+    }
+  }
+
   private blocSons(): void {
     const sons = this.crochets.sons()
     const d = bloc(this.corps, 'Sons')

@@ -15,6 +15,7 @@ import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
 import { projetNeuf } from './projet-neuf.ts'
 import { rendre as rendreSon } from '../runtime/son.ts'
+import { rendreMusique } from '../runtime/musique.ts'
 import type { ProjetSerialise } from '../export/format.ts'
 import { retirerDe } from '../runtime/entites.ts'
 import * as dossier from '../io/dossier.ts'
@@ -460,6 +461,7 @@ const panneauProjet = new PanneauProjet(
     animations: () => monde.animations as unknown as never,
     sons: () => (monde.sons ?? []) as never,
     ecouter: (s) => ecouterSon(s),
+    ecouterMusique: (m) => ecouterMusique(m),
   },
 )
 
@@ -471,6 +473,24 @@ const panneauProjet = new PanneauProjet(
  * ouvert trop tot reste suspendu pour toujours sans rien dire.
  */
 let audio: AudioContext | null = null
+/** Joue une musique entiere, une fois — le meme chemin que les sons. */
+function ecouterMusique(m: Parameters<typeof rendreMusique>[0]): void {
+  type Fabrique = new () => AudioContext
+  const F = globalThis as unknown as { AudioContext?: Fabrique; webkitAudioContext?: Fabrique }
+  const Classe = F.AudioContext ?? F.webkitAudioContext
+  if (!Classe) { verdict.textContent = 'Ce navigateur ne sait pas jouer de son.'; return }
+  if (!audio) audio = new Classe()
+  if (audio.state === 'suspended') void audio.resume()
+  const echantillons = rendreMusique(m, audio.sampleRate)
+  const tampon = audio.createBuffer(1, echantillons.length, audio.sampleRate)
+  tampon.getChannelData(0).set(echantillons)
+  const source = audio.createBufferSource()
+  source.buffer = tampon
+  source.connect(audio.destination)
+  source.start()
+  verdict.textContent = `« ${m.nom} » · ${m.voies.length} voie(s) · ${Math.round(echantillons.length / audio.sampleRate * 1000)} ms`
+}
+
 function ecouterSon(s: Parameters<typeof rendreSon>[0]): void {
   type Fabrique = new () => AudioContext
   const F = globalThis as unknown as { AudioContext?: Fabrique; webkitAudioContext?: Fabrique }

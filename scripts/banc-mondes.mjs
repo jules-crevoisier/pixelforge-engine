@@ -4333,6 +4333,62 @@ console.log('\n--- la carte partout : salles et lumiere par carte ---')
   }
 }
 
+/*
+ * LES DIALOGUES ET LES MUSIQUES S'EDITENT — la derniere ligne du carnet.
+ *
+ * Ils traversaient le fichier et se jouaient, mais ne s'ecrivaient qu'a la
+ * main. Les gestes du panneau passent par ces fonctions pures : ce sont
+ * elles qu'on eprouve, dans les deux sens — creer, regler, refuser.
+ */
+console.log('\n--- les dialogues et les musiques, au panneau ---')
+{
+  const { projetNeuf, ajouterDialogueProjet, reglerDialogueProjet, retirerDialogueProjet,
+    ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { rendreMusique, dureeDe } = await import('../src/runtime/musique.ts')
+
+  {
+    // Un projet neuf a deja un dialogue d'accueil : les ajouts numerotes
+    // s'y empilent sans lui marcher dessus.
+    const avant = projetNeuf().dialogues.length
+    let p = ajouterDialogueProjet(ajouterDialogueProjet(projetNeuf()))
+    const neufs = p.dialogues.slice(avant)
+    check('un dialogue neuf recoit un nom libre et une premiere replique',
+      neufs.map((d) => d.nom).join(',') === 'dialogue2,dialogue3'
+      && neufs[0].repliques.length === 1,
+      'la page blanche est le vrai obstacle — et « accueil » existait deja')
+    p = reglerDialogueProjet(p, 'dialogue2', {
+      nom: 'adieu',
+      repliques: [{ qui: '', texte: 'Bonjour.', choix: [] }, { qui: '', texte: 'Et bon courage.', choix: [] }],
+    })
+    const regle = p.dialogues.find((d) => d.nom === 'adieu')
+    check('il se renomme et se reecrit d\'un geste',
+      !!regle && regle.repliques.length === 2 && regle.repliques[1].texte === 'Et bon courage.')
+    p = retirerDialogueProjet(p, 'dialogue3')
+    check('et se retire sans toucher les autres',
+      p.dialogues.length === avant + 1 && p.dialogues.some((d) => d.nom === 'adieu'))
+  }
+
+  {
+    let p = ajouterMusiqueProjet(projetNeuf())
+    const m = p.musiques[0]
+    check('une musique neuve a une voie qui joue deja',
+      p.musiques.length === 1 && m.voies.length === 1
+      && rendreMusique(m, 8000).some((v) => v !== 0),
+      'une musique vide ne s\'ecoute pas, et c\'est en ecoutant qu\'on ecrit la suite')
+    p = reglerMusiqueProjet(p, m.nom, { tempo: 90, boucle: false,
+      voies: [{ ...m.voies[0], notes: ['la3', '-', '-', '-'] }] })
+    check('le tempo, la boucle et les notes se reglent',
+      p.musiques[0].tempo === 90 && p.musiques[0].boucle === false
+      && p.musiques[0].voies[0].notes.join(' ') === 'la3 - - -'
+      && Math.abs(dureeDe(p.musiques[0]) - 4 * (60000 / 90)) < 1e-6)
+    check('un tempo insense est borne, pas accepte',
+      reglerMusiqueProjet(p, p.musiques[0].nom, { tempo: -3 }).musiques[0].tempo === 1)
+    p = retirerMusiqueProjet(p, p.musiques[0].nom)
+    check('et une musique se retire', p.musiques.length === 0)
+  }
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

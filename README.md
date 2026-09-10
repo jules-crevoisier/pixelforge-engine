@@ -579,11 +579,17 @@ est devenu soit une correction, soit une ligne de ce carnet.
   propre **ambiante** — la nuit du Gouffre s'épaissit en descendant : 0,8 en
   clairière, 0,5 dans la caverne, 0,3 au fond, mesuré en jouant.
 
-**Au carnet :**
+- **Les dialogues et les musiques s'éditent au panneau.** Un onglet
+  « Textes » écrit les répliques ; les musiques se règlent sous les sons —
+  nom, tempo, boucle, et les notes en texte : `do4 - mi4 - sol4` se lit, se
+  copie et se transpose à l'œil, là où un piano dessiné serait dix fois plus
+  de code pour écrire les mêmes huit notes. Chaque musique s'écoute d'un
+  bouton, entière, parce que c'est en écoutant qu'on écrit la suite.
 
-1. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
-   traversent le fichier et se jouent, mais s'écrivent à la main. Un bloc de
-   plus, sur le modèle des sons.
+**Le carnet est soldé.** Chaque ligne que le jeu-témoin avait inscrite est
+devenue une règle du moteur, éprouvée dans les deux sens. C'est exactement le
+travail qu'on attendait de lui — et la raison d'en écrire un deuxième, plus
+grand, quand le moteur prétendra à un jeu d'une heure.
 
 ## Ce que ça veut dire, concrètement
 
@@ -768,12 +774,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  83 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 399 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
+npm run banc:mondes     # 406 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
 npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 113 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
+npm run fumee           # 115 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

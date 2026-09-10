@@ -6,6 +6,7 @@ import {
 import { matiereEnCaractere, caractereEnMatiere, VIDE } from '../tuiles/tilemap.ts'
 import { ORTHO_DESSUS, ORTHO_COTE, ISO, type Projection } from '../noyau/projection.ts'
 import { espece, type Espece } from '../runtime/entites.ts'
+import { musique as musiqueFabrique, voie as voieFabrique, type Voie } from '../runtime/musique.ts'
 import { TUILE, CLE_DONJON, PLANCHE_DONJON, CLE_HEROS, PLANCHE_HEROS, COLONNES_HEROS } from '../demo/art.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from '../demo/art-creatures.ts'
 import { ESPECES_DEMO, clipsDemo } from '../demo/especes-demo.ts'
@@ -696,4 +697,85 @@ export function reglerDerouleProjet(
       ordre: changements.ordre ?? p.deroule?.ordre ?? [],
     },
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Les dialogues et les musiques                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ajoute une suite de repliques, nommee d'office.
+ *
+ * Elle nait avec UNE replique montrant la forme : la page blanche est le
+ * vrai obstacle. C'est par son nom qu'un script l'ouvre — c.dire('nom') —
+ * et c'est pour cela que deux dialogues ne peuvent pas le partager.
+ */
+export function ajouterDialogueProjet(p: ProjetSerialise): ProjetSerialise {
+  const liste = p.dialogues ?? []
+  let n = liste.length + 1
+  while (liste.some((d) => d.nom === `dialogue${n}`)) n++
+  return {
+    ...p,
+    dialogues: [...liste, {
+      nom: `dialogue${n}`,
+      repliques: [{ qui: '', texte: 'À vous : c.dire(’' + `dialogue${n}` + '’) l’ouvrira.', choix: [] }],
+    }],
+  }
+}
+
+export function reglerDialogueProjet(
+  p: ProjetSerialise, nom: string,
+  changements: Partial<{ nom: string; repliques: { qui: string; texte: string; choix: never[] }[] }>,
+): ProjetSerialise {
+  return {
+    ...p,
+    dialogues: (p.dialogues ?? []).map((d) => (d.nom === nom ? {
+      nom: changements.nom?.trim() || d.nom,
+      repliques: changements.repliques ?? d.repliques,
+    } : d)),
+  }
+}
+
+export function retirerDialogueProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, dialogues: (p.dialogues ?? []).filter((d) => d.nom !== nom) }
+}
+
+/**
+ * Ajoute une musique, nommee d'office, avec une voie qui joue deja.
+ *
+ * Quatre notes et non le silence : une musique vide ne s'ecoute pas, et
+ * c'est en ECOUTANT qu'on ecrit la suite — la meme raison qui met un bouton
+ * « Écouter » a cote de chaque son.
+ */
+export function ajouterMusiqueProjet(p: ProjetSerialise): ProjetSerialise {
+  const liste = p.musiques ?? []
+  let n = liste.length + 1
+  while (liste.some((m) => m.nom === `musique${n}`)) n++
+  return {
+    ...p,
+    musiques: [...liste, musiqueFabrique(`musique${n}`, {
+      tempo: 120,
+      voies: [voieFabrique(['do4', '-', 'mi4', '-', 'sol4', '-', 'mi4', '-'])],
+    })],
+  }
+}
+
+export function reglerMusiqueProjet(
+  p: ProjetSerialise, nom: string,
+  changements: Partial<{ nom: string; tempo: number; boucle: boolean; voies: Voie[] }>,
+): ProjetSerialise {
+  return {
+    ...p,
+    musiques: (p.musiques ?? []).map((m) => (m.nom === nom ? {
+      ...m,
+      nom: changements.nom?.trim() || m.nom,
+      tempo: Number.isFinite(changements.tempo) ? Math.max(1, Math.round(changements.tempo as number)) : m.tempo,
+      boucle: changements.boucle ?? m.boucle,
+      voies: changements.voies ?? m.voies,
+    } : m)),
+  }
+}
+
+export function retirerMusiqueProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, musiques: (p.musiques ?? []).filter((m) => m.nom !== nom) }
 }

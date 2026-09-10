@@ -851,6 +851,57 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     `${vueFinale} px — la sérialisation prenait la vue de l’ÉCRAN, cadre d’édition compris`)
 
   /*
+   * LES TEXTES ET LES MUSIQUES, AU PANNEAU — la derniere ligne du carnet.
+   * Un dialogue s'ecrit, une musique s'ajoute, et les deux sont des DONNEES
+   * du monde : c.dire et c.musique les trouveront par leur nom.
+   */
+  await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Textes', exact: true }).click()
+  await p.waitForTimeout(200)
+  await surBlocNomme('Dialogues', (bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent === '+ Dialogue').click()
+  })
+  await p.waitForTimeout(250)
+  await surBlocNomme('Dialogues', (bloc) => {
+    const carte = [...bloc.querySelectorAll(':scope > .ligne')].at(-1)
+    // La ligne de replique est un div ENFANT de la carte : « div input »
+    // remonterait jusqu'au nom, parce qu'un selecteur regarde aussi les
+    // anciens au-dessus de la portee.
+    const rangee = [...carte.children].filter((e) => e.tagName === 'DIV').at(-1)
+    const texte = rangee.querySelector('input')
+    texte.value = 'Écrit depuis le panneau.'
+    texte.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(250)
+  const dialoguesApres = await p.evaluate(() => window.pfe.monde.dialogues)
+  const nouveau = dialoguesApres[dialoguesApres.length - 1]
+  ok('un dialogue s’écrit au panneau et devient une donnée du monde',
+    dialoguesApres.length >= 2 && nouveau.repliques[0].texte === 'Écrit depuis le panneau.',
+    `« ${nouveau.nom} » : « ${nouveau.repliques[0].texte} » — c.dire('${nouveau.nom}') l’ouvrira`)
+
+  await p.getByRole('button', { name: 'Sons', exact: true }).click()
+  await p.waitForTimeout(200)
+  await surBlocNomme('Musiques', (bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent === '+ Musique').click()
+  })
+  await p.waitForTimeout(250)
+  await surBlocNomme('Musiques', (bloc) => {
+    const carte = [...bloc.querySelectorAll(':scope > .liste > .ligne')].at(-1)
+    const notes = [...carte.querySelectorAll('input')].at(-1)
+    notes.value = 'mi3 - sol3 - si3 - - -'
+    notes.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(250)
+  const musiquesApres = await p.evaluate(() => window.pfe.monde.musiques)
+  const air = musiquesApres[musiquesApres.length - 1]
+  ok('une musique s’écrit au panneau, en notes',
+    musiquesApres.length >= 1 && air.voies[0].notes.join(' ') === 'mi3 - sol3 - si3 - - -',
+    `« ${air.nom} » : ${air.voies[0].notes.join(' ')} — c.musique('${air.nom}') la lancera`)
+  await p.click('#fermerProjet')
+  await p.waitForTimeout(150)
+
+  /*
    * LE JEU-TEMOIN, PAR LA VRAIE PORTE : « Ouvrir… », l'ecran-titre, et le
    * premier niveau au clavier.
    *
