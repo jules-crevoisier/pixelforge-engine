@@ -28,6 +28,7 @@ import { ESPECES_DEMO, clipsDemo } from './especes-demo.ts'
 import { engendrerPlan, Hasard, type SallePlan } from '../niveau/plan.ts'
 import { Aventure } from './aventure.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
+import { MODELES_DEMO, SYMBOLES_DEMO } from './salles-demo.ts'
 import { assemblerEtage } from '../niveau/assemblage.ts'
 import { TUILE_SOL, TUILE_SORTIE } from './art.ts'
 
@@ -565,7 +566,13 @@ export function mondeEtage(graine = 1): Monde {
   const etage = assemblerEtage(plan, {
     largeurSalle: 20, hauteurSalle: 11, tuile: TUILE,
     tuileSol: TUILE_SOL, tuileMarque: TUILE_SORTIE,
+    modeles: MODELES_DEMO, symboles: SYMBOLES_DEMO,
   })
+  // Un modele fautif ne doit pas passer inapercu : il ne fait pas tomber le
+  // jeu — la salle retombe sur les amas tires au sort — mais le taire
+  // reviendrait a livrer un dessin qui n'a jamais servi sans que personne ne
+  // le sache.
+  for (const plainte of etage.plaintes) console.warn(`modèle de salle refusé : ${plainte}`)
   const projection = ORTHO_DESSUS(TUILE)
   const animations = clipsDemo()
 
@@ -605,9 +612,15 @@ export function mondeEtage(graine = 1): Monde {
    * niveau qui ne l'est pas du tout.
    */
   const peupler = (): void => {
+    // Ce que les salles DESSINEES demandent, d'abord. L'assemblage ne les pose
+    // pas lui-meme : il ne connait ni le peuplement ni le catalogue.
+    for (const e of etage.entites) aventure.peuplement.poser(e.espece, e.x, e.y)
     const h = new Hasard((graine ^ 0x9e37) >>> 0)
     for (const s of plan.salles) {
-      if (s.role === 'depart') continue
+      // Une salle dessinee dit deja ce qu'elle contient. Y ajouter des
+      // creatures tirees au sort reviendrait a defaire la composition qu'on
+      // vient d'ecrire.
+      if (s.role === 'depart' || etage.modeleDe.has(s)) continue
       const o = etage.coinDe(s)
       const combien = s.role === 'boss' ? 4 : 1 + h.entier(2)
       for (let n = 0; n < combien; n++) {

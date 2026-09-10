@@ -1275,6 +1275,174 @@ console.log('\n--- l\'etage engendre ---')
       etagesCoupes ? `${etagesCoupes} etages sur 60, ${pire}` : '60 etages, 720 salles')
   }
 
+  /*
+   * Les salles dessinees a la main.
+   *
+   * La question n'est pas « le tirage les emploie-t-il » mais « peut-il en
+   * sortir une salle close ». Une salle close ne se voit qu'en jouant, une
+   * fois sur douze, et seulement si l'on va jusque-la.
+   */
+  {
+    const { verifierModele, croixLibre, modele, lireModele } =
+      await import('../src/niveau/modeles.ts')
+    const { MODELES_DEMO, SYMBOLES_DEMO } = await import('../src/demo/salles-demo.ts')
+    const croix = croixLibre(20, 11, 2, 3)
+
+    // 1. Tous les dessins livres sont bons — dans les QUATRE orientations, car
+    //    le tirage les retourne.
+    const mauvais = []
+    for (const m of MODELES_DEMO) {
+      for (const [mx, my] of [[false, false], [true, false], [false, true], [true, true]]) {
+        const retourne = modele(`${m.nom}${mx ? ' ↔' : ''}${my ? ' ↕' : ''}`,
+          Array.from({ length: 9 }, (_, y) =>
+            Array.from({ length: 18 }, (_, x) => lireModele(m, x, y, mx, my, 18, 9)).join('')),
+          { roles: m.roles, poids: m.poids })
+        mauvais.push(...verifierModele(retourne, 18, 9, SYMBOLES_DEMO, croix))
+      }
+    }
+    check('les salles dessinees sont toutes valables, retournees comprises',
+      mauvais.length === 0,
+      mauvais.length ? mauvais[0] : `${MODELES_DEMO.length} modèles × 4 orientations`)
+
+    // 2. Et la regle REFUSE. Une regle qui ne refuse jamais rien est
+    //    indistinguable d'une regle absente : on eprouve les trois fautes.
+    const barre = modele('barre la croix', [
+      '..................', '..................', '..................',
+      '..................', '........#.........', '..................',
+      '..................', '..................', '..................',
+    ])
+    const courte = modele('rangee courte', [
+      '.................', '..................', '..................',
+      '..................', '..................', '..................',
+      '..................', '..................', '..................',
+    ])
+    const inconnue = modele('lettre inconnue', [
+      'Z.................', '..................', '..................',
+      '..................', '..................', '..................',
+      '..................', '..................', '..................',
+    ])
+    check('un bloc dans la croix des portes fait refuser le modèle',
+      verifierModele(barre, 18, 9, SYMBOLES_DEMO, croix).length === 1,
+      verifierModele(barre, 18, 9, SYMBOLES_DEMO, croix)[0])
+    check('une rangée de la mauvaise largeur aussi',
+      verifierModele(courte, 18, 9, SYMBOLES_DEMO, croix).length === 1,
+      verifierModele(courte, 18, 9, SYMBOLES_DEMO, croix)[0])
+    check('et une lettre qui ne veut rien dire',
+      verifierModele(inconnue, 18, 9, SYMBOLES_DEMO, croix).length === 1,
+      verifierModele(inconnue, 18, 9, SYMBOLES_DEMO, croix)[0])
+
+    // 3. L'etage assemble AVEC les modeles : ils servent, ils posent des
+    //    creatures, et rien n'est refuse.
+    const plan = engendrerPlan(7, { salles: 12, largeur: 9, hauteur: 7 })
+    const avecModeles = assemblerEtage(plan, {
+      modeles: MODELES_DEMO, symboles: SYMBOLES_DEMO,
+    })
+    const modelables = plan.salles.filter((s) => s.role !== 'depart').length
+    check('l\'étage engendré emploie vraiment les salles dessinées',
+      avecModeles.plaintes.length === 0 && avecModeles.modeleDe.size >= modelables * 0.6,
+      `${avecModeles.modeleDe.size} salles dessinées sur ${modelables}`)
+    check('et elles posent leurs créatures elles-mêmes',
+      avecModeles.entites.length > 0,
+      `${avecModeles.entites.length} entités demandées par les dessins`)
+
+    // 4. La verification qui compte : sur soixante etages MODELES, en marchant
+    //    case par case, aucune salle close.
+    let coupes = 0
+    let pireM = ''
+    for (let graine = 1; graine <= 60; graine++) {
+      const pl = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+      const e = assemblerEtage(pl, { modeles: MODELES_DEMO, symboles: SYMBOLES_DEMO })
+      const c = e.carte
+      const vus = new Uint8Array(c.cases)
+      const dx = Math.floor(e.depart.x / c.tuile)
+      const dy = Math.floor(e.depart.y / c.tuile) - 1
+      const file = [[dx, dy]]
+      vus[c.index(dx, dy)] = 1
+      while (file.length) {
+        const [x, y] = file.pop()
+        for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + ax
+          const ny = y + ay
+          if (!c.dedans(nx, ny) || vus[c.index(nx, ny)] || c.solide(nx, ny)) continue
+          vus[c.index(nx, ny)] = 1
+          file.push([nx, ny])
+        }
+      }
+      const manquees = pl.salles.filter((s) => {
+        const o = e.coinDe(s)
+        return !vus[c.index(o.x + Math.floor(e.largeurSalle / 2), o.y + Math.floor(e.hauteurSalle / 2))]
+      })
+      if (manquees.length) { coupes++; pireM ||= `graine ${graine} : ${manquees.length} salles` }
+    }
+    check('avec les salles dessinées, aucune salle n\'est close non plus',
+      coupes === 0, coupes ? `${coupes} etages sur 60, ${pireM}` : '60 etages, 720 salles')
+
+    // 5. La meme graine choisit les memes salles. Un etage reproductible dont
+    //    le contenu ne l'est pas ne se corrige pas mieux qu'un etage qui ne
+    //    l'est pas du tout.
+    const bis = assemblerEtage(engendrerPlan(7, { salles: 12, largeur: 9, hauteur: 7 }),
+      { modeles: MODELES_DEMO, symboles: SYMBOLES_DEMO })
+    const empreinte = (e) => [...e.modeleDe.values()].join('|')
+      + '#' + e.entites.map((q) => `${q.espece}@${q.x},${q.y}`).join(',')
+    check('la même graine choisit les mêmes salles, aux mêmes places',
+      empreinte(avecModeles) === empreinte(bis),
+      `${avecModeles.modeleDe.size} salles, ${avecModeles.entites.length} entités`)
+
+    // 6. Et le tirage varie : quatre dessins retournes doivent donner autre
+    //    chose d'un etage a l'autre, sinon les modeles remplacent une
+    //    monotonie par une autre.
+    const vus = new Set()
+    for (let graine = 1; graine <= 40; graine++) {
+      const e = assemblerEtage(engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 }),
+        { modeles: MODELES_DEMO, symboles: SYMBOLES_DEMO })
+      vus.add([...e.modeleDe.values()].join('|'))
+    }
+    check('et deux étages ne reçoivent pas la même suite de salles',
+      vus.size >= 35, `${vus.size} suites différentes sur 40 étages`)
+
+    // 7. Un seul modele suffit a demarrer : les salles sans dessin retombent
+    //    sur les amas tires au sort. C'est ce qui permet d'en ajouter un et de
+    //    voir ce qu'il donne, au lieu de devoir couvrir tous les roles avant
+    //    que le premier ne serve — et c'est un chemin qu'il faut garder
+    //    vivant, sinon il pourrira sans qu'on s'en apercoive.
+    const seul = MODELES_DEMO.filter((m) => m.roles.includes('boss'))
+    const partiel = assemblerEtage(engendrerPlan(7, { salles: 12, largeur: 9, hauteur: 7 }),
+      { modeles: seul, symboles: SYMBOLES_DEMO })
+    const communes = plan.salles.filter((s) => s.role === 'commune')
+    const encombrees = communes.filter((s) => {
+      const o = partiel.coinDe(s)
+      let blocs = 0
+      for (let y = 1; y < partiel.hauteurSalle - 1; y++) {
+        for (let x = 1; x < partiel.largeurSalle - 1; x++) {
+          if (partiel.carte.solide(o.x + x, o.y + y)) blocs++
+        }
+      }
+      return blocs > 0
+    }).length
+    check('une salle sans dessin retombe sur les amas tirés au sort',
+      partiel.modeleDe.size === 1 && encombrees >= communes.length - 1,
+      `1 salle dessinée, ${encombrees} salles encombrées au hasard sur ${communes.length}`)
+
+    // 8. Et le defaut que le point precedent a revele : les amas etaient
+    //    ecartes des cases MARQUEES en comparant leur tuile a la tuile
+    //    marqueur. Quand l'appelant ne precise ni l'une ni l'autre, les deux
+    //    valent zero, toute case passe pour marquee, et plus un obstacle n'est
+    //    pose — dans le silence le plus complet, y compris ici, ou l'on
+    //    appelait justement sans preciser.
+    const nu = assemblerEtage(engendrerPlan(7, { salles: 12, largeur: 9, hauteur: 7 }))
+    let blocsNus = 0
+    for (const s of plan.salles) {
+      const o = nu.coinDe(s)
+      for (let y = 1; y < nu.hauteurSalle - 1; y++) {
+        for (let x = 1; x < nu.largeurSalle - 1; x++) {
+          if (nu.carte.solide(o.x + x, o.y + y)) blocsNus++
+        }
+      }
+    }
+    check('un assemblage sans tuiles précisées encombre quand même ses salles',
+      blocsNus > 20, `${blocsNus} blocs posés`)
+  }
+
   // Une porte percee d'un seul cote laisse un mur invisible d'une case : le
   // joueur se cogne dans ce qui a l'air d'etre une ouverture.
   {
@@ -1440,10 +1608,13 @@ console.log('\n--- un projet enregistre puis relu ---')
     )
     peuplement.synchroniser()
     const avant = peuplement.positions().map((q) => `${q.x},${q.y}`)
+    const { CorpsMobiles, grilleAvecCorps } = await import('../src/runtime/corps.ts')
+    const registre = new CorpsMobiles()
     const ctx = {
       dt: 1 / 60,
       entrees: { axe: () => ({ x: 1, y: 0 }), tenue: () => false, consommer: () => false },
       racine: relu.racine, carte: relu.carte, pas: 0, trouver: () => null,
+      corps: registre, grille: grilleAvecCorps(relu.carte, registre),
       bouger: (corps, dx, dy) => {
         const hote = (n) => {
           for (const e of n.enfants) { if (e.id === corps.id) return n; const r = hote(e); if (r) return r }

@@ -347,6 +347,7 @@ export class Peuplement {
   private vivantes = new Map<string, Vivante>()
   /** Les corps mobiles que CE peuplement a inscrits au registre du jeu. */
   private corpsInscrits = new Set<string>()
+  private registreManquantDit = false
   private catalogue = new Map<string, Espece>()
   private racine: Noeud
   private combat: Combat
@@ -667,6 +668,20 @@ export class Peuplement {
    * rester previsible, meme non regarde.
    */
   private avancerPorteurs(c: ContexteJeu, dtMs: number): void {
+    // Un contexte bati a la main peut ne pas porter de registre. On ne tombe
+    // pas pour autant — mais on le DIT, une fois : sans registre les corps
+    // mobiles ne bloquent rien, et une plateforme qu'on traverse en silence se
+    // cherche pendant une heure.
+    if (!c.corps) {
+      if (!this.registreManquantDit) {
+        this.registreManquantDit = true
+        console.warn(
+          'peuplement : le contexte ne porte pas de registre de corps mobiles — '
+          + 'les plateformes et les caisses ne bloqueront rien',
+        )
+      }
+      return
+    }
     const vus = new Set<string>()
     for (const v of this.vivantes.values()) {
       const e = v.espece

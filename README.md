@@ -67,6 +67,47 @@ case sur la vraie grille de tuiles**, depuis le départ, et exige d'atteindre le
 centre de chaque salle. 60 étages, 720 salles, aucune injoignable. Un plan peut
 être parfait et l'assemblage condamner une porte.
 
+### Les salles sont dessinées à la main, le tirage choisit laquelle
+
+Le hasard suffit à prouver qu'un étage tient debout ; il ne fait pas un jeu.
+Personne ne se souvient d'une salle tirée au sort. On se souvient de la salle
+aux quatre piliers, de celle où deux tourelles se font face à couvert, de celle
+qui est presque vide et où l'on comprend qu'il va falloir se retourner. Ces
+salles-là sont **écrites** — dix-huit colonnes sur neuf, une lettre par case,
+comme les planches de dessins — et le tirage ne choisit que laquelle et dans
+quel sens. C'est le partage d'Isaac, de Dead Cells et de Spelunky : le hasard
+décide de la forme de l'étage, la main décide du contenu de chaque pièce.
+
+**Un modèle n'a pas à connaître ses portes.** Isaac range ses salles par
+configuration de portes — nord, nord et est, et ainsi de suite jusqu'à quinze
+familles. C'est beaucoup de dessins pour une propriété qui se garantit
+autrement : si la croix centrale reste libre, les quatre portes possibles sont
+reliées entre elles quelle que soit la configuration. Sept dessins valent alors
+quinze familles — et comme la croix est **centrée**, elle est symétrique sur
+les deux axes, donc un modèle valable le reste retourné. Sept dessins, quatre
+orientations, vingt-huit salles distinctes à l'œil.
+
+La croix n'est pas une convention polie : elle est **vérifiée**. Un bloc posé
+dedans fait refuser le modèle au démarrage, avec sa case — « case 8,4 : un bloc
+barre la croix des portes ». Une salle close ne se voit qu'en jouant, une fois
+sur douze, et seulement si l'on va jusque-là. Le banc éprouve les deux versants :
+les sept dessins livrés passent dans leurs quatre orientations, et trois dessins
+volontairement fautifs — un bloc dans la croix, une rangée trop courte, une
+lettre qui ne veut rien dire — sont bien refusés. Une règle qui ne refuse jamais
+rien est indistinguable d'une règle absente.
+
+Une salle sans modèle retombe sur les amas tirés au sort. Ce n'est pas un
+vestige : c'est ce qui permet d'ajouter un dessin et de voir ce qu'il donne, au
+lieu d'avoir à couvrir tous les rôles avant que le premier ne serve.
+
+Ce chemin de repli a d'ailleurs révélé un défaut qui dormait là depuis le
+début. Les amas évitaient les cases **marquées** en comparant leur tuile à la
+tuile marqueur ; quand l'appelant ne précise ni l'une ni l'autre, les deux
+valent zéro, toute case passe pour marquée, et plus un seul obstacle n'est posé.
+Les salles étaient vides, sans que rien ne le signale — y compris dans le banc,
+qui appelait justement sans préciser. L'identité d'une tuile est une mauvaise
+façon de dire « cette case est spéciale » : on retient maintenant la case.
+
 ### Le combat, et les deux règles qui le tiennent
 
 **Un coup ne touche qu'une fois par cible.** Une frappe dure : le geste occupe
@@ -331,6 +372,8 @@ seconde.
 - déclencheurs attachés à une image d'animation : frapper, tirer
 - projectiles, qui sont des entités comme les autres
 - génération d'étages en salles, reproductible depuis une graine
+- salles dessinées à la main, tirées et retournées par le générateur, refusées
+  au démarrage si elles barrent le passage entre leurs portes
 - caméra verrouillée sur la salle, avec glissement à vitesse constante
 - export d'un projet Godot 4 ou d'un dossier Unity, en une archive
 - Tiled et LDtk, dans les deux sens
