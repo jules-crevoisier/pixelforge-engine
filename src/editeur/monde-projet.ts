@@ -15,7 +15,7 @@ import { Salles } from '../niveau/salles.ts'
 import { Declencheurs, type Declencheur } from '../runtime/declencheurs.ts'
 import { brancherAudio } from '../demo/sons-demo.ts'
 import { brancherMusique } from '../demo/musiques-demo.ts'
-import { dessinerDialogue } from '../runtime/rendu-texte.ts'
+import { dessinerDialogue, ecrireCentre } from '../runtime/rendu-texte.ts'
 import type { Jeu } from '../runtime/jeu.ts'
 
 /**
@@ -36,23 +36,44 @@ import type { Jeu } from '../runtime/jeu.ts'
  * pas. Ce qui est ecrit dans l'atelier, lui, revient — parce que c'est du
  * texte, et que le format le transporte.
  */
-export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde {
+export function mondeDepuisProjet(
+  p: ProjetSerialise, nomFichier: string, carteVoulue = '',
+): Monde {
   const cartes = p.cartes.map((c) => ({
     nom: c.nom,
     carte: relireCarte(c, (l, h, t) => new Carte(l, h, t)),
   }))
-  const premiere = cartes[0]?.carte ?? new Carte(20, 15, p.projection.hauteurTuile || 16)
-  const racine = p.scenes[0] ? relireNoeud(p.scenes[0].racine) : ({
-    id: 'r', nom: 'scene', type: 'noeud', x: 0, y: 0, visible: true,
-    enfants: [], script: null, etat: {},
-  } as Noeud)
+  /*
+   * TOUTES les scenes sont relues, pas seulement la premiere.
+   *
+   * Chaque carte s'apparie a la scene DU MEME NOM — c'est ce qui donne a
+   * chaque niveau ses propres creatures. Les projets d'avant la version 12
+   * n'ont qu'une scene, « principale », qui ne porte le nom d'aucune carte :
+   * elle sert alors de scene a tout le monde, ce qui est exactement ce que
+   * faisait l'editeur quand il n'y avait qu'une carte.
+   */
+  const scenes = p.scenes.map((s) => ({ nom: s.nom, racine: relireNoeud(s.racine) }))
+  const sceneDe = (nomCarte: string): Noeud =>
+    scenes.find((s) => s.nom === nomCarte)?.racine ?? scenes[0]?.racine ?? ({
+      id: 'r', nom: 'scene', type: 'noeud', x: 0, y: 0, visible: true,
+      enfants: [], script: null, etat: {},
+    } as Noeud)
 
-  const sprites: NoeudSprite[] = []
-  const recenser = (n: Noeud): void => {
-    if (n.type === 'sprite') sprites.push(n as NoeudSprite)
-    for (const e of n.enfants) recenser(e)
+  const indexActif = Math.max(0, cartes.findIndex((c) => c.nom === carteVoulue))
+  const premiere = cartes[indexActif]?.carte ?? new Carte(20, 15, p.projection.hauteurTuile || 16)
+  const nomActif = cartes[indexActif]?.nom ?? ''
+  const racine = sceneDe(nomActif)
+
+  const recenserDans = (r: Noeud): NoeudSprite[] => {
+    const liste: NoeudSprite[] = []
+    const f = (n: Noeud): void => {
+      if (n.type === 'sprite') liste.push(n as NoeudSprite)
+      for (const e of n.enfants) f(e)
+    }
+    f(r)
+    return liste
   }
-  recenser(racine)
+  const sprites = recenserDans(racine)
   const heros = sprites[0] ?? null
 
   const animations: Clip[] = p.animations.map((a) => ({
@@ -64,7 +85,10 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
   }))
 
   const depart = heros ? { x: heros.x, y: heros.y } : { x: 0, y: 0 }
-  const departs = sprites.map((n) => ({ n, x: n.x, y: n.y }))
+  // Les departs de TOUTES les scenes : rejouer remet aussi les creatures du
+  // niveau deux, sinon le second essai d'un jeu a deux niveaux serait fausse.
+  const departs = scenes.flatMap((sc) => recenserDans(sc.racine))
+    .map((n) => ({ n, x: n.x, y: n.y }))
   const projection = { ...p.projection } as Projection
   const combat = new Combat()
   const peuplement = new Peuplement(
@@ -72,11 +96,12 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
   )
   // Le joueur : la premiere entite dont l'intention est de se laisser diriger.
   // C'est elle que la camera suit et que les autres poursuivent.
-  const dirige = sprites.find((n) => {
+  const dirigeDans = (liste: NoeudSprite[]): NoeudSprite | null => liste.find((n) => {
     const id = (n as unknown as { espece?: string }).espece
     const e = id ? peuplement.especeDe(id) : null
-    return e && (e.comportement === 'joueur' || e.comportement === 'plateformeur')
-  }) ?? heros
+    return !!(e && (e.comportement === 'joueur' || e.comportement === 'plateformeur'))
+  }) ?? liste[0] ?? null
+  const dirige = dirigeDans(sprites) ?? heros
   let notes = ''
 
   /*
@@ -88,6 +113,40 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
    */
   const dialogue = new Dialogue({ largeur: p.vue.largeur - 18, vitesse: 42, lignes: 3 })
   let jeuCourant: Jeu | null = null
+
+  /*
+   * LE FLUX : quelle carte se joue MAINTENANT, et avec quels organes.
+   *
+   * `courant` est un objet et non trois variables : le script de racine le
+   * capture une fois, et `aller` le fait pointer ailleurs. Chaque niveau a
+   * son propre peuplement et son propre combat — les creatures du niveau un
+   * n'ont rien a faire dans la simulation du niveau deux, et un combat
+   * partage garderait des impacts en vol d'un niveau a l'autre.
+   */
+  const courant = {
+    peuplement,
+    combat,
+    dirige: dirige as NoeudSprite | null,
+  }
+  let fluxActif = nomActif
+  let titreOuvert = !!p.deroule?.titre
+  const paires = new Map<string, { peuplement: Peuplement; combat: Combat }>()
+  paires.set(nomActif, { peuplement, combat })
+  const pairePour = (nomCarte: string, r: Noeud, tuile: number) => {
+    let paire = paires.get(nomCarte)
+    if (!paire) {
+      const c2 = new Combat()
+      paire = {
+        combat: c2,
+        peuplement: new Peuplement(r, c2, p.especes ?? [], animations, projection, tuile),
+      }
+      paires.set(nomCarte, paire)
+    }
+    return paire
+  }
+  /** L'ordre du jeu : le deroule s'il dit quelque chose, sinon les cartes. */
+  const ordreDuJeu = (): string[] =>
+    (p.deroule?.ordre?.length ? p.deroule.ordre : cartes.map((c) => c.nom))
 
   return {
     id: `projet:${nomFichier}`,
@@ -115,6 +174,17 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
     // l'enregistrement reprendra, et un projet relu puis reenregistre ne
     // doit pas les perdre en silence.
     declencheurs: p.declencheurs ?? [],
+    /*
+     * TOUTES les cartes et TOUTES les scenes, vivantes.
+     *
+     * C'est ce que l'enregistrement serialisera : avant cela, il ne gardait
+     * que la carte affichee, et enregistrer un projet de trois niveaux en
+     * perdait deux — en silence, la pire maniere.
+     */
+    cartes,
+    scenes,
+    carteActive: nomActif,
+    deroule: p.deroule ?? { titre: '', ordre: [] },
     peuplement,
     planches: p.planches,
     tuilePinceau: 0,
@@ -149,6 +219,40 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
       // rouvrait avec une camera qui suit partout — le decoupage semblait
       // enregistre pour rien.
       if (p.salles?.length) jeu.salles = new Salles(p.salles, premiere.tuile)
+      /*
+       * CHANGER DE CARTE : le verbe `c.aller`, et son deroule.
+       *
+       * La carte, la scene, le peuplement et la camera changent d'un seul
+       * geste. Le script de racine, lui, ne change PAS : toutes les scenes
+       * nomment leur racine « scene », et c'est `courant` qui pointe vers le
+       * bon peuplement — voir plus haut.
+       */
+      jeu.allerCarte = (nomCible) => {
+        const cible = cartes.find((q) => q.nom === nomCible)
+        if (!cible || nomCible === fluxActif) return false
+        const r2 = sceneDe(nomCible)
+        jeu.carte = cible.carte
+        jeu.racine = r2
+        const paire = pairePour(nomCible, r2, cible.carte.tuile)
+        courant.peuplement = paire.peuplement
+        courant.combat = paire.combat
+        courant.dirige = dirigeDans(recenserDans(r2))
+        jeu.poserEntite = (esp, x, y) => paire.peuplement.poser(esp, x, y)
+        if (courant.dirige) {
+          jeu.suivreNoeud(courant.dirige.nom)
+          // La camera SAUTE : glisser d'un niveau a l'autre montrerait tout
+          // l'interstice entre deux cartes qui n'ont rien a voir.
+          jeu.cadrer()
+        }
+        fluxActif = nomCible
+        return true
+      }
+      jeu.interfaceOuverte = () => titreOuvert || dialogue.ouvert
+      jeu.prochaineCarte = () => {
+        const ordre = ordreDuJeu()
+        const i = ordre.indexOf(fluxActif)
+        return i >= 0 && i + 1 < ordre.length ? ordre[i + 1] : ''
+      }
 
       // Le plan de touches du projet, s'il en a un. Sans cela, un projet
       // remappe se rouvre avec les touches d'usine et l'on croit le
@@ -179,7 +283,10 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
         }
         for (const e of n.enfants) brancher(e)
       }
-      brancher(racine)
+      // Les scripts de TOUTES les scenes : un script pose sur une porte du
+      // niveau deux doit exister avant qu'on y entre. Deux noeuds du meme nom
+      // dans deux scenes partagent le meme script — c'est le nom qui indexe.
+      for (const sc of scenes) brancher(sc.racine)
       /*
        * Les declencheurs se recompilent comme les scripts des noeuds : meme
        * atelier, memes refus, meme filet d'erreurs. Un declencheur refuse est
@@ -204,7 +311,13 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
       // vivre. Un script par entite obligerait a en poser un a chaque fois
       // qu'on en ajoute une dans l'editeur — et a l'oublier une fois sur deux.
       jeu.scripts.set(racine.nom, (c) => {
-        // Le dialogue d'abord : quand il est ouvert, le monde ne bouge plus.
+        // L'ecran-titre gele tout : le jeu commence quand on le demande, pas
+        // pendant qu'on lit le titre.
+        if (titreOuvert) {
+          if (c.entrees.consommer('action') || c.entrees.consommer('saut')) titreOuvert = false
+          return
+        }
+        // Le dialogue ensuite : quand il est ouvert, le monde ne bouge plus.
         // Laisser courir le jeu derriere une boite de texte fait mourir
         // pendant qu'on lit — la faute la plus injuste qu'un jeu commette.
         if (dialogue.ouvert) {
@@ -214,10 +327,10 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
           if (c.entrees.consommer('action') || c.entrees.consommer('saut')) dialogue.valider()
           return
         }
-        peuplement.synchroniser()
-        peuplement.avancer(c, dirige ?? { x: 0, y: 0 }, c.dt * 1000)
-        for (const impact of combat.avancer(c.dt * 1000)) {
-          if (impact.fatal) peuplement.tuer(impact.cible)
+        courant.peuplement.synchroniser()
+        courant.peuplement.avancer(c, courant.dirige ?? { x: 0, y: 0 }, c.dt * 1000)
+        for (const impact of courant.combat.avancer(c.dt * 1000)) {
+          if (impact.fatal) courant.peuplement.tuer(impact.cible)
         }
       })
       // La boite de texte se dessine par-dessus tout, dans le tampon du jeu :
@@ -227,20 +340,48 @@ export function mondeDepuisProjet(p: ProjetSerialise, nomFichier: string): Monde
       jeu.apresDessin = (ctx, ecran) => {
         dessinAvant?.(ctx, ecran)
         dessinerDialogue(ecran, dialogue, {})
+        if (titreOuvert && p.deroule?.titre) {
+          // Le titre en pixels du jeu, comme tout le reste : un ecran-titre
+          // en HTML aurait une autre taille de pixel que le jeu qu'il ouvre.
+          ctx.fillStyle = 'rgba(10, 8, 16, 0.82)'
+          ctx.fillRect(0, 0, ecran.vue.largeur, ecran.vue.hauteur)
+          ecrireCentre(ecran, p.deroule.titre, Math.round(ecran.vue.hauteur * 0.38))
+          ecrireCentre(ecran, 'Espace pour commencer', Math.round(ecran.vue.hauteur * 0.62))
+        }
       }
     },
     reinitialiser() {
       // Toutes les entites reprennent leur place, pas seulement le heros : une
       // creature laissee ou elle etait tombee fausserait le deuxieme essai.
       for (const d of departs) { d.n.x = d.x; d.n.y = d.y; d.n.visible = true }
-      combat.reinitialiser()
-      peuplement.oublier()
+      for (const paire of paires.values()) {
+        paire.combat.reinitialiser()
+        paire.peuplement.oublier()
+      }
       dialogue.fermer()
+      // On revient sur la carte de depart, et l'ecran-titre se rouvre :
+      // « rejouer » rejoue le JEU, pas le niveau ou l'on s'etait arrete.
+      if (jeuCourant && fluxActif !== nomActif) {
+        jeuCourant.carte = premiere
+        jeuCourant.racine = racine
+        courant.peuplement = peuplement
+        courant.combat = combat
+        courant.dirige = dirige
+        if (dirige) { jeuCourant.suivreNoeud(dirige.nom); jeuCourant.cadrer() }
+        fluxActif = nomActif
+      }
+      titreOuvert = !!p.deroule?.titre
       // Les « une fois » retirent : rejouer depuis le debut, c'est aussi
       // reentendre la musique du boss et relire le panneau d'entree.
       jeuCourant?.declencheurs?.oublier()
     },
     etat: () => `projet relu · ${cartes.length} carte(s) · ${p.planches.length} planche(s)`
       + ` · ${p.animations.length} clip(s) · ${peuplement.nombre} entité(s)${notes}`,
+    sonde: () => ({
+      carteActive: fluxActif,
+      titreOuvert,
+      cartes: cartes.map((c) => c.nom),
+      ordre: ordreDuJeu(),
+    }),
   }
 }

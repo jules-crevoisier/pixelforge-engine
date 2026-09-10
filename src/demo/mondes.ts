@@ -115,6 +115,19 @@ export interface Monde {
    */
   declencheurs?: import('../export/format.ts').DeclencheurSerialise[]
   /**
+   * TOUTES les cartes et TOUTES les scenes du projet, quand il en a
+   * plusieurs. `carte` et `racine` restent la paire ACTIVE — celle que
+   * l'editeur montre et modifie — et ces listes contiennent la meme
+   * reference : peindre la carte active peint aussi la liste. C'est ce que
+   * l'enregistrement serialise, sinon il ne garderait que la carte affichee.
+   */
+  cartes?: { nom: string; carte: Carte }[]
+  scenes?: { nom: string; racine: Noeud }[]
+  /** Le nom de la carte active. Vide : la premiere. */
+  carteActive?: string
+  /** Le deroule du jeu : titre et ordre des cartes. Voir le format v12. */
+  deroule?: { titre: string; ordre: string[] }
+  /**
    * Le peuplement, quand le monde en a un.
    *
    * C'est par lui que l'editeur pose et retire des entites. Un monde sans

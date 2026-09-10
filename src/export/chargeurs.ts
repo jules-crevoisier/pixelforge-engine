@@ -330,6 +330,12 @@ export interface Projet {
    * d'accueil qui ne sait pas l'executer sait au moins dire qu'il y en a un.
    */
   declencheurs: Declencheur[]
+  /**
+   * Le deroule du jeu : son titre, et l'ordre de ses cartes. Ordre vide :
+   * le jeu vit sur sa premiere carte. C'est la donnee que carteSuivante
+   * consulte : l'enchainement des niveaux est dans le fichier, pas du code.
+   */
+  deroule: { titre: string; ordre: string[] }
 }
 
 export interface Declencheur {
@@ -628,6 +634,19 @@ export function declencheursEn(p: Projet, tuile: number, x: number, y: number): 
     && cy >= d.zone.y && cy < d.zone.y + d.zone.h)
 }
 
+/**
+ * La carte qui suit celle-ci dans le deroule, ou vide au bout.
+ *
+ * Un deroule sans ordre suit l'ordre des cartes : c'est le defaut de
+ * l'editeur, et un chargeur qui repondrait autre chose enverrait le joueur
+ * ailleurs que le jeu d'origine.
+ */
+export function carteSuivante(p: Projet, courante: string): string {
+  const ordre = p.deroule?.ordre?.length ? p.deroule.ordre : p.cartes.map((c) => c.nom)
+  const i = ordre.indexOf(courante)
+  return i >= 0 && i + 1 < ordre.length ? ordre[i + 1] : ''
+}
+
 /** La duree d'un temps, en millisecondes. */
 export function dureeTemps(m: Musique): number {
   return 60000 / Math.max(1, m.tempo)
@@ -773,6 +792,14 @@ namespace PixelForge
         public int y;
         public int l;
         public int h;
+    }
+
+    /// <summary>Le deroule du jeu : son titre, et l'ordre de ses cartes.</summary>
+    [Serializable]
+    public class Deroule
+    {
+        public string titre;
+        public List<string> ordre;
     }
 
     /// <summary>
@@ -1270,6 +1297,8 @@ namespace PixelForge
         public List<Salle> salles;
         /// <summary>Les declencheurs du niveau. Vide : rien ne tire.</summary>
         public List<Declencheur> declencheurs;
+        /// <summary>Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.</summary>
+        public Deroule deroule;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -1303,6 +1332,18 @@ namespace PixelForge
             foreach (var d in declencheurs)
                 if (d.quand == "salle" && d.salle == salle) sortie.Add(d);
             return sortie;
+        }
+
+        /// <summary>La carte qui suit celle-ci dans le deroule, ou vide au bout.</summary>
+        public string CarteSuivante(string courante)
+        {
+            var ordre = new List<string>();
+            if (deroule != null && deroule.ordre != null && deroule.ordre.Count > 0)
+                ordre = deroule.ordre;
+            else if (cartes != null)
+                foreach (var c in cartes) ordre.Add(c.nom);
+            int i = ordre.IndexOf(courante);
+            return (i >= 0 && i + 1 < ordre.Count) ? ordre[i + 1] : "";
         }
 
         /// <summary>Les declencheurs de zone dont le rectangle contient ce point.</summary>
@@ -1407,6 +1448,8 @@ var salles: Array = []
 ## Les declencheurs du niveau : « a l'entree de ce tableau », « au contact de
 ## cette zone », joue ce script. La source du script est du texte.
 var declencheurs: Array = []
+## Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
+var deroule: Dictionary = {}
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -1435,6 +1478,7 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.textes = brut.get("textes", {})
 	p.salles = brut.get("salles", [])
 	p.declencheurs = brut.get("declencheurs", [])
+	p.deroule = brut.get("deroule", {})
 	return p
 
 ## Les bornes d'une salle en pixels du monde.
@@ -1452,6 +1496,17 @@ func salle_en(tuile: int, x: float, y: float) -> Dictionary:
 		if b.has_point(Vector2i(int(x), int(y))):
 			return s
 	return {}
+
+## La carte qui suit celle-ci dans le deroule, ou une chaine vide au bout.
+func carte_suivante(courante: String) -> String:
+	var ordre: Array = deroule.get("ordre", [])
+	if ordre.is_empty():
+		for c in cartes:
+			ordre.append(c.get("nom", ""))
+	var i := ordre.find(courante)
+	if i >= 0 and i + 1 < ordre.size():
+		return ordre[i + 1]
+	return ""
 
 ## Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.
 func declencheurs_de_salle(nom_salle: String) -> Array:
@@ -2267,6 +2322,18 @@ pub struct Projet {
     /// est du texte : un moteur qui ne l'execute pas sait au moins le dire.
     #[serde(default)]
     pub declencheurs: Vec<Declencheur>,
+    /// Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
+    #[serde(default)]
+    pub deroule: Deroule,
+}
+
+/// Le deroule du jeu : son titre, et l'ordre de ses cartes.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Deroule {
+    #[serde(default)]
+    pub titre: String,
+    #[serde(default)]
+    pub ordre: Vec<String>,
 }
 
 /// « Quand ceci arrive, joue ce script. »
@@ -2356,6 +2423,19 @@ impl Projet {
             x >= bx as f64 && y >= by as f64
                 && x < (bx + bl) as f64 && y < (by + bh) as f64
         })
+    }
+
+    /// La carte qui suit celle-ci dans le deroule, ou une chaine vide au bout.
+    pub fn carte_suivante(&self, courante: &str) -> String {
+        let noms: Vec<String> = if self.deroule.ordre.is_empty() {
+            self.cartes.iter().map(|c| c.nom.clone()).collect()
+        } else {
+            self.deroule.ordre.clone()
+        };
+        match noms.iter().position(|n| n == courante) {
+            Some(i) if i + 1 < noms.len() => noms[i + 1].clone(),
+            _ => String::new(),
+        }
     }
 
     /// Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.
@@ -2453,6 +2533,8 @@ function Projet.depuis(donnees)
   -- Les declencheurs du niveau. Vide : rien ne tire. La source du script est
   -- du texte : un moteur qui ne l'execute pas sait au moins le dire.
   self.declencheurs = donnees.declencheurs or {}
+  -- Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
+  self.deroule = donnees.deroule or { titre = "", ordre = {} }
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -2704,6 +2786,19 @@ function Projet:salle_en(tuile, x, y)
     if x >= bx and y >= by and x < bx + bl and y < by + bh then return s end
   end
   return nil
+end
+
+-- La carte qui suit celle-ci dans le deroule, ou une chaine vide au bout.
+function Projet:carte_suivante(courante)
+  local ordre = self.deroule and self.deroule.ordre or {}
+  if #ordre == 0 then
+    ordre = {}
+    for _, c in ipairs(self.cartes or {}) do ordre[#ordre + 1] = c.nom end
+  end
+  for i, nom in ipairs(ordre) do
+    if nom == courante and ordre[i + 1] then return ordre[i + 1] end
+  end
+  return ""
 end
 
 -- Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.
@@ -3118,6 +3213,8 @@ class Projet:
     #: Les declencheurs du niveau. Vide : rien ne tire. La source du script
     #: est du texte : un moteur qui ne l'execute pas sait au moins le dire.
     declencheurs: list[dict[str, Any]] = field(default_factory=list)
+    #: Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
+    deroule: dict[str, Any] = field(default_factory=dict)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -3157,6 +3254,15 @@ class Projet:
             if m.get("nom") == nom:
                 return m
         return None
+
+    def carte_suivante(self, courante: str) -> str:
+        \"\"\"La carte qui suit celle-ci dans le deroule, ou vide au bout.\"\"\"
+        ordre = self.deroule.get("ordre") or [c.nom for c in self.cartes]
+        if courante in ordre:
+            i = ordre.index(courante)
+            if i + 1 < len(ordre):
+                return ordre[i + 1]
+        return ""
 
     def declencheurs_de_salle(self, salle: str) -> list[dict[str, Any]]:
         \"\"\"Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.\"\"\"
@@ -3236,6 +3342,7 @@ class Projet:
             musiques=d.get("musiques", []), touches=d.get("touches", {}),
             textes=d.get("textes", {}), salles=d.get("salles", []),
             declencheurs=d.get("declencheurs", []),
+            deroule=d.get("deroule", {}),
         )
 #: « la4 » rend 440. Un silence ou une note inconnue rend zero.
 _DEMI_TONS = {

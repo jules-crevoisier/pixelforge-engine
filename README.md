@@ -443,6 +443,46 @@ scène, un refus silencieux ne tirerait jamais et l'on chercherait la faute
 dans le niveau. Les six chargeurs les relisent, et Python comme TypeScript
 répondent la même chose à « quels déclencheurs contiennent ce point ».
 
+Et ils ne s'observent **jamais pendant qu'une interface suspend le monde** —
+écran-titre, boîte de dialogue. Sans cette règle, un héros qui commence la
+partie sur une zone tirerait à travers l'écran-titre, et le niveau changerait
+avant qu'on ait appuyé sur quoi que ce soit. C'est un vrai navigateur qui l'a
+trouvée, pas un banc : le déclencheur tirait au pas un, pendant que le titre
+attendait la barre d'espace.
+
+### Plusieurs cartes, un déroulé : un projet devient un jeu
+
+Le format savait porter plusieurs cartes depuis le premier jour. L'éditeur
+n'en montrait qu'une — et surtout, **l'enregistrement ne gardait qu'elle** :
+un projet de trois niveaux enregistré puis relu en perdait deux, en silence.
+C'est la faute que la version 12 ferme, et la règle qui la ferme est simple :
+le monde vivant porte *toutes* ses cartes et *toutes* ses scènes, la paire
+active est la même référence que dans la liste, et la sérialisation emporte
+la liste.
+
+Chaque carte s'apparie à la **scène du même nom** — c'est ce qui donne à
+chaque niveau ses propres créatures, son propre peuplement, son propre
+combat. « + Carte » crée le niveau deux avec sa scène et une copie jouable du
+héros ; « Éditer » le met sous le pinceau sans rien perdre ; renommer une
+carte renomme sa scène, son décor et sa place dans le déroulé, parce que
+renommer sans tout suivre casserait le niveau en silence.
+
+Le **déroulé** est la donnée qui fait d'une liste de cartes un jeu : un titre
+et un ordre. Un titre ouvre le jeu sur un écran-titre — en pixels du jeu,
+comme tout le reste — et Espace le passe. L'ordre par défaut est celui des
+cartes ; un ordre explicite l'emporte. Deux verbes le parcourent :
+
+```js
+c.aller('grotte')   // change de carte, de scène et de créatures, d'un geste
+c.niveauSuivant()   // la carte suivante du déroulé — false au bout
+```
+
+La sortie d'un niveau, c'est donc un déclencheur posé sur une zone dont le
+script tient en une ligne : `c.niveauSuivant()`. La fumée le prouve de bout
+en bout — un jeu à deux niveaux, écran-titre compris, construit par les seuls
+boutons de l'éditeur. Et « Rejouer » recommence le **jeu** : retour au niveau
+un et au titre, pas au niveau où l'on s'était arrêté.
+
 ## Ce que ça veut dire, concrètement
 
 - **Tout est en pixels entiers.** Positions, caméra, échelle. Ce qui a besoin de
@@ -626,12 +666,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 341 vérifications : mondes, animations, combat, étages, scripts, déclencheurs, projets
-npm run banc:langages   #  94 vérifications : chargeurs, accord entre langages, paquets
+npm run banc:mondes     # 361 vérifications : mondes, animations, combat, étages, scripts, déclencheurs, cartes multiples
+npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           #  98 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           # 103 vérifications de l'éditeur, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

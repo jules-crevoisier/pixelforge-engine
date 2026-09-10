@@ -93,6 +93,17 @@ export interface ContexteJeu {
   poser(espece: string, x: number, y: number): Noeud | null
   /** Retire un noeud de la scene, ou qu'il soit. */
   retirer(noeud: Noeud): boolean
+  /**
+   * Change de carte, par son nom. La meme carte, ou une inconnue : rien.
+   *
+   * C'est le verbe qui fait d'un projet multi-cartes un JEU : la zone de
+   * sortie d'un niveau est un declencheur qui appelle `aller` ou
+   * `niveauSuivant`. La carte, la scene et les creatures changent ensemble —
+   * chaque carte a la scene du meme nom.
+   */
+  aller(carte: string): boolean
+  /** La carte suivante du deroule. Au bout, ou sans deroule : rien. */
+  niveauSuivant(): boolean
 }
 
 export type Script = (c: ContexteJeu, noeud: Noeud) => void
@@ -284,6 +295,17 @@ export class Jeu {
    * retard sur tout ce qu'il fait, et un rejeu reseau le mettrait ailleurs.
    */
   declencheurs: Declencheurs | null = null
+  /** Change de carte, par son nom. C'est le monde qui le branche. */
+  allerCarte: ((nom: string) => boolean) | null = null
+  /** Le nom de la carte qui suit dans le deroule, ou vide. */
+  prochaineCarte: (() => string) | null = null
+  /**
+   * Vrai quand une interface — ecran-titre, boite de dialogue — SUSPEND le
+   * monde. Les declencheurs ne s'observent pas pendant : un heros qui
+   * commence la partie sur une zone tirerait A TRAVERS l'ecran-titre, et le
+   * niveau changerait avant qu'on ait appuye sur quoi que ce soit.
+   */
+  interfaceOuverte: (() => boolean) | null = null
   private boucle: Boucle
   private cibleCamera: string | null = null
 
@@ -374,7 +396,10 @@ export class Jeu {
     }
     // Les declencheurs regardent le monde APRES que les scripts l'ont bouge :
     // un heros qui franchit la ligne a ce pas tire a ce pas, pas au suivant.
-    this.declencheurs?.avancer(ctx, this.salles?.nom ?? '', this.cibleCamera ?? '')
+    // Et jamais pendant qu'une interface suspend le monde — voir le champ.
+    if (!(this.interfaceOuverte?.() ?? false)) {
+      this.declencheurs?.avancer(ctx, this.salles?.nom ?? '', this.cibleCamera ?? '')
+    }
     if (this.cibleCamera) {
       const c = trouverParNom(this.racine, this.cibleCamera)
       if (c && this.cameraParSalle) {
@@ -506,6 +531,11 @@ export class Jeu {
       salle: this.salles?.nom ?? '',
       poser: (espece, x, y) => this.poserEntite ? this.poserEntite(espece, x, y) : null,
       retirer: (noeud) => retirerDe(this.racine, noeud),
+      aller: (carte) => this.allerCarte ? this.allerCarte(carte) : false,
+      niveauSuivant: () => {
+        const nom = this.prochaineCarte?.() ?? ''
+        return nom ? (this.allerCarte?.(nom) ?? false) : false
+      },
     }
   }
 

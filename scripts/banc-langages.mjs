@@ -212,6 +212,9 @@ const projet = serialiserProjet(
   TEXTES,
   SALLES_ESSAI,
   DECLENCHEURS_ESSAI,
+  // Le deroule : l'ordre y est EXPLICITE et inverse de l'ordre des cartes,
+  // pour que le banc distingue « je lis le deroule » de « je lis les cartes ».
+  { titre: 'Essai', ordre: ['matieres', 'salle'] },
 )
 
 /* La table de reference des cases : ou chaque case se pose a l'ecran. */
@@ -310,6 +313,8 @@ sortie = {
     "declSalle": [d["nom"] for d in p.declencheurs_de_salle("entree")],
     "declZoneDedans": [d["nom"] for d in p.declencheurs_en(16, 33, 17)],
     "declZoneBord": [d["nom"] for d in p.declencheurs_en(16, 64, 17)],
+    "titre": p.deroule.get("titre", ""),
+    "suivantes": [p.carte_suivante(n) for n in ["matieres", "salle", "ailleurs"]],
 }
 print(json.dumps(sortie))
 `)
@@ -379,6 +384,9 @@ print(json.dumps(sortie))
       v.declSalle.join(',') === 'accueil'
       && v.declZoneDedans.join(',') === 'piege' && v.declZoneBord.length === 0,
       `entree -> ${v.declSalle.join(',')} · (33,17) -> ${v.declZoneDedans.join(',')} · (64,17) -> rien`)
+    check('Python suit le deroule, pas l\'ordre des cartes',
+      v.titre === 'Essai' && v.suivantes.join('|') === 'salle||',
+      `« ${v.titre} » · matieres -> ${v.suivantes[0] || 'rien'} · salle -> rien · inconnue -> rien`)
     check('Python rend la CLEF pour un texte absent, et non une chaine vide',
       v.texteFr === 'Jouer' && v.texteEn === 'Play'
       && v.texteManquant === 'menu.quitter' && v.texteInvente === 'clef.qui.n.existe.pas'
@@ -629,6 +637,8 @@ console.log(JSON.stringify({
   declSalle: m.declencheursDeSalle(p, 'entree').map((d) => d.nom),
   declZoneDedans: m.declencheursEn(p, 16, 33, 17).map((d) => d.nom),
   declZoneBord: m.declencheursEn(p, 16, 64, 17).map((d) => d.nom),
+  titre: p.deroule.titre,
+  suivantes: ['matieres', 'salle', 'ailleurs'].map((n) => m.carteSuivante(p, n)),
 }))
 `)
   const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
@@ -691,6 +701,9 @@ console.log(JSON.stringify({
       ]) && v.horsCalque === null,
       `la case -1 vaut la case ${MATIERES_ESSAI.length - 1} sur une carte de `
       + `${MATIERES_ESSAI.length} de large ; hors d'un calque ordinaire, rien`)
+    check('TypeScript suit le MEME deroule que Python',
+      v.titre === 'Essai' && v.suivantes.join('|') === 'salle||',
+      `« ${v.titre} » · matieres -> ${v.suivantes[0] || 'rien'}`)
     check('TypeScript retrouve les declencheurs et repond pareil au meme point',
       v.declencheurs.join(' ') === 'accueil:salle: piege:zone:heros'
       && JSON.stringify(v.declUnefois) === '[true,false]'
@@ -722,7 +735,8 @@ for (const [cible, marqueurs] of [
     'return (Matiere(cx, cy) & Matieres.SOLIDE) != 0;',
     'class Parallaxe', 'public void Decalage(float camX, float camY, out int dx, out int dy)',
     'public bool repete;',
-    'class Declencheur', 'DeclencheursDeSalle', 'DeclencheursEn']],
+    'class Declencheur', 'DeclencheursDeSalle', 'DeclencheursEn',
+    'class Deroule', 'public string CarteSuivante(string courante)']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
     'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
     'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde',
@@ -732,7 +746,7 @@ for (const [cible, marqueurs] of [
     'static func matiere_de_case', 'static func hauteur_sol', 'const PENTE_DEMI := 128',
     'return (matiere_de_case(carte, cx, cy) & SOLIDE) != 0',
     'static func decalage_calque', 'static func case_de_calque', 'posmod(cx, largeur)',
-    'func declencheurs_de_salle(', 'func declencheurs_en(']],
+    'func declencheurs_de_salle(', 'func declencheurs_en(', 'func carte_suivante(']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
     'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
     'function Projet.pixel_de_planche', 'function Projet:planche(',
@@ -743,7 +757,8 @@ for (const [cible, marqueurs] of [
     'function Projet.matiere_de_case', 'function Projet.hauteur_sol',
     'Projet.PENTE_DEMI = 128', 'function Projet.a_matiere',
     'function Projet.decalage_calque', 'function Projet.case_de_calque',
-    'function Projet:declencheurs_de_salle(', 'function Projet:declencheurs_en(']],
+    'function Projet:declencheurs_de_salle(', 'function Projet:declencheurs_en(',
+    'function Projet:carte_suivante(']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

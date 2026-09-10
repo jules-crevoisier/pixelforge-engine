@@ -300,8 +300,12 @@ function projetCourant() {
   return serialiserProjet(
     monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id,
     jeu.ecran.vue, palette,
-    [{ nom: monde.id.startsWith('projet:') ? 'carte' : monde.id, carte: monde.carte }],
-    [{ nom: 'principale', racine: monde.racine }],
+    // TOUTES les cartes et TOUTES les scenes quand le monde les porte : avant
+    // cela, enregistrer un projet de trois niveaux n'en gardait qu'un — en
+    // silence. La paire active est la MEME reference que dans la liste, donc
+    // ce qu'on vient de peindre part avec.
+    monde.cartes ?? [{ nom: monde.id.startsWith('projet:') ? 'carte' : monde.id, carte: monde.carte }],
+    monde.scenes ?? [{ nom: 'principale', racine: monde.racine }],
     monde.animations,
     monde.planches,
     monde.projection,
@@ -315,6 +319,7 @@ function projetCourant() {
     monde.textes ?? {},
     monde.salles ?? [],
     monde.declencheurs ?? [],
+    monde.deroule ?? { titre: '', ordre: [] },
   )
 }
 
@@ -376,9 +381,9 @@ function relire(texte: string, nomFichier: string): void {
  * venu du disque. Rien n'est mis a jour en place, donc rien ne peut etre
  * oublie.
  */
-function installerProjet(p: ProjetSerialise, nom: string): void {
+function installerProjet(p: ProjetSerialise, nom: string, carteVoulue = ''): void {
   const id = `projet:${nom}`
-  projetsRelus.set(id, () => mondeDepuisProjet(p, nom))
+  projetsRelus.set(id, () => mondeDepuisProjet(p, nom, carteVoulue))
   if (!Array.from(selectMonde.options).some((o) => o.value === id)) {
     const o = document.createElement('option')
     o.value = id
@@ -403,8 +408,15 @@ const panneauProjet = new PanneauProjet(
   {
     projet: () => projetCourant(),
     appliquer: (p, quoi) => {
-      installerProjet(p, p.nom)
+      // Un geste du panneau ne change pas de carte : redimensionner le
+      // niveau deux doit laisser le niveau deux sous le pinceau.
+      installerProjet(p, p.nom, monde.carteActive ?? '')
       verdict.textContent = quoi
+    },
+    carteActive: () => monde.carteActive ?? '',
+    editerCarte: (nom) => {
+      installerProjet(projetCourant(), monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id, nom)
+      verdict.textContent = `Carte « ${nom} » sous le pinceau`
     },
     dire: (m) => { verdict.textContent = m },
     planches: () => monde.planches,

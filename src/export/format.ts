@@ -39,6 +39,15 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **12** — le deroule, et les cartes qui cessent d'etre decoratives. Le
+ * format savait porter PLUSIEURS cartes depuis le premier jour ; l'editeur
+ * n'en montrait qu'une, l'enregistrement ne gardait qu'elle, et rien ne
+ * disait dans quel ordre un jeu les traverse. Le deroule est cette donnee :
+ * un titre, et l'ordre des cartes. Chaque carte s'apparie a la scene DU MEME
+ * NOM — c'est ce qui permet a chaque niveau d'avoir ses propres creatures.
+ * Un fichier d'avant se relit : pas de deroule, le jeu commence sur la
+ * premiere carte et n'en change pas, ce que faisaient tous les projets.
+ *
  * **11** — les declencheurs. « A l'entree de ce tableau, lance la musique »
  * est une decision de conception de niveau ; elle vivait dans le code, donc
  * hors du fichier, donc hors des portages. Un declencheur nomme un tableau ou
@@ -122,7 +131,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 11
+export const VERSION_FORMAT = 12
 
 export interface ProjetSerialise {
   version: number
@@ -199,6 +208,16 @@ export interface ProjetSerialise {
    * chargeur ecrit ailleurs ne doit rien avoir a deviner.
    */
   declencheurs: DeclencheurSerialise[]
+  /**
+   * Le deroule du jeu : son titre, et l'ordre de ses cartes.
+   *
+   * `titre` vide : pas d'ecran-titre, on joue tout de suite — le cas d'un
+   * projet en cours de travail. `ordre` vide : le jeu vit sur sa premiere
+   * carte et n'en change pas. Sinon, `ordre` liste des NOMS de cartes, et
+   * c'est lui que `niveauSuivant` consulte : l'enchainement des niveaux est
+   * une donnee du fichier, pas une suite de scripts.
+   */
+  deroule: { titre: string; ordre: string[] }
 }
 
 export interface DeclencheurSerialise {
@@ -425,6 +444,7 @@ export function serialiserProjet(
   textes: Record<string, Record<string, string>> = {},
   salles: Salle[] = [],
   declencheurs: DeclencheurSerialise[] = [],
+  deroule: { titre: string; ordre: string[] } = { titre: '', ordre: [] },
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -459,6 +479,7 @@ export function serialiserProjet(
       zone: d.zone ? { ...d.zone } : { x: 0, y: 0, l: 0, h: 0 },
       qui: d.qui ?? '', unefois: !!d.unefois, script: d.script,
     })),
+    deroule: { titre: deroule.titre ?? '', ordre: [...(deroule.ordre ?? [])] },
   }
 }
 

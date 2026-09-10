@@ -682,6 +682,97 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.click('#arreter')
   await p.waitForTimeout(200)
 
+  /*
+   * UN JEU A DEUX NIVEAUX, par les seuls boutons de l'editeur.
+   *
+   * « + Carte » cree le niveau deux, le Deroule donne un titre, et un
+   * declencheur appelle c.niveauSuivant(). Si cette chaine casse, l'editeur
+   * ne sait faire que des jeux d'UN niveau — et aucun banc hors navigateur
+   * ne peut le dire, parce que tout passe par le panneau et par Jouer.
+   */
+  await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  const surBlocNomme = (titreBloc, fn, ...args) => p.evaluate(({ titre, src, args: a }) => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b) => b.querySelector('h3')?.textContent === titre)
+    // eslint-disable-next-line no-new-func
+    return bloc ? new Function('bloc', '...args', `return (${src})(bloc, ...args)`)(bloc, ...a) : null
+  }, { titre: titreBloc, src: fn.toString(), args: args })
+  await surBlocNomme('Cartes', (bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent === '+ Carte').click()
+  })
+  await p.waitForTimeout(300)
+  const apresAjout = await p.evaluate(() => window.pfe.monde.sonde())
+  ok('« + Carte » donne un second niveau, nommé', apresAjout.cartes.join(',') === 'carte,niveau2',
+    apresAjout.cartes.join(' · '))
+
+  // On passe le niveau deux sous le pinceau, puis on revient : rien ne se perd.
+  await surBlocNomme('Cartes', (bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent === 'Éditer').click()
+  })
+  await p.waitForTimeout(300)
+  const surNiveau2 = await p.evaluate(() => window.pfe.monde.sonde().carteActive)
+  await surBlocNomme('Cartes', (bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent === 'Éditer').click()
+  })
+  await p.waitForTimeout(300)
+  const retour = await p.evaluate(() => window.pfe.monde.sonde())
+  ok('« Éditer » change la carte sous le pinceau, et en revient',
+    surNiveau2 === 'niveau2' && retour.carteActive === 'carte' && retour.cartes.length === 2,
+    `carte → niveau2 → carte, ${retour.cartes.length} cartes conservées`)
+
+  // Le titre, et un declencheur qui passe au niveau suivant.
+  await surBlocNomme('Déroulé', (bloc) => {
+    const e = bloc.querySelector('input')
+    e.value = 'La Grotte'
+    e.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(250)
+  await surBlocNomme('Déclencheurs', (bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent.includes('Déclencheur')).click()
+  })
+  await p.waitForTimeout(250)
+  const caseH = await p.evaluate(() => {
+    const h = window.pfe.monde.heros
+    const t = window.pfe.monde.carte.tuile
+    return { x: Math.floor(h.x / t), y: Math.floor(h.y / t) }
+  })
+  for (const [i, v] of [[0, caseH.x - 1], [1, caseH.y - 1], [2, 3], [3, 3]].values()) {
+    await surBlocNomme('Déclencheurs', (bloc, i2, v2) => {
+      const ligne = [...bloc.querySelectorAll('.ligne')].at(-1)
+      const e = ligne.querySelectorAll('input[type=number]')[i2]
+      e.value = String(v2)
+      e.dispatchEvent(new Event('change'))
+    }, i, v)
+    await p.waitForTimeout(150)
+  }
+  await surBlocNomme('Déclencheurs', (bloc) => {
+    const ligne = [...bloc.querySelectorAll('.ligne')].at(-1)
+    const e = ligne.querySelector('textarea')
+    e.value = 'c.niveauSuivant()'
+    e.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(250)
+  await p.click('#fermerProjet')
+  await p.click('#jouer')
+  await p.waitForTimeout(300)
+  const pendantTitre = await p.evaluate(() => window.pfe.monde.sonde())
+  ok('le jeu s’ouvre sur son écran-titre, monde gelé',
+    pendantTitre.titreOuvert === true && pendantTitre.carteActive === 'carte',
+    `« La Grotte » attend — Espace pour commencer`)
+  await p.keyboard.press('Space')
+  await p.waitForTimeout(500)
+  const apresTitre = await p.evaluate(() => window.pfe.monde.sonde())
+  ok('Espace le passe, et le déclencheur emmène au niveau deux',
+    apresTitre.titreOuvert === false && apresTitre.carteActive === 'niveau2',
+    `carte → ${apresTitre.carteActive}, par c.niveauSuivant() dans un déclencheur — un jeu à deux niveaux sans une ligne hors de l’éditeur`)
+  await p.click('#arreter')
+  await p.waitForTimeout(250)
+  const apresArret = await p.evaluate(() => window.pfe.monde.sonde())
+  ok('« Rejouer » recommencera le JEU : retour au niveau un et au titre',
+    apresArret.carteActive === 'carte' && apresArret.titreOuvert === true,
+    'pas au niveau où l’on s’était arrêté')
+
   // L'aide s'ouvre et se ferme.
   await p.click('#basculeAide')
   await p.waitForTimeout(200)

@@ -10,6 +10,7 @@ import {
   changerVueProjet,
   renommerSalleProjet, reglerSalleProjet, retirerSalleProjet,
   ajouterDeclencheurProjet, reglerDeclencheurProjet, retirerDeclencheurProjet,
+  ajouterCarteProjet, renommerCarteProjet, retirerCarteProjet, reglerDerouleProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
 import { chevauchements } from '../niveau/salles.ts'
@@ -43,6 +44,10 @@ export interface CrochetsProjet {
   appliquer(p: ProjetSerialise, quoi: string): void
   /** Dit quelque chose dans la barre du panneau. */
   dire(message: string): void
+  /** Le nom de la carte sous le pinceau. Vide : la premiere. */
+  carteActive(): string
+  /** Met cette carte-la sous le pinceau, sans rien perdre des autres. */
+  editerCarte(nom: string): void
   /**
    * Les planches du monde EN COURS, modifiables sur place.
    *
@@ -186,8 +191,8 @@ export class PanneauProjet {
     this.corps.textContent = ''
     this.onglets()
     if (this.onglet === 'carte') {
-      this.blocCarte(p); this.blocCalques(p); this.blocSalles(p)
-      this.blocDeclencheurs(p); this.blocNeuf()
+      this.blocCartes(p); this.blocCarte(p); this.blocCalques(p); this.blocSalles(p)
+      this.blocDeclencheurs(p); this.blocDeroule(p); this.blocNeuf()
     }
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
@@ -227,14 +232,104 @@ export class PanneauProjet {
    */
   private frais(): ProjetSerialise { return this.crochets.projet() }
 
+  /** La carte sous le pinceau, dans ce projet-la. */
+  private carteEditee(p: ProjetSerialise) {
+    const nom = this.crochets.carteActive()
+    return p.cartes.find((c) => c.nom === nom) ?? p.cartes[0]
+  }
+
   private appliquer(p: ProjetSerialise, quoi: string): void {
     this.crochets.appliquer(p, quoi)
     this.montrer()
     this.dire(quoi)
   }
 
+  /**
+   * Les cartes : les niveaux du projet.
+   *
+   * ## Pourquoi « editer » RECONSTRUIT le monde
+   *
+   * La carte sous le pinceau est celle que le monde vivant porte. En changer
+   * demande de relire le projet avec l'autre paire carte-scene active — le
+   * meme chemin que tous les gestes de structure, et le seul qui garantisse
+   * que rien de ce qu'on vient de peindre n'est perdu : la serialisation
+   * emporte TOUTES les cartes, pas seulement l'affichee.
+   */
+  private blocCartes(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Cartes')
+    const active = this.carteEditee(p)?.nom ?? ''
+    const liste = document.createElement('div')
+    liste.className = 'liste'
+    for (const c of p.cartes) {
+      const ligne = document.createElement('div')
+      ligne.className = 'ligne'
+      const nom = document.createElement('input')
+      nom.value = c.nom
+      nom.style.width = '104px'
+      nom.title = 'Le nom de la carte. Sa scène, son décor et le déroulé la suivent.'
+      nom.addEventListener('change', () => {
+        const voulu = nom.value.trim()
+        if (!voulu || p.cartes.some((q) => q !== c && q.nom === voulu)) { this.montrer(); return }
+        this.appliquer(renommerCarteProjet(this.frais(), c.nom, voulu), `Carte « ${voulu} »`)
+      })
+      const taille = document.createElement('span')
+      taille.className = 'menu'
+      taille.textContent = `${c.largeur}×${c.hauteur}`
+      ligne.append(nom, taille)
+      if (c.nom === active) {
+        const marque = document.createElement('span')
+        marque.className = 'menu'
+        marque.textContent = '✎ sous le pinceau'
+        ligne.appendChild(marque)
+      } else {
+        ligne.appendChild(bouton('Éditer', 'Met cette carte sous le pinceau. Rien n’est perdu : toutes les cartes partent dans le fichier.',
+          () => this.crochets.editerCarte(c.nom)))
+      }
+      if (p.cartes.length > 1) {
+        ligne.appendChild(bouton('✕', 'Retire cette carte et sa scène.', () => {
+          if (!window.confirm(`Retirer la carte « ${c.nom} » et sa scène ?`)) return
+          this.appliquer(retirerCarteProjet(this.frais(), c.nom), `Carte « ${c.nom} » retirée`)
+        }))
+      }
+      liste.appendChild(ligne)
+    }
+    d.appendChild(liste)
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(bouton('+ Carte',
+      'Un niveau de plus : une carte vide de la même taille, avec sa scène et son héros.',
+      () => this.appliquer(ajouterCarteProjet(this.frais()), 'Carte ajoutée — son nom la retrouve dans le déroulé')))
+    d.appendChild(actions)
+  }
+
+  /**
+   * Le deroule : le titre du jeu, et l'ordre des niveaux.
+   *
+   * L'ordre par defaut est celui des cartes — c'est pour cela qu'il n'y a
+   * pas de champ « ordre » tant qu'on n'en a pas besoin : un champ de plus
+   * qui repete ce que la liste au-dessus montre deja serait du bruit.
+   */
+  private blocDeroule(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Déroulé')
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const titre = champ(g, 'Titre du jeu', p.deroule?.titre ?? '', 'text')
+    titre.placeholder = 'vide : pas d’écran-titre'
+    titre.addEventListener('change', () => {
+      this.appliquer(reglerDerouleProjet(this.frais(), { titre: titre.value.trim() }),
+        titre.value.trim() ? `Titre : « ${titre.value.trim()} »` : 'Pas d’écran-titre')
+    })
+    d.appendChild(g)
+    const note = document.createElement('p')
+    note.className = 'dos-vide'
+    note.textContent = 'Un titre ouvre le jeu sur un écran-titre ; Espace le passe. '
+      + 'Les niveaux s’enchaînent dans l’ordre des cartes — c.niveauSuivant() dans un déclencheur passe au suivant, '
+      + 'c.aller(\'nom\') va où l’on veut.'
+    d.appendChild(note)
+  }
+
   private blocCarte(p: ProjetSerialise): void {
-    const c = p.cartes[0]
+    const c = this.carteEditee(p)
     const d = bloc(this.corps, 'Carte')
     if (!c) { d.append('Ce projet n’a pas de carte.'); return }
     const g = document.createElement('div')
@@ -257,7 +352,7 @@ export class PanneauProjet {
           if (perdu && !window.confirm(
             `Réduire ${c.largeur}×${c.hauteur} en ${nl}×${nh} perdra ce qui dépasse. Continuer ?`,
           )) return
-          this.appliquer(redimensionnerProjet(this.frais(), nl, nh),
+          this.appliquer(redimensionnerProjet(this.frais(), nl, nh, c.nom),
             `Carte : ${c.largeur}×${c.hauteur} → ${Math.max(4, Math.round(nl))}×${Math.max(4, Math.round(nh))}`)
         }),
       bouton('Changer la vue',
@@ -486,7 +581,7 @@ export class PanneauProjet {
   }
 
   private blocCalques(p: ProjetSerialise): void {
-    const c = p.cartes[0]
+    const c = this.carteEditee(p)
     const d = bloc(this.corps, 'Calques')
     if (!c) return
     const liste = document.createElement('div')
@@ -495,15 +590,15 @@ export class PanneauProjet {
       const ligne = document.createElement('div')
       ligne.className = 'ligne'
       const oeil = bouton(q.visible ? '👁' : '·', 'Montrer ou cacher ce calque',
-        () => this.appliquer(modifierCalqueProjet(this.frais(), q.nom, { visible: !q.visible }),
+        () => this.appliquer(modifierCalqueProjet(this.frais(), q.nom, { visible: !q.visible }, c.nom),
           `Calque « ${q.nom} » ${q.visible ? 'caché' : 'montré'}`))
       const nom = document.createElement('span')
       nom.className = 'nom'
       nom.textContent = q.nom + (q.terrain ? ' · terrain' : '')
       const monter = bouton('↑', 'Passer sous le calque précédent',
-        () => this.appliquer(modifierCalqueProjet(this.frais(), q.nom, { decaler: -1 }), `Calque « ${q.nom} » descendu`))
+        () => this.appliquer(modifierCalqueProjet(this.frais(), q.nom, { decaler: -1 }, c.nom), `Calque « ${q.nom} » descendu`))
       const descendre = bouton('↓', 'Passer par-dessus le calque suivant',
-        () => this.appliquer(modifierCalqueProjet(this.frais(), q.nom, { decaler: 1 }), `Calque « ${q.nom} » monté`))
+        () => this.appliquer(modifierCalqueProjet(this.frais(), q.nom, { decaler: 1 }, c.nom), `Calque « ${q.nom} » monté`))
       monter.disabled = i === 0
       descendre.disabled = i === c.calques.length - 1
       const oter = bouton('✕', c.calques.length <= 1
@@ -511,7 +606,7 @@ export class PanneauProjet {
         : 'Retirer ce calque et tout ce qu’il porte',
       () => {
         if (!window.confirm(`Retirer le calque « ${q.nom} » et tout ce qu’il porte ?`)) return
-        this.appliquer(retirerCalqueProjet(this.frais(), q.nom), `Calque « ${q.nom} » retiré`)
+        this.appliquer(retirerCalqueProjet(this.frais(), q.nom, c.nom), `Calque « ${q.nom} » retiré`)
       })
       oter.disabled = c.calques.length <= 1
       /*
@@ -537,7 +632,7 @@ export class PanneauProjet {
         e.addEventListener('change', () => {
           const v = { ...par, [axe]: Number(e.value) }
           this.appliquer(
-            modifierCalqueProjet(this.frais(), q.nom, { parallaxe: v }),
+            modifierCalqueProjet(this.frais(), q.nom, { parallaxe: v }, c.nom),
             `Calque « ${q.nom} » : parallaxe ${v.x} / ${v.y}`,
           )
         })
@@ -547,7 +642,7 @@ export class PanneauProjet {
         ? 'Ce calque se répète. Sans répétition, un fond plus lent laisse voir le vide au bord.'
         : 'Répéter ce calque indéfiniment — indispensable dès que la parallaxe n’est pas 1.',
       () => this.appliquer(
-        modifierCalqueProjet(this.frais(), q.nom, { repete: !q.repete }),
+        modifierCalqueProjet(this.frais(), q.nom, { repete: !q.repete }, c.nom),
         `Calque « ${q.nom} » ${q.repete ? 'ne se répète plus' : 'se répète'}`,
       ))
       ligne.append(oeil, nom, champ('x'), champ('y'), boucle, monter, descendre, oter)
@@ -561,10 +656,10 @@ export class PanneauProjet {
     actions.append(
       nom,
       bouton('+ Décor', 'Un calque de dessin libre : on y pose des tuiles une par une.',
-        () => this.appliquer(ajouterCalqueProjet(this.frais(), nom.value || 'décor', false),
+        () => this.appliquer(ajouterCalqueProjet(this.frais(), nom.value || 'décor', false, c.nom),
           `Calque « ${nom.value || 'décor'} » ajouté`)),
       bouton('+ Terrain', 'Un calque à autotiling : on peint « ici il y a du mur » et la tuile se déduit.',
-        () => this.appliquer(ajouterCalqueProjet(this.frais(), nom.value || 'terrain', true),
+        () => this.appliquer(ajouterCalqueProjet(this.frais(), nom.value || 'terrain', true, c.nom),
           `Calque de terrain « ${nom.value || 'terrain'} » ajouté`)),
     )
     d.appendChild(actions)

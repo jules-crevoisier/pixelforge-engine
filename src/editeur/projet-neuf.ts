@@ -176,6 +176,9 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     salles: [],
     // Pas de declencheurs non plus : ils s'ecrivent quand le niveau existe.
     declencheurs: [],
+    // Ni de deroule : un projet neuf est un seul niveau sans ecran-titre.
+    // L'ordre vide veut dire « l'ordre des cartes », et c'est le bon defaut.
+    deroule: { titre: '', ordre: [] },
     // Une table par langue, vide au depart : ce qui compte est que le CHEMIN
     // existe des le premier jour. Ajouter la traduction apres coup oblige a
     // reprendre chaque texte ecrit en dur entre-temps.
@@ -197,13 +200,28 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
  * qu'on a deja dessine. Un ancrage centre paraitrait plus poli et decalerait
  * toutes les entites d'un demi-ecart, sans que rien ne le dise.
  */
+/**
+ * L'index de la carte visee par un geste de structure.
+ *
+ * Les gestes du panneau — redimensionner, ajouter un calque — visaient tous
+ * la PREMIERE carte, ce qui allait tant qu'il n'y en avait qu'une. Avec
+ * plusieurs, chaque geste dit sur laquelle il porte ; sans nom, la premiere,
+ * pour que tout ce qui existait continue de faire ce qu'il faisait.
+ */
+const indexCarte = (p: ProjetSerialise, nomCarte?: string): number => {
+  if (!nomCarte) return 0
+  const i = p.cartes.findIndex((c) => c.nom === nomCarte)
+  return i < 0 ? 0 : i
+}
+
 export function redimensionnerProjet(
-  p: ProjetSerialise, largeur: number, hauteur: number,
+  p: ProjetSerialise, largeur: number, hauteur: number, nomCarte?: string,
 ): ProjetSerialise {
   const l = Math.max(4, Math.round(largeur))
   const h = Math.max(4, Math.round(hauteur))
+  const vise = indexCarte(p, nomCarte)
   const cartes = p.cartes.map((c, index) => {
-    if (index !== 0) return c
+    if (index !== vise) return c
     const ajuster = (lignes: string[], vide: string, sep: string): string[] =>
       Array.from({ length: h }, (_, y) => {
         const source = lignes[y]
@@ -235,9 +253,10 @@ export function redimensionnerProjet(
  * rien fait — et l'on cliquerait trois fois.
  */
 export function ajouterCalqueProjet(
-  p: ProjetSerialise, nom: string, avecTerrain: boolean,
+  p: ProjetSerialise, nom: string, avecTerrain: boolean, nomCarte?: string,
 ): ProjetSerialise {
-  const c = p.cartes[0]
+  const vise = indexCarte(p, nomCarte)
+  const c = p.cartes[vise]
   if (!c) return p
   let propre = nom.trim() || 'calque'
   let n = 2
@@ -252,7 +271,7 @@ export function ajouterCalqueProjet(
   }
   return {
     ...p,
-    cartes: p.cartes.map((q, i) => (i === 0 ? { ...q, calques: [...q.calques, calque] } : q)),
+    cartes: p.cartes.map((q, i) => (i === vise ? { ...q, calques: [...q.calques, calque] } : q)),
   }
 }
 
@@ -263,13 +282,16 @@ export function ajouterCalqueProjet(
  * s'ouvrirait sur un rectangle noir sans rien dire. On refuse le geste plutot
  * que d'avoir a expliquer l'ecran noir.
  */
-export function retirerCalqueProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
-  const c = p.cartes[0]
+export function retirerCalqueProjet(
+  p: ProjetSerialise, nom: string, nomCarte?: string,
+): ProjetSerialise {
+  const vise = indexCarte(p, nomCarte)
+  const c = p.cartes[vise]
   if (!c || c.calques.length <= 1) return p
   return {
     ...p,
     cartes: p.cartes.map((q, i) => (
-      i === 0 ? { ...q, calques: q.calques.filter((l) => l.nom !== nom) } : q
+      i === vise ? { ...q, calques: q.calques.filter((l) => l.nom !== nom) } : q
     )),
   }
 }
@@ -285,8 +307,10 @@ export function modifierCalqueProjet(
     nom?: string; visible?: boolean; devant?: boolean; decaler?: number
     parallaxe?: { x: number; y: number }; repete?: boolean
   },
+  nomCarte?: string,
 ): ProjetSerialise {
-  const c = p.cartes[0]
+  const vise = indexCarte(p, nomCarte)
+  const c = p.cartes[vise]
   if (!c) return p
   const calques = c.calques.map((q) => (q.nom === nom
     ? {
@@ -312,7 +336,7 @@ export function modifierCalqueProjet(
       calques.splice(j, 0, pris)
     }
   }
-  return { ...p, cartes: p.cartes.map((q, i) => (i === 0 ? { ...q, calques } : q)) }
+  return { ...p, cartes: p.cartes.map((q, i) => (i === vise ? { ...q, calques } : q)) }
 }
 
 /**
@@ -506,4 +530,145 @@ export function reglerDeclencheurProjet(
 
 export function retirerDeclencheurProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
   return { ...p, declencheurs: (p.declencheurs ?? []).filter((d) => d.nom !== nom) }
+}
+
+/* ------------------------------------------------------------------ */
+/* Les cartes multiples, et le deroule                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ajoute une carte neuve, et LA SCENE DU MEME NOM.
+ *
+ * C'est l'appariement qui porte tout le multi-cartes : une carte sans scene
+ * n'aurait ni heros ni creatures, et l'on tomberait dans un niveau vide sans
+ * comprendre pourquoi. La scene neuve recoit une copie du heros de la
+ * premiere scene — meme espece, meme nom — posee pres du coin : un niveau
+ * doit etre jouable des sa creation, et c'est le nom du heros que la camera
+ * suit d'un niveau a l'autre.
+ */
+export function ajouterCarteProjet(p: ProjetSerialise): ProjetSerialise {
+  const modele = p.cartes[0]
+  if (!modele) return p
+  let n = p.cartes.length + 1
+  while (p.cartes.some((c) => c.nom === `niveau${n}`)) n++
+  const nom = `niveau${n}`
+  const vides = () => Array.from({ length: modele.hauteur }, () => rangeeVide(modele.largeur))
+  const zeros = () => rangeeZeros(modele.largeur)
+  const carte: CarteSerialisee = {
+    nom,
+    largeur: modele.largeur,
+    hauteur: modele.hauteur,
+    tuile: modele.tuile,
+    // Les MEMES calques que la premiere carte, vides : un niveau deux qui
+    // n'aurait pas le calque « décor » ferait echouer les gestes qui le
+    // nomment, et personne ne saurait pourquoi le niveau un les accepte.
+    calques: modele.calques.map((q) => ({
+      nom: q.nom,
+      visible: q.visible,
+      devant: q.devant,
+      terrain: q.terrain ? { ...q.terrain } : null,
+      cases: vides(),
+      presence: q.presence ? Array.from({ length: modele.hauteur }, zeros) : null,
+      parallaxe: q.parallaxe ? { ...q.parallaxe } : { x: 1, y: 1 },
+      repete: q.repete ?? false,
+    })),
+    solides: Array.from({ length: modele.hauteur }, () => matiereEnCaractere(VIDE).repeat(modele.largeur)),
+  }
+  const heros = chercherHeros(p.scenes[0]?.racine)
+  const scene = {
+    nom,
+    racine: {
+      id: `scene-${nom}`, nom: 'scene', type: 'noeud' as const, x: 0, y: 0, visible: true,
+      script: null, espece: null, image: 0, proprietes: {},
+      enfants: [
+        {
+          id: `decor-${nom}`, nom: 'decor', type: 'carte' as const, x: 0, y: 0, visible: true,
+          script: null, espece: null, image: 0,
+          proprietes: { source: nom }, enfants: [],
+        },
+        ...(heros ? [{
+          ...structuredClone(heros),
+          id: `heros-${nom}`,
+          x: modele.tuile * 3,
+          y: modele.tuile * 3,
+        }] : []),
+      ],
+    },
+  }
+  return { ...p, cartes: [...p.cartes, carte], scenes: [...p.scenes, scene] }
+}
+
+/** Le premier noeud qui porte une espece : le heros a copier. */
+function chercherHeros(racine?: NoeudSerialise): NoeudSerialise | null {
+  if (!racine) return null
+  if (racine.espece) return racine
+  for (const e of racine.enfants) {
+    const t = chercherHeros(e)
+    if (t) return t
+  }
+  return null
+}
+
+/**
+ * Renomme une carte, sa scene, et tout ce qui la nommait.
+ *
+ * Le decor de sa scene la designe par `source`, et le deroule par son nom :
+ * renommer sans les suivre casserait le niveau en silence — il se
+ * dessinerait avec la mauvaise carte, ou sortirait du deroule.
+ */
+export function renommerCarteProjet(
+  p: ProjetSerialise, nom: string, neuf: string,
+): ProjetSerialise {
+  const renommerSource = (n: NoeudSerialise): NoeudSerialise => ({
+    ...n,
+    proprietes: n.proprietes?.source === nom
+      ? { ...n.proprietes, source: neuf } : n.proprietes,
+    enfants: n.enfants.map(renommerSource),
+  })
+  return {
+    ...p,
+    cartes: p.cartes.map((c) => (c.nom === nom ? { ...c, nom: neuf } : c)),
+    scenes: p.scenes.map((s) => ({
+      ...s,
+      nom: s.nom === nom ? neuf : s.nom,
+      racine: renommerSource(s.racine),
+    })),
+    deroule: {
+      titre: p.deroule?.titre ?? '',
+      ordre: (p.deroule?.ordre ?? []).map((q) => (q === nom ? neuf : q)),
+    },
+  }
+}
+
+/**
+ * Retire une carte et sa scene. La derniere ne se retire pas.
+ *
+ * Un projet sans carte ne s'edite pas et ne se joue pas : on refuse le geste
+ * plutot que d'avoir a expliquer l'ecran noir — la meme regle que pour le
+ * dernier calque.
+ */
+export function retirerCarteProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  if (p.cartes.length <= 1 || !p.cartes.some((c) => c.nom === nom)) return p
+  return {
+    ...p,
+    cartes: p.cartes.filter((c) => c.nom !== nom),
+    scenes: p.scenes.filter((s) => s.nom !== nom),
+    deroule: {
+      titre: p.deroule?.titre ?? '',
+      ordre: (p.deroule?.ordre ?? []).filter((q) => q !== nom),
+    },
+  }
+}
+
+/** Regle le titre du deroule. Vide : pas d'ecran-titre. */
+export function reglerDerouleProjet(
+  p: ProjetSerialise, changements: Partial<{ titre: string; ordre: string[] }>,
+): ProjetSerialise {
+  return {
+    ...p,
+    deroule: {
+      titre: changements.titre ?? p.deroule?.titre ?? '',
+      ordre: changements.ordre ?? p.deroule?.ordre ?? [],
+    },
+  }
 }

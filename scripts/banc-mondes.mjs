@@ -3838,6 +3838,148 @@ console.log('\n--- les declencheurs : quand ceci arrive, joue ce script ---')
   }
 }
 
+/*
+ * LES CARTES MULTIPLES ET LE DEROULE : un projet devient un JEU.
+ *
+ * La faute que cette section garde : l'enregistrement ne serialisait que la
+ * carte AFFICHEE. Un projet de trois niveaux enregistre puis relu en perdait
+ * deux, en silence — la pire maniere. Chaque verification part de la : tout
+ * ce qui existe doit traverser, et chaque geste dit sur quelle carte il porte.
+ */
+console.log('\n--- les cartes multiples, et le deroule ---')
+{
+  const { projetNeuf, ajouterCarteProjet, renommerCarteProjet, retirerCarteProjet,
+    reglerDerouleProjet, redimensionnerProjet, ajouterCalqueProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { serialiserProjet, versTexte } = await import('../src/export/format.ts')
+  const { Palette, depuisHex } = await import('../src/noyau/palette.ts')
+
+  {
+    const p = ajouterCarteProjet(projetNeuf())
+    check('une carte neuve nait avec la scene DU MEME NOM',
+      p.cartes.length === 2 && p.cartes[1].nom === 'niveau2'
+      && p.scenes.some((q) => q.nom === 'niveau2'),
+      p.cartes.map((c) => c.nom).join(', '))
+    const scene = p.scenes.find((q) => q.nom === 'niveau2')
+    const decor = scene.racine.enfants.find((n) => n.type === 'carte')
+    const heros = scene.racine.enfants.find((n) => n.espece)
+    check('son decor la designe, et son heros est une copie jouable',
+      decor?.proprietes?.source === 'niveau2' && !!heros
+      && heros.espece === p.scenes[0].racine.enfants.find((n) => n.espece)?.espece,
+      `decor -> « ${decor?.proprietes?.source} », héros « ${heros?.espece} »`)
+    check('et ses calques portent les memes noms que la premiere carte',
+      p.cartes[1].calques.map((q) => q.nom).join(',')
+      === p.cartes[0].calques.map((q) => q.nom).join(','),
+      'un geste qui nomme un calque doit marcher sur les deux niveaux')
+    const p3 = ajouterCarteProjet(p)
+    check('les noms de cartes ne se marchent pas dessus',
+      new Set(p3.cartes.map((c) => c.nom)).size === 3,
+      p3.cartes.map((c) => c.nom).join(', '))
+  }
+
+  {
+    // Chaque geste de structure dit SUR QUELLE carte il porte.
+    let p = ajouterCarteProjet(projetNeuf())
+    p = redimensionnerProjet(p, 30, 18, 'niveau2')
+    check('redimensionner le niveau deux laisse le niveau un tranquille',
+      p.cartes[1].largeur === 30 && p.cartes[1].hauteur === 18
+      && p.cartes[0].largeur === projetNeuf().cartes[0].largeur,
+      `${p.cartes[0].largeur}×${p.cartes[0].hauteur} et ${p.cartes[1].largeur}×${p.cartes[1].hauteur}`)
+    p = ajouterCalqueProjet(p, 'brume', false, 'niveau2')
+    check('un calque ajoute au niveau deux n\'apparait que la',
+      p.cartes[1].calques.some((q) => q.nom === 'brume')
+      && !p.cartes[0].calques.some((q) => q.nom === 'brume'))
+    // Et sans nom de carte, tout fait ce que ca faisait : la premiere.
+    p = redimensionnerProjet(p, 44, 26)
+    check('sans nom de carte, le geste vise la premiere — rien ne change pour l\'existant',
+      p.cartes[0].largeur === 44 && p.cartes[1].largeur === 30)
+  }
+
+  {
+    let p = reglerDerouleProjet(ajouterCarteProjet(projetNeuf()), { ordre: ['carte', 'niveau2'] })
+    p = renommerCarteProjet(p, 'niveau2', 'grotte')
+    const scene = p.scenes.find((q) => q.nom === 'grotte')
+    check('renommer une carte renomme sa scene, son decor et le deroule',
+      p.cartes[1].nom === 'grotte' && !!scene
+      && scene.racine.enfants.find((n) => n.type === 'carte')?.proprietes?.source === 'grotte'
+      && p.deroule.ordre.join(',') === 'carte,grotte',
+      'renommer sans tout suivre casserait le niveau en silence')
+    p = retirerCarteProjet(p, 'grotte')
+    check('retirer une carte retire sa scene et sa place dans le deroule',
+      p.cartes.length === 1 && !p.scenes.some((q) => q.nom === 'grotte')
+      && p.deroule.ordre.join(',') === 'carte')
+    check('mais la DERNIERE carte ne se retire pas',
+      retirerCarteProjet(p, 'carte').cartes.length === 1,
+      'un projet sans carte ne s\'edite pas et ne se joue pas')
+  }
+
+  {
+    // La relecture : quelle paire carte-scene est ACTIVE.
+    let p = ajouterCarteProjet(projetNeuf())
+    p = redimensionnerProjet(p, 30, 18, 'niveau2')
+    const m2 = mondeDepuisProjet(p, 'essai', 'niveau2')
+    check('relire avec une carte voulue met CETTE carte sous le pinceau',
+      m2.carteActive === 'niveau2' && m2.carte.largeur === 30,
+      `« ${m2.carteActive} », ${m2.carte.largeur} cases de large`)
+    check('et sa scene avec — le heros du niveau deux, pas celui du un',
+      m2.racine.enfants.some((n) => n.espece) && m2.cartes.length === 2
+      && m2.scenes.length === 2,
+      'la paire active vient des listes, par la meme reference')
+    const m1 = mondeDepuisProjet(p, 'essai')
+    check('sans carte voulue, la premiere — ce que faisaient tous les projets',
+      m1.carteActive === p.cartes[0].nom && m1.carte.largeur === p.cartes[0].largeur)
+    // Un projet d'AVANT : une seule scene, « principale », le nom d'aucune
+    // carte. Elle sert alors de scene a tout le monde.
+    const vieux = projetNeuf()
+    const mv = mondeDepuisProjet(vieux, 'vieux')
+    check('un projet d\'avant la version 12 se relit tel quel',
+      mv.racine.enfants.length > 0 && mv.carteActive === vieux.cartes[0].nom)
+  }
+
+  {
+    // LA faute d'origine : enregistrer un projet multi-cartes doit TOUT garder.
+    let p = ajouterCarteProjet(projetNeuf())
+    p = redimensionnerProjet(p, 30, 18, 'niveau2')
+    const m = mondeDepuisProjet(p, 'essai', 'niveau2')
+    // On peint une case solide sur la carte ACTIVE, comme le pinceau le fait.
+    m.carte.solides[0] = 1
+    const re = serialiserProjet('essai', { largeur: 320, hauteur: 180 },
+      new Palette('p', ['#111111'].map(depuisHex)),
+      m.cartes, m.scenes, m.animations, [], m.projection, m.especes,
+      [], [], {}, [], {}, [], [], m.deroule)
+    const relu = JSON.parse(versTexte(re))
+    check('enregistrer garde TOUTES les cartes, pas seulement l\'affichee',
+      relu.cartes.length === 2 && relu.scenes.length === 2,
+      `${relu.cartes.length} cartes, ${relu.scenes.length} scenes — avant, deux niveaux sur trois disparaissaient`)
+    check('et ce qu\'on vient de peindre sur la carte active part avec',
+      relu.cartes[1].solides[0][0] !== relu.cartes[0].solides[0][0],
+      'la paire active et la liste sont la MEME reference, c\'est ce qui le garantit')
+  }
+
+  {
+    // Le deroule, et la sonde qui le montre.
+    let p = ajouterCarteProjet(projetNeuf())
+    p = reglerDerouleProjet(p, { titre: 'La Grotte' })
+    const m = mondeDepuisProjet(p, 'essai')
+    const sonde = m.sonde()
+    check('un titre ouvre le jeu sur son ecran-titre',
+      sonde.titreOuvert === true && m.deroule.titre === 'La Grotte')
+    check('l\'ordre par defaut est celui des cartes',
+      sonde.ordre.join(',') === p.cartes.map((c) => c.nom).join(','),
+      sonde.ordre.join(' -> '))
+    const explicite = mondeDepuisProjet(
+      reglerDerouleProjet(p, { ordre: ['niveau2', 'carte'] }), 'essai')
+    check('mais un ordre explicite l\'emporte',
+      explicite.sonde().ordre.join(',') === 'niveau2,carte',
+      'c\'est lui que niveauSuivant consulte')
+    const sansTitre = mondeDepuisProjet(projetNeuf(), 'essai')
+    check('sans titre, pas d\'ecran-titre : on joue tout de suite',
+      sansTitre.sonde().titreOuvert === false,
+      'le cas d\'un projet en cours de travail')
+  }
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {
