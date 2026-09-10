@@ -196,6 +196,15 @@ c.bouger(corps, dx, dy)      déplace contre le décor
 c.trouver('nom')  un nœud de la scène
 c.carte.solide(cx, cy)       la case bloque-t-elle ?
 
+c.jouer('coup')   un son du projet, par son nom
+c.musique('boss') lance une musique — la même : rien
+c.dire('accueil') ouvre une suite de répliques
+c.secouer(3, 200) secousse de caméra (pixels, ms)
+c.geler(50)       gèle la simulation (hit-stop)
+c.salle           le nom du tableau où l'on est
+c.poser('slime', x, y)       une entité du catalogue
+c.retirer(noeud)  l'enlève de la scène
+
 n.x, n.y          position du nœud
 n.image           image de la planche
 n.miroir          retourné ?

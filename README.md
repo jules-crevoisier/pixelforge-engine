@@ -390,6 +390,59 @@ Une erreur d'exécution ne fait pas tomber la boucle. Elle est rapportée, et
 après cinq le script se met en sommeil : répéter la même exception soixante fois
 par seconde n'apprend rien et rend la page inutilisable.
 
+### Un script peut tout ce qu'un jeu fait
+
+Longtemps, `c` savait bouger des corps et lire les entrées — et rien d'autre.
+Un script ne pouvait ni jouer un son, ni lancer une musique, ni ouvrir un
+dialogue : tout cela existait dans le moteur, mais hors de portée de la
+personne qui écrit. Le contexte porte maintenant les verbes du jeu entier, et
+chacun correspond à un **nom dans le fichier de projet** — c'est ce qui les
+garde exportables :
+
+```js
+c.jouer('coup')         // un son du projet — dédoublonné par pas, comme tout son
+c.musique('boss')       // la même musique deux fois ne relance rien
+c.dire('accueil')       // ouvre une suite de répliques ; le monde s'arrête pour lire
+c.secouer(3, 200)       // la secousse de caméra
+c.geler(50)             // le hit-stop
+c.salle                 // le nom du tableau où l'on est
+c.poser('slime', x, y)  // une entité du catalogue, vivante au pas suivant
+c.retirer(noeud)        // l'enlève de la scène, où qu'il soit
+```
+
+Un monde sans musique peut exécuter un script qui en demande une : le verbe
+rend `false`, et rien ne tombe. C'est le script qui apprend qu'il n'y a pas de
+musique, pas la boucle qui meurt.
+
+### Les déclencheurs : « quand ceci arrive, joue ce script »
+
+« À l'entrée de ce tableau, lance la musique du boss. » « Au contact de cette
+zone, ouvre le dialogue. » C'est de la conception de niveau, pas de la
+programmation — et ça vivait pourtant dans le code, donc hors du fichier, donc
+hors des portages. Les déclencheurs sont des **données** (format v11) : un nom,
+un « quand » (l'entrée d'un tableau, ou le franchissement d'un rectangle de
+cases), le nœud qui doit entrer, et la source d'un script — le même `c`, le
+même `n` que l'atelier, où `n` est le nœud qui est entré.
+
+Trois règles, toutes éprouvées dans les deux sens :
+
+- **On tire au franchissement**, jamais « tant qu'on y est » : un script rejoué
+  soixante fois par seconde rouvrirait le même dialogue en boucle. Ressortir
+  puis revenir tire à nouveau — sauf si le déclencheur est marqué « une fois ».
+- **Le bord gauche est inclus, le bord droit exclu** : une zone de deux cases
+  en couvre exactement deux. Un déclencheur qui tire une case trop tôt ouvre le
+  dialogue à travers un mur.
+- **« Déjà tiré » est de l'état.** Deux machines en réseau qui n'ont pas le
+  même divergent au premier déclencheur — l'une entend la musique du boss,
+  l'autre pas. `instantane`/`restaurer`, comme pour les salles : rembobiner
+  avant le tir le fait retirer au rejeu, rembobiner après ne le rejoue pas.
+
+Ils s'éditent dans le panneau Projet — le script y est compilé **en tapant**,
+et la faute s'affiche sur la ligne : un déclencheur ne se voit pas dans la
+scène, un refus silencieux ne tirerait jamais et l'on chercherait la faute
+dans le niveau. Les six chargeurs les relisent, et Python comme TypeScript
+répondent la même chose à « quels déclencheurs contiennent ce point ».
+
 ## Ce que ça veut dire, concrètement
 
 - **Tout est en pixels entiers.** Positions, caméra, échelle. Ce qui a besoin de
@@ -573,12 +626,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 320 vérifications : mondes, animations, combat, étages, scripts, projets, historique
-npm run banc:langages   #  91 vérifications : chargeurs, accord entre langages, paquets
+npm run banc:mondes     # 341 vérifications : mondes, animations, combat, étages, scripts, déclencheurs, projets
+npm run banc:langages   #  94 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           #  96 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           #  98 vérifications de l'éditeur, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

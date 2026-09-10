@@ -622,6 +622,66 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.click('#arreter')
   await p.waitForTimeout(200)
 
+  /*
+   * UN DECLENCHEUR, PAR LA VRAIE PORTE : le panneau, puis Jouer.
+   *
+   * Les bancs prouvent la classe ; ils ne prouvent pas que le bouton du
+   * panneau fabrique un declencheur, que l'enregistrement le transporte, que
+   * la relecture le recompile et que la partie le fait tirer. C'est toute la
+   * chaine qu'on eprouve ici : on en pose un sur la case du heros, il joue un
+   * son a la premiere seconde de jeu.
+   */
+  await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  const surBloc = (fn, ...args) => p.evaluate(({ src, args: a }) => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b) => b.querySelector('h3')?.textContent === 'Déclencheurs')
+    // eslint-disable-next-line no-new-func
+    return bloc ? new Function('bloc', '...args', `return (${src})(bloc, ...args)`)(bloc, ...a) : null
+  }, { src: fn.toString(), args: args })
+  await surBloc((bloc) => {
+    ;[...bloc.querySelectorAll('button')].find((b) => b.textContent.includes('Déclencheur')).click()
+  })
+  await p.waitForTimeout(250)
+  const caseHeros = await p.evaluate(() => {
+    const h = window.pfe.monde.heros
+    const t = window.pfe.monde.carte.tuile
+    return { x: Math.floor(h.x / t), y: Math.floor(h.y / t) }
+  })
+  // La zone se regle nombre par nombre ; chaque changement refait le panneau,
+  // on requiert donc les champs A CHAQUE geste au lieu de les garder.
+  for (const [i, v] of [[0, caseHeros.x - 1], [1, caseHeros.y - 1], [2, 3], [3, 3]].values()) {
+    await surBloc((bloc, i2, v2) => {
+      const e = bloc.querySelectorAll('.ligne input[type=number]')[i2]
+      e.value = String(v2)
+      e.dispatchEvent(new Event('change'))
+    }, i, v)
+    await p.waitForTimeout(150)
+  }
+  await surBloc((bloc) => {
+    const e = bloc.querySelector('.ligne textarea')
+    e.value = "c.jouer('coup'); c.secouer(2, 120)"
+    e.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(250)
+  const declMonde = await p.evaluate(() => window.pfe.monde.declencheurs)
+  ok('le panneau pose un déclencheur et son script, en données',
+    declMonde?.length === 1 && declMonde[0].script.includes("c.jouer('coup')")
+    && declMonde[0].zone.l === 3,
+    declMonde?.length ? `« ${declMonde[0].nom} », zone ${declMonde[0].zone.x},${declMonde[0].zone.y} ${declMonde[0].zone.l}×${declMonde[0].zone.h}` : 'aucun')
+  await p.click('#fermerProjet')
+  await p.click('#jouer')
+  await p.waitForTimeout(600)
+  const tir = await p.evaluate(() => ({
+    tirs: window.pfe.jeu.declencheurs?.tirs ?? -1,
+    joues: window.pfe.jeu.sonneur?.joue ?? -1,
+  }))
+  ok('et il TIRE en jouant : le script joue son son par c.jouer',
+    tir.tirs === 1 && tir.joues >= 1,
+    `${tir.tirs} tir(s), ${tir.joues} son(s) joué(s) — « une fois » : pas un de plus`)
+  await p.click('#arreter')
+  await p.waitForTimeout(200)
+
   // L'aide s'ouvre et se ferme.
   await p.click('#basculeAide')
   await p.waitForTimeout(200)

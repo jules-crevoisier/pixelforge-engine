@@ -39,6 +39,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **11** — les declencheurs. « A l'entree de ce tableau, lance la musique »
+ * est une decision de conception de niveau ; elle vivait dans le code, donc
+ * hors du fichier, donc hors des portages. Un declencheur nomme un tableau ou
+ * un rectangle de cases, le noeud qui doit y entrer, et porte la source de
+ * son script — du texte, comme les scripts des noeuds, que l'atelier
+ * recompile a la relecture. Un fichier d'avant se relit : pas de
+ * declencheurs, rien ne tire, ce que faisaient tous les projets jusqu'ici.
+ *
  * **10** — les salles. Un chapitre a la Celeste n'est pas une grande carte
  * qu'on parcourt : c'est une suite de TABLEAUX poses a la main, de tailles
  * differentes, dont la forme dit ou la camera s'arrete, ou l'on reapparait et
@@ -114,7 +122,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 10
+export const VERSION_FORMAT = 11
 
 export interface ProjetSerialise {
   version: number
@@ -182,6 +190,30 @@ export interface ProjetSerialise {
    * La langue vide est la langue d'origine.
    */
   textes: Record<string, Record<string, string>>
+  /**
+   * Les declencheurs : « quand ceci arrive, joue ce script ».
+   *
+   * Voir `runtime/declencheurs.ts` pour les regles de tir. Ici, `script` est
+   * la SOURCE — du texte, comme les scripts des noeuds — et chaque champ est
+   * ecrit meme quand le « quand » ne s'en sert pas : rien d'implicite, un
+   * chargeur ecrit ailleurs ne doit rien avoir a deviner.
+   */
+  declencheurs: DeclencheurSerialise[]
+}
+
+export interface DeclencheurSerialise {
+  nom: string
+  /** « salle » : l'entree d'un tableau. « zone » : le contact d'un rectangle. */
+  quand: 'salle' | 'zone'
+  /** Pour « salle » : le nom du tableau. Sinon vide. */
+  salle: string
+  /** Pour « zone » : le rectangle, en cases. Sinon a zero. */
+  zone: { x: number; y: number; l: number; h: number }
+  /** Le nom du noeud qui doit entrer. Vide : celui que la camera suit. */
+  qui: string
+  unefois: boolean
+  /** La source du script, recompilee par l'atelier a la relecture. */
+  script: string
 }
 
 /**
@@ -392,6 +424,7 @@ export function serialiserProjet(
   musiques: Musique[] = [],
   textes: Record<string, Record<string, string>> = {},
   salles: Salle[] = [],
+  declencheurs: DeclencheurSerialise[] = [],
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -418,6 +451,13 @@ export function serialiserProjet(
     ),
     salles: salles.map((s) => ({
       ...s, reprise: s.reprise ? { ...s.reprise } : null,
+    })),
+    // Chaque champ, toujours : un declencheur « salle » porte quand meme sa
+    // zone a zero, pour qu'un chargeur n'ait jamais a traiter un champ absent.
+    declencheurs: declencheurs.map((d) => ({
+      nom: d.nom, quand: d.quand, salle: d.salle ?? '',
+      zone: d.zone ? { ...d.zone } : { x: 0, y: 0, l: 0, h: 0 },
+      qui: d.qui ?? '', unefois: !!d.unefois, script: d.script,
     })),
   }
 }

@@ -178,6 +178,22 @@ carteMatieres.ajouterCalque('sol')
 carteMatieres.ajouterCalque('ciel', { parallaxe: { x: 0.4, y: 0.25 }, repete: true })
 MATIERES_ESSAI.forEach((v, i) => { carteMatieres.solides[i] = v })
 
+/*
+ * Un tableau et deux declencheurs : le cas que la version 11 ajoute.
+ *
+ * Le premier tire a l'entree du tableau, le second au contact d'une zone.
+ * Les six portages doivent retrouver les MEMES champs, et repondre pareil a
+ * « quels declencheurs contiennent ce point » — c'est un arrondi de case, et
+ * les arrondis sont la ou les portages divergent.
+ */
+const SALLES_ESSAI = [{ nom: 'entree', x: 0, y: 0, largeur: 4, hauteur: 3, reprise: null }]
+const DECLENCHEURS_ESSAI = [
+  { nom: 'accueil', quand: 'salle', salle: 'entree', zone: { x: 0, y: 0, l: 0, h: 0 },
+    qui: '', unefois: true, script: "c.dire('accueil')" },
+  { nom: 'piege', quand: 'zone', salle: '', zone: { x: 2, y: 1, l: 2, h: 1 },
+    qui: 'heros', unefois: false, script: "c.jouer('saut')" },
+]
+
 const projet = serialiserProjet(
   'demo', { largeur: 320, hauteur: 180 },
   new Palette('donjon', ['#14101a', '#7a7466'].map(depuisHex)),
@@ -194,6 +210,8 @@ const projet = serialiserProjet(
   { sauter: ['Space', 'KeyZ'] },
   MUSIQUES,
   TEXTES,
+  SALLES_ESSAI,
+  DECLENCHEURS_ESSAI,
 )
 
 /* La table de reference des cases : ou chaque case se pose a l'ecran. */
@@ -286,6 +304,12 @@ sortie = {
                   for cam in ${JSON.stringify(CAMERAS)}],
     "decalagesSol": [list(p.cartes[1].calques[0].decalage(cam, cam))
                      for cam in ${JSON.stringify(CAMERAS)}],
+    "declencheurs": [f"{d['nom']}:{d['quand']}:{d['qui']}" for d in p.declencheurs],
+    "declUnefois": [d["unefois"] for d in p.declencheurs],
+    "declScript": p.declencheurs[0]["script"],
+    "declSalle": [d["nom"] for d in p.declencheurs_de_salle("entree")],
+    "declZoneDedans": [d["nom"] for d in p.declencheurs_en(16, 33, 17)],
+    "declZoneBord": [d["nom"] for d in p.declencheurs_en(16, 64, 17)],
 }
 print(json.dumps(sortie))
 `)
@@ -346,6 +370,15 @@ print(json.dumps(sortie))
       ecartsNotes.length
         ? `${ecartsNotes.length} fausses, ex. « ${ecartsNotes[0]} » : ${v.frequences[NOTES.indexOf(ecartsNotes[0])]} au lieu de ${FREQUENCES[NOTES.indexOf(ecartsNotes[0])]}`
         : `${NOTES.length} notes, silence et note inventee compris`)
+    check('Python retrouve les declencheurs, leur « quand » et leur source',
+      v.declencheurs.join(' ') === 'accueil:salle: piege:zone:heros'
+      && JSON.stringify(v.declUnefois) === '[true,false]'
+      && v.declScript === "c.dire('accueil')",
+      v.declencheurs.join(' · '))
+    check('et Python repond pareil a « quels declencheurs contiennent ce point »',
+      v.declSalle.join(',') === 'accueil'
+      && v.declZoneDedans.join(',') === 'piege' && v.declZoneBord.length === 0,
+      `entree -> ${v.declSalle.join(',')} · (33,17) -> ${v.declZoneDedans.join(',')} · (64,17) -> rien`)
     check('Python rend la CLEF pour un texte absent, et non une chaine vide',
       v.texteFr === 'Jouer' && v.texteEn === 'Play'
       && v.texteManquant === 'menu.quitter' && v.texteInvente === 'clef.qui.n.existe.pas'
@@ -590,6 +623,12 @@ console.log(JSON.stringify({
   repetition: [[-1, 0], [0, 0], [5, 0], [-6, 2]].map(
     (q) => m.caseDeCalque(p.cartes[1].calques[1], p.cartes[1], q[0], q[1])),
   horsCalque: m.caseDeCalque(p.cartes[1].calques[0], p.cartes[1], -1, 0),
+  declencheurs: p.declencheurs.map((d) => d.nom + ':' + d.quand + ':' + d.qui),
+  declUnefois: p.declencheurs.map((d) => d.unefois),
+  declScript: p.declencheurs[0].script,
+  declSalle: m.declencheursDeSalle(p, 'entree').map((d) => d.nom),
+  declZoneDedans: m.declencheursEn(p, 16, 33, 17).map((d) => d.nom),
+  declZoneBord: m.declencheursEn(p, 16, 64, 17).map((d) => d.nom),
 }))
 `)
   const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
@@ -652,6 +691,13 @@ console.log(JSON.stringify({
       ]) && v.horsCalque === null,
       `la case -1 vaut la case ${MATIERES_ESSAI.length - 1} sur une carte de `
       + `${MATIERES_ESSAI.length} de large ; hors d'un calque ordinaire, rien`)
+    check('TypeScript retrouve les declencheurs et repond pareil au meme point',
+      v.declencheurs.join(' ') === 'accueil:salle: piege:zone:heros'
+      && JSON.stringify(v.declUnefois) === '[true,false]'
+      && v.declScript === "c.dire('accueil')"
+      && v.declSalle.join(',') === 'accueil'
+      && v.declZoneDedans.join(',') === 'piege' && v.declZoneBord.length === 0,
+      `${v.declencheurs.length} declencheurs · (33,17) -> ${v.declZoneDedans.join(',')}`)
     const ecarts = TABLE.filter((t, i) => v.images[i] !== t.image)
     check('TypeScript rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -675,7 +721,8 @@ for (const [cible, marqueurs] of [
     'public static int HauteurSol(int matiere, int x, int tuile)',
     'return (Matiere(cx, cy) & Matieres.SOLIDE) != 0;',
     'class Parallaxe', 'public void Decalage(float camX, float camY, out int dx, out int dy)',
-    'public bool repete;']],
+    'public bool repete;',
+    'class Declencheur', 'DeclencheursDeSalle', 'DeclencheursEn']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
     'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
     'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde',
@@ -684,7 +731,8 @@ for (const [cible, marqueurs] of [
     'return table.get(clef, clef)', 'var touches: Dictionary',
     'static func matiere_de_case', 'static func hauteur_sol', 'const PENTE_DEMI := 128',
     'return (matiere_de_case(carte, cx, cy) & SOLIDE) != 0',
-    'static func decalage_calque', 'static func case_de_calque', 'posmod(cx, largeur)']],
+    'static func decalage_calque', 'static func case_de_calque', 'posmod(cx, largeur)',
+    'func declencheurs_de_salle(', 'func declencheurs_en(']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
     'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
     'function Projet.pixel_de_planche', 'function Projet:planche(',
@@ -694,7 +742,8 @@ for (const [cible, marqueurs] of [
     'self.touches = donnees.touches',
     'function Projet.matiere_de_case', 'function Projet.hauteur_sol',
     'Projet.PENTE_DEMI = 128', 'function Projet.a_matiere',
-    'function Projet.decalage_calque', 'function Projet.case_de_calque']],
+    'function Projet.decalage_calque', 'function Projet.case_de_calque',
+    'function Projet:declencheurs_de_salle(', 'function Projet:declencheurs_en(']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

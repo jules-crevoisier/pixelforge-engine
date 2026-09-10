@@ -9,7 +9,9 @@ import {
   ajouterPlancheProjet,
   changerVueProjet,
   renommerSalleProjet, reglerSalleProjet, retirerSalleProjet,
+  ajouterDeclencheurProjet, reglerDeclencheurProjet, retirerDeclencheurProjet,
 } from './projet-neuf.ts'
+import { compiler } from '../script/atelier.ts'
 import { chevauchements } from '../niveau/salles.ts'
 import {
   plancheDepuisImage, plancheDepuisSprite, type ImageBrute,
@@ -184,7 +186,8 @@ export class PanneauProjet {
     this.corps.textContent = ''
     this.onglets()
     if (this.onglet === 'carte') {
-      this.blocCarte(p); this.blocCalques(p); this.blocSalles(p); this.blocNeuf()
+      this.blocCarte(p); this.blocCalques(p); this.blocSalles(p)
+      this.blocDeclencheurs(p); this.blocNeuf()
     }
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
@@ -345,6 +348,141 @@ export class PanneauProjet {
     d.appendChild(liste)
     d.appendChild(note('Chaque salle borne la caméra et sert de point de reprise : '
       + 'mourir y renvoie, pas au départ du niveau.'))
+  }
+
+  /**
+   * Les declencheurs : « quand ceci arrive, joue ce script ».
+   *
+   * ## Pourquoi le script se verifie EN TAPANT
+   *
+   * Un declencheur ne se voit pas dans la scene : un script refuse en
+   * silence ne tirerait jamais, et l'on chercherait la faute dans le niveau.
+   * L'atelier compile donc a chaque changement, et la faute s'affiche sur la
+   * ligne — la meme regle que pour les scripts des noeuds, au meme endroit.
+   */
+  private blocDeclencheurs(p: ProjetSerialise): void {
+    const liste = p.declencheurs ?? []
+    const d = bloc(this.corps, 'Déclencheurs')
+    const note = (texte: string): HTMLParagraphElement => {
+      const q = document.createElement('p')
+      q.className = 'dos-vide'
+      q.textContent = texte
+      return q
+    }
+    for (const q of liste) {
+      const carte = document.createElement('div')
+      carte.className = 'ligne'
+      carte.style.flexWrap = 'wrap'
+      const nom = document.createElement('input')
+      nom.value = q.nom
+      nom.style.width = '104px'
+      nom.title = 'Le nom du déclencheur. Il sert à le retrouver, deux ne peuvent pas le partager.'
+      nom.addEventListener('change', () => {
+        const voulu = nom.value.trim()
+        if (!voulu || liste.some((r) => r !== q && r.nom === voulu)) { this.montrer(); return }
+        this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom, { nom: voulu }),
+          `Déclencheur « ${voulu} »`)
+      })
+      const quand = document.createElement('select')
+      for (const [v, t] of [['zone', 'au contact d’une zone'], ['salle', 'à l’entrée d’une salle']]) {
+        const o = document.createElement('option')
+        o.value = v
+        o.textContent = t
+        if (q.quand === v) o.selected = true
+        quand.appendChild(o)
+      }
+      quand.title = 'Ce qui tire le script : franchir un rectangle de cases, ou entrer dans un tableau.'
+      quand.addEventListener('change', () => {
+        this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom,
+          { quand: quand.value as 'salle' | 'zone' }), `Déclencheur « ${q.nom} » : ${quand.value}`)
+      })
+      const unefois = document.createElement('input')
+      unefois.type = 'checkbox'
+      unefois.checked = q.unefois
+      unefois.title = 'Coché : le déclencheur s’éteint après le premier tir, jusqu’à « Rejouer ».'
+      unefois.addEventListener('change', () => {
+        this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom, { unefois: unefois.checked }),
+          `Déclencheur « ${q.nom} » : ${unefois.checked ? 'une fois' : 'à chaque entrée'}`)
+      })
+      const oter = bouton('✕', 'Retirer ce déclencheur', () => {
+        this.appliquer(retirerDeclencheurProjet(this.frais(), q.nom),
+          `Déclencheur « ${q.nom} » retiré`)
+      })
+      carte.append(nom, quand, unefois, oter)
+
+      if (q.quand === 'salle') {
+        const salle = document.createElement('select')
+        const vide = document.createElement('option')
+        vide.value = ''
+        vide.textContent = '— choisir un tableau —'
+        salle.appendChild(vide)
+        for (const s of p.salles ?? []) {
+          const o = document.createElement('option')
+          o.value = s.nom
+          o.textContent = s.nom
+          if (q.salle === s.nom) o.selected = true
+          salle.appendChild(o)
+        }
+        salle.title = 'Le tableau dont l’entrée tire le script.'
+        salle.addEventListener('change', () => {
+          this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom, { salle: salle.value }),
+            `Déclencheur « ${q.nom} » : salle « ${salle.value} »`)
+        })
+        carte.appendChild(salle)
+      } else {
+        const champZone = (clef: 'x' | 'y' | 'l' | 'h', titre: string): HTMLInputElement => {
+          const e = document.createElement('input')
+          e.type = 'number'
+          e.value = String(q.zone[clef])
+          e.style.width = '46px'
+          e.title = titre
+          e.addEventListener('change', () => {
+            this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom,
+              { zone: { ...q.zone, [clef]: Math.max(0, Math.round(Number(e.value) || 0)) } }),
+              `Déclencheur « ${q.nom} » : zone ${clef} ${e.value}`)
+          })
+          return e
+        }
+        carte.append(champZone('x', 'Colonne du coin haut-gauche, en cases'),
+          champZone('y', 'Rangée du coin haut-gauche, en cases'),
+          champZone('l', 'Largeur en cases'), champZone('h', 'Hauteur en cases'))
+      }
+
+      const script = document.createElement('textarea')
+      script.value = q.script
+      script.rows = 3
+      script.style.width = '100%'
+      script.spellcheck = false
+      script.title = 'Le script, avec les mêmes « c » et « n » que l’atelier. « n » est le nœud qui est entré.'
+      const faute = document.createElement('p')
+      faute.className = 'dos-vide'
+      const verifier = (): void => {
+        const r = compiler(script.value)
+        carte.classList.toggle('faute', !r.ok)
+        faute.textContent = r.ok ? '' : (r.erreur ?? 'refusé')
+      }
+      verifier()
+      script.addEventListener('input', verifier)
+      script.addEventListener('change', () => {
+        // On enregistre meme un script refuse : perdre trois lignes tapees
+        // parce qu'il manque une parenthese serait pire que garder la faute —
+        // elle est marquee ici ET comptee a la relecture.
+        this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom, { script: script.value }),
+          `Déclencheur « ${q.nom} » : script enregistré`)
+      })
+      carte.append(script, faute)
+      d.appendChild(carte)
+    }
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(bouton('+ Déclencheur',
+      'Ajoute un déclencheur : « quand ceci arrive, joue ce script ».',
+      () => this.appliquer(ajouterDeclencheurProjet(this.frais()), 'Déclencheur ajouté')))
+    d.appendChild(actions)
+    if (!liste.length) {
+      d.appendChild(note('« À l’entrée de ce tableau, lance la musique. » « Au contact de cette zone, '
+        + 'ouvre le dialogue. » Le script reçoit c et n, comme dans l’atelier.'))
+    }
   }
 
   private blocCalques(p: ProjetSerialise): void {

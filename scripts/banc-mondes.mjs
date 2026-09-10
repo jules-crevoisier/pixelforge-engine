@@ -3663,6 +3663,181 @@ console.log('\n--- l\'editeur autonome : creer, redimensionner, ajouter ---')
   }
 }
 
+/*
+ * LES DECLENCHEURS : « quand ceci arrive, joue ce script ».
+ *
+ * La regle a deux versants qui se contredisent facilement : tirer A L'ENTREE
+ * — jamais « tant qu'on y est » — et retirer apres un rembobinage reseau. On
+ * eprouve les deux, plus le bord exact des zones, parce qu'un declencheur qui
+ * tire une case trop tot ouvre le dialogue a travers un mur.
+ */
+console.log('\n--- les declencheurs : quand ceci arrive, joue ce script ---')
+{
+  const { Declencheurs } = await import('../src/runtime/declencheurs.ts')
+
+  /* Une scene minuscule : un heros qu'on deplace a la main, et un contexte
+   * qui ne sait faire que le retrouver. C'est tout ce que la classe demande. */
+  const bac = () => {
+    const heros = { nom: 'heros', x: 8, y: 8 }
+    const tirs = []
+    const ctx = { trouver: (nom) => (nom === 'heros' ? heros : null) }
+    const script = (nom) => (c, n) => tirs.push(`${nom}@${n.x},${n.y}`)
+    return { heros, tirs, ctx, script }
+  }
+
+  {
+    const { heros, tirs, ctx, script } = bac()
+    const d = new Declencheurs([{
+      nom: 'piege', quand: 'zone', salle: '', zone: { x: 4, y: 0, l: 2, h: 2 },
+      qui: '', unefois: false, script: script('piege'),
+    }], 16)
+    d.avancer(ctx, '', 'heros')
+    check('une zone ne tire pas tant qu\'on est dehors', tirs.length === 0)
+    heros.x = 64 // case 4 : le bord GAUCHE de la zone, inclus
+    d.avancer(ctx, '', 'heros')
+    check('elle tire au franchissement, des le bord inclus', tirs.length === 1
+      && tirs[0] === 'piege@64,8', tirs[0])
+    d.avancer(ctx, '', 'heros')
+    d.avancer(ctx, '', 'heros')
+    check('et PAS une seconde fois tant qu\'on y reste', tirs.length === 1,
+      'soixante tirs par seconde rouvriraient le meme dialogue en boucle')
+    heros.x = 96 // case 6 : le bord DROIT, exclu — la zone couvre 4 et 5
+    d.avancer(ctx, '', 'heros')
+    check('le bord droit est exclu : une zone de deux cases en couvre deux',
+      tirs.length === 1, 'x + l est la premiere case DEHORS')
+    heros.x = 70
+    d.avancer(ctx, '', 'heros')
+    check('ressortir puis revenir tire a nouveau', tirs.length === 2,
+      'un piege qui ne se rearme pas est un « une fois » qui ne dit pas son nom')
+  }
+
+  {
+    const { heros, tirs, ctx, script } = bac()
+    const d = new Declencheurs([{
+      nom: 'panneau', quand: 'zone', salle: '', zone: { x: 0, y: 0, l: 2, h: 2 },
+      qui: '', unefois: true, script: script('panneau'),
+    }], 16)
+    d.avancer(ctx, '', 'heros')
+    heros.x = 40
+    d.avancer(ctx, '', 'heros')
+    heros.x = 8
+    d.avancer(ctx, '', 'heros')
+    check('« une fois » s\'eteint apres le premier tir', tirs.length === 1
+      && d.tirs === 1, `${tirs.length} tir(s)`)
+    d.oublier()
+    d.avancer(ctx, '', 'heros')
+    check('et rejouer depuis le debut le rearme', tirs.length === 2,
+      'relire le panneau d\'entree fait partie de « recommencer »')
+  }
+
+  {
+    const { tirs, ctx, script } = bac()
+    const d = new Declencheurs([{
+      nom: 'boss', quand: 'salle', salle: 'antre', zone: { x: 0, y: 0, l: 0, h: 0 },
+      qui: '', unefois: false, script: script('boss'),
+    }], 16)
+    d.avancer(ctx, 'entree', 'heros')
+    check('une salle qui n\'est pas la sienne ne tire pas', tirs.length === 0)
+    d.avancer(ctx, 'antre', 'heros')
+    d.avancer(ctx, 'antre', 'heros')
+    check('l\'entree du tableau tire, y rester ne retire pas', tirs.length === 1)
+    d.avancer(ctx, 'entree', 'heros')
+    d.avancer(ctx, 'antre', 'heros')
+    check('et chaque retour dans le tableau retire', tirs.length === 2,
+      'la musique du boss revient quand on revient chez lui')
+  }
+
+  {
+    /* Le rembobinage : l'etat des declencheurs EST de l'etat du jeu. */
+    const { heros, tirs, ctx, script } = bac()
+    const d = new Declencheurs([{
+      nom: 'ligne', quand: 'zone', salle: '', zone: { x: 4, y: 0, l: 1, h: 1 },
+      qui: '', unefois: true, script: script('ligne'),
+    }], 16)
+    const avant = d.instantane()
+    heros.x = 66
+    d.avancer(ctx, '', 'heros')
+    check('l\'instantane se prend et le tir a eu lieu', tirs.length === 1)
+    d.restaurer(avant)
+    d.avancer(ctx, '', 'heros')
+    check('rembobiner AVANT le tir le fait retirer au rejeu', tirs.length === 2,
+      'deux machines qui n\'ont pas le meme « deja tire » divergent au premier declencheur')
+    const apres = d.instantane()
+    d.restaurer(apres)
+    d.avancer(ctx, '', 'heros')
+    check('rembobiner APRES le tir ne le rejoue pas', tirs.length === 2,
+      'c\'est le meme contrat que le sonneur : rejouer un pas ne rejoue pas son son')
+  }
+
+  {
+    const { tirs, ctx, script } = bac()
+    const d = new Declencheurs([{
+      nom: 'fantome', quand: 'zone', salle: '', zone: { x: 0, y: 0, l: 4, h: 4 },
+      qui: 'absent', unefois: false, script: script('fantome'),
+    }], 16)
+    d.avancer(ctx, '', 'heros')
+    check('un sujet introuvable ne tire pas et ne casse rien', tirs.length === 0,
+      'le noeud « absent » n\'existe pas — le declencheur attend, c\'est tout')
+  }
+
+  {
+    /* Deux declencheurs sur la meme zone : l'ordre de la liste est l'ordre
+     * des tirs, pour qu'un rejeu reseau les rejoue dans le meme ordre. */
+    const { heros, tirs, ctx, script } = bac()
+    const zone = { x: 0, y: 0, l: 2, h: 2 }
+    const d = new Declencheurs([
+      { nom: 'b', quand: 'zone', salle: '', zone, qui: '', unefois: false, script: script('b') },
+      { nom: 'a', quand: 'zone', salle: '', zone, qui: '', unefois: false, script: script('a') },
+    ], 16)
+    heros.x = 8
+    d.avancer(ctx, '', 'heros')
+    check('deux declencheurs au meme endroit tirent dans l\'ordre de la liste',
+      tirs.map((t) => t[0]).join('') === 'ba', tirs.join(' puis '))
+  }
+
+  /* Le cote projet : les declencheurs s'editent comme les salles. */
+  {
+    const { projetNeuf, ajouterDeclencheurProjet, reglerDeclencheurProjet,
+      retirerDeclencheurProjet } = await import('../src/editeur/projet-neuf.ts')
+    const { compiler } = await import('../src/script/atelier.ts')
+    let p = ajouterDeclencheurProjet(ajouterDeclencheurProjet(projetNeuf()))
+    check('un declencheur neuf recoit un nom libre',
+      p.declencheurs.map((d) => d.nom).join(',') === 'declencheur1,declencheur2')
+    check('et son script d\'exemple compile tel quel',
+      compiler(p.declencheurs[0].script).ok,
+      'la page blanche est le vrai obstacle, pas la syntaxe')
+    p = reglerDeclencheurProjet(p, 'declencheur1', { quand: 'salle', salle: 'antre' })
+    p = reglerDeclencheurProjet(p, 'declencheur1', { zone: { l: 5 } })
+    check('un reglage partiel de zone garde les autres nombres',
+      p.declencheurs[0].zone.l === 5 && p.declencheurs[0].zone.h === 2
+      && p.declencheurs[0].quand === 'salle' && p.declencheurs[0].salle === 'antre')
+    p = retirerDeclencheurProjet(p, 'declencheur2')
+    check('retirer un declencheur ne touche pas les autres',
+      p.declencheurs.length === 1 && p.declencheurs[0].nom === 'declencheur1')
+  }
+
+  /* La frontiere du format : la version 11 traverse l'enregistrement. */
+  {
+    const { serialiserProjet, versTexte, VERSION_FORMAT } = await import('../src/export/format.ts')
+    const { Palette } = await import('../src/noyau/palette.ts')
+    const p = serialiserProjet('d', { largeur: 320, hauteur: 180 }, new Palette('p', []),
+      [], [], [], [], undefined, [], [], [], {}, [], {}, [],
+      [{ nom: 'x', quand: 'zone', salle: '', zone: { x: 1, y: 2, l: 3, h: 4 },
+        qui: 'heros', unefois: true, script: "c.jouer('coup')" }])
+    const relu = JSON.parse(versTexte(p))
+    check('un declencheur traverse l\'enregistrement, champ par champ',
+      relu.version === VERSION_FORMAT && relu.declencheurs.length === 1
+      && relu.declencheurs[0].zone.h === 4 && relu.declencheurs[0].unefois === true
+      && relu.declencheurs[0].script === "c.jouer('coup')",
+      `version ${relu.version}`)
+    check('et l\'aide de l\'atelier enseigne les nouveaux verbes',
+      (await import('../src/script/atelier.ts')).AIDE_SCRIPT.includes('c.jouer')
+      && (await import('../src/script/atelier.ts')).AIDE_SCRIPT.includes('c.dire')
+      && (await import('../src/script/atelier.ts')).AIDE_SCRIPT.includes('c.poser'),
+      'un verbe qu\'on ne decouvre pas n\'existe pas')
+  }
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

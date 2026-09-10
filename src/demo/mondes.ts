@@ -109,6 +109,12 @@ export interface Monde {
    */
   readonly textes?: Record<string, Record<string, string>>
   /**
+   * Les declencheurs du monde, sous leur forme de DONNEES — la source du
+   * script, pas sa compilation. C'est ce qui part dans le fichier, et c'est
+   * l'editeur qui les fait vivre en les recompilant.
+   */
+  declencheurs?: import('../export/format.ts').DeclencheurSerialise[]
+  /**
    * Le peuplement, quand le monde en a un.
    *
    * C'est par lui que l'editeur pose et retire des entites. Un monde sans

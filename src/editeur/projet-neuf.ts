@@ -1,6 +1,7 @@
 import {
   VERSION_FORMAT, decrirePlanche, serialiserAnimation,
   type ProjetSerialise, type CarteSerialisee, type NoeudSerialise, type PlancheSerialisee,
+  type DeclencheurSerialise,
 } from '../export/format.ts'
 import { matiereEnCaractere, caractereEnMatiere, VIDE } from '../tuiles/tilemap.ts'
 import { ORTHO_DESSUS, ORTHO_COTE, ISO, type Projection } from '../noyau/projection.ts'
@@ -173,6 +174,8 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     // le heros partout. Le decoupage en tableaux est une decision de niveau,
     // et l'imposer d'entree ferait croire qu'on ne peut pas s'en passer.
     salles: [],
+    // Pas de declencheurs non plus : ils s'ecrivent quand le niveau existe.
+    declencheurs: [],
     // Une table par langue, vide au depart : ce qui compte est que le CHEMIN
     // existe des le premier jour. Ajouter la traduction apres coup oblige a
     // reprendre chaque texte ecrit en dur entre-temps.
@@ -451,3 +454,56 @@ export function compterMatieres(c: CarteSerialisee): Map<number, number> {
 }
 
 export { matiereEnCaractere }
+
+/* ------------------------------------------------------------------ */
+/* Les declencheurs                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ajoute un declencheur neuf, nomme d'office.
+ *
+ * Il nait en « zone » de deux cases sur deux, au coin de la carte, avec un
+ * script qui ne fait rien mais MONTRE les verbes : la page blanche est le
+ * vrai obstacle, pas la syntaxe. « unefois » nait vrai — c'est le cas de
+ * loin le plus courant, et un dialogue qui se rouvre en boucle est la faute
+ * qu'on decouvre en jouant, trop tard.
+ */
+export function ajouterDeclencheurProjet(p: ProjetSerialise): ProjetSerialise {
+  const liste = p.declencheurs ?? []
+  let n = liste.length + 1
+  while (liste.some((d) => d.nom === `declencheur${n}`)) n++
+  return {
+    ...p,
+    declencheurs: [...liste, {
+      nom: `declencheur${n}`,
+      quand: 'zone',
+      salle: '',
+      zone: { x: 0, y: 0, l: 2, h: 2 },
+      qui: '',
+      unefois: true,
+      script: "// À vous : c.dire('accueil'), c.musique('boss'), c.jouer('coup'),\n"
+        + '// c.secouer(3, 200), c.poser(\'slime\', n.x, n.y - 20)…\n',
+    }],
+  }
+}
+
+/**
+ * Regle un declencheur, y compris son nom.
+ *
+ * Le rename passe par `nom` dans les changements ; l'appelant verifie que le
+ * nouveau nom est libre, comme pour les salles, et pour la meme raison.
+ */
+export function reglerDeclencheurProjet(
+  p: ProjetSerialise, nom: string, changements: Partial<DeclencheurSerialise>,
+): ProjetSerialise {
+  return {
+    ...p,
+    declencheurs: (p.declencheurs ?? []).map((d) => (d.nom === nom
+      ? { ...d, ...changements, zone: { ...d.zone, ...(changements.zone ?? {}) } }
+      : d)),
+  }
+}
+
+export function retirerDeclencheurProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, declencheurs: (p.declencheurs ?? []).filter((d) => d.nom !== nom) }
+}

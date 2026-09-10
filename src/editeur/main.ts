@@ -314,6 +314,7 @@ function projetCourant() {
     monde.musiques ?? [],
     monde.textes ?? {},
     monde.salles ?? [],
+    monde.declencheurs ?? [],
   )
 }
 

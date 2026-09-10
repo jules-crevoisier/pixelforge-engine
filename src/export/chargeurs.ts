@@ -324,6 +324,25 @@ export interface Projet {
    * reapparait quand on meurt, et quand on change de tableau.
    */
   salles: Salle[]
+  /**
+   * Les declencheurs : « a l'entree de ce tableau », « au contact de cette
+   * zone », joue ce script. La source du script est du TEXTE : un moteur
+   * d'accueil qui ne sait pas l'executer sait au moins dire qu'il y en a un.
+   */
+  declencheurs: Declencheur[]
+}
+
+export interface Declencheur {
+  nom: string
+  /** « salle » : l'entree d'un tableau. « zone » : le contact d'un rectangle. */
+  quand: 'salle' | 'zone'
+  salle: string
+  /** En cases. A zero quand le « quand » ne s'en sert pas. */
+  zone: { x: number; y: number; l: number; h: number }
+  /** Le noeud qui doit entrer. Vide : celui que la camera suit. */
+  qui: string
+  unefois: boolean
+  script: string
 }
 
 /** Un tableau du niveau, en cases. Voir les fonctions plus bas. */
@@ -595,6 +614,20 @@ export function musiqueNommee(p: Projet, nom: string): Musique | null {
   return p.musiques.find((m) => m.nom === nom) ?? null
 }
 
+/** Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre. */
+export function declencheursDeSalle(p: Projet, salle: string): Declencheur[] {
+  return (p.declencheurs ?? []).filter((d) => d.quand === 'salle' && d.salle === salle)
+}
+
+/** Les declencheurs de zone dont le rectangle contient ce point du monde. */
+export function declencheursEn(p: Projet, tuile: number, x: number, y: number): Declencheur[] {
+  const cx = Math.floor(x / tuile)
+  const cy = Math.floor(y / tuile)
+  return (p.declencheurs ?? []).filter((d) => d.quand === 'zone'
+    && cx >= d.zone.x && cx < d.zone.x + d.zone.l
+    && cy >= d.zone.y && cy < d.zone.y + d.zone.h)
+}
+
 /** La duree d'un temps, en millisecondes. */
 export function dureeTemps(m: Musique): number {
   return 60000 / Math.max(1, m.tempo)
@@ -730,6 +763,35 @@ namespace PixelForge
     {
         public float x;
         public float y;
+    }
+
+    /// <summary>Un rectangle de cases, pour les declencheurs de zone.</summary>
+    [Serializable]
+    public class Zone
+    {
+        public int x;
+        public int y;
+        public int l;
+        public int h;
+    }
+
+    /// <summary>
+    /// « Quand ceci arrive, joue ce script. » La source du script est du
+    /// texte : un moteur qui ne sait pas l'executer sait au moins le dire.
+    /// </summary>
+    [Serializable]
+    public class Declencheur
+    {
+        public string nom;
+        /// <summary>« salle » : l'entree d'un tableau. « zone » : un rectangle.</summary>
+        public string quand;
+        public string salle;
+        /// <summary>En cases. A zero quand le « quand » ne s'en sert pas.</summary>
+        public Zone zone;
+        /// <summary>Le noeud qui doit entrer. Vide : celui que la camera suit.</summary>
+        public string qui;
+        public bool unefois;
+        public string script;
     }
 
     /// <summary>Les deux facteurs de parallaxe d'un calque.</summary>
@@ -1206,6 +1268,8 @@ namespace PixelForge
         public Dictionary<string, Dictionary<string, string>> textes;
         /// <summary>Le decoupage du niveau en salles, en cases. Vide : monde continu.</summary>
         public List<Salle> salles;
+        /// <summary>Les declencheurs du niveau. Vide : rien ne tire.</summary>
+        public List<Declencheur> declencheurs;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -1229,6 +1293,32 @@ namespace PixelForge
             if (especes == null) return null;
             foreach (var e in especes) if (e.id == idEspece) return e;
             return null;
+        }
+
+        /// <summary>Les declencheurs qui tirent a l'entree de ce tableau.</summary>
+        public List<Declencheur> DeclencheursDeSalle(string salle)
+        {
+            var sortie = new List<Declencheur>();
+            if (declencheurs == null) return sortie;
+            foreach (var d in declencheurs)
+                if (d.quand == "salle" && d.salle == salle) sortie.Add(d);
+            return sortie;
+        }
+
+        /// <summary>Les declencheurs de zone dont le rectangle contient ce point.</summary>
+        public List<Declencheur> DeclencheursEn(int tuile, float x, float y)
+        {
+            var sortie = new List<Declencheur>();
+            if (declencheurs == null) return sortie;
+            int cx = (int)Math.Floor(x / tuile);
+            int cy = (int)Math.Floor(y / tuile);
+            foreach (var d in declencheurs)
+            {
+                if (d.quand != "zone" || d.zone == null) continue;
+                if (cx >= d.zone.x && cx < d.zone.x + d.zone.l
+                    && cy >= d.zone.y && cy < d.zone.y + d.zone.h) sortie.Add(d);
+            }
+            return sortie;
         }
 
         /// <summary>
@@ -1314,6 +1404,9 @@ var touches: Dictionary = {}
 var textes: Dictionary = {}
 ## Le decoupage du niveau en salles, en cases. Vide : monde continu.
 var salles: Array = []
+## Les declencheurs du niveau : « a l'entree de ce tableau », « au contact de
+## cette zone », joue ce script. La source du script est du texte.
+var declencheurs: Array = []
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -1341,6 +1434,7 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.touches = brut.get("touches", {})
 	p.textes = brut.get("textes", {})
 	p.salles = brut.get("salles", [])
+	p.declencheurs = brut.get("declencheurs", [])
 	return p
 
 ## Les bornes d'une salle en pixels du monde.
@@ -1358,6 +1452,28 @@ func salle_en(tuile: int, x: float, y: float) -> Dictionary:
 		if b.has_point(Vector2i(int(x), int(y))):
 			return s
 	return {}
+
+## Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.
+func declencheurs_de_salle(nom_salle: String) -> Array:
+	var sortie: Array = []
+	for d in declencheurs:
+		if d.get("quand", "") == "salle" and d.get("salle", "") == nom_salle:
+			sortie.append(d)
+	return sortie
+
+## Les declencheurs de zone dont le rectangle contient ce point du monde.
+func declencheurs_en(tuile: int, x: float, y: float) -> Array:
+	var sortie: Array = []
+	var cx := int(floor(x / tuile))
+	var cy := int(floor(y / tuile))
+	for d in declencheurs:
+		if d.get("quand", "") != "zone":
+			continue
+		var z: Dictionary = d.get("zone", {})
+		if cx >= int(z.get("x", 0)) and cx < int(z.get("x", 0)) + int(z.get("l", 0)) \
+				and cy >= int(z.get("y", 0)) and cy < int(z.get("y", 0)) + int(z.get("h", 0)):
+			sortie.append(d)
+	return sortie
 
 ## La musique portant ce nom, ou un dictionnaire vide.
 func musique(nom_musique: String) -> Dictionary:
@@ -2147,6 +2263,37 @@ pub struct Projet {
     /// Le decoupage du niveau en salles, en cases. Vide : monde continu.
     #[serde(default)]
     pub salles: Vec<Salle>,
+    /// Les declencheurs du niveau. Vide : rien ne tire. La source du script
+    /// est du texte : un moteur qui ne l'execute pas sait au moins le dire.
+    #[serde(default)]
+    pub declencheurs: Vec<Declencheur>,
+}
+
+/// « Quand ceci arrive, joue ce script. »
+#[derive(Debug, Clone, Deserialize)]
+pub struct Declencheur {
+    pub nom: String,
+    /// « salle » : l'entree d'un tableau. « zone » : le contact d'un rectangle.
+    pub quand: String,
+    #[serde(default)]
+    pub salle: String,
+    /// En cases. A zero quand le « quand » ne s'en sert pas.
+    #[serde(default)]
+    pub zone: ZoneCases,
+    /// Le noeud qui doit entrer. Vide : celui que la camera suit.
+    #[serde(default)]
+    pub qui: String,
+    #[serde(default)]
+    pub unefois: bool,
+    pub script: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+pub struct ZoneCases {
+    pub x: i32,
+    pub y: i32,
+    pub l: i32,
+    pub h: i32,
 }
 
 /// Un tableau du niveau, en cases.
@@ -2209,6 +2356,24 @@ impl Projet {
             x >= bx as f64 && y >= by as f64
                 && x < (bx + bl) as f64 && y < (by + bh) as f64
         })
+    }
+
+    /// Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.
+    pub fn declencheurs_de_salle(&self, salle: &str) -> Vec<&Declencheur> {
+        self.declencheurs.iter()
+            .filter(|d| d.quand == "salle" && d.salle == salle)
+            .collect()
+    }
+
+    /// Les declencheurs de zone dont le rectangle contient ce point du monde.
+    pub fn declencheurs_en(&self, tuile: i32, x: f64, y: f64) -> Vec<&Declencheur> {
+        let cx = (x / tuile as f64).floor() as i32;
+        let cy = (y / tuile as f64).floor() as i32;
+        self.declencheurs.iter()
+            .filter(|d| d.quand == "zone"
+                && cx >= d.zone.x && cx < d.zone.x + d.zone.l
+                && cy >= d.zone.y && cy < d.zone.y + d.zone.h)
+            .collect()
     }
 
     pub fn musique(&self, nom: &str) -> Option<&Musique> {
@@ -2285,6 +2450,9 @@ function Projet.depuis(donnees)
   self.textes = donnees.textes or {}
   -- Le decoupage du niveau en salles, en cases. Vide : monde continu.
   self.salles = donnees.salles or {}
+  -- Les declencheurs du niveau. Vide : rien ne tire. La source du script est
+  -- du texte : un moteur qui ne l'execute pas sait au moins le dire.
+  self.declencheurs = donnees.declencheurs or {}
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -2538,6 +2706,31 @@ function Projet:salle_en(tuile, x, y)
   return nil
 end
 
+-- Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.
+function Projet:declencheurs_de_salle(salle)
+  local sortie = {}
+  for _, d in ipairs(self.declencheurs or {}) do
+    if d.quand == "salle" and d.salle == salle then sortie[#sortie + 1] = d end
+  end
+  return sortie
+end
+
+-- Les declencheurs de zone dont le rectangle contient ce point du monde.
+function Projet:declencheurs_en(tuile, x, y)
+  local sortie = {}
+  local cx = math.floor(x / tuile)
+  local cy = math.floor(y / tuile)
+  for _, d in ipairs(self.declencheurs or {}) do
+    local z = d.zone or { x = 0, y = 0, l = 0, h = 0 }
+    if d.quand == "zone"
+        and cx >= z.x and cx < z.x + z.l
+        and cy >= z.y and cy < z.y + z.h then
+      sortie[#sortie + 1] = d
+    end
+  end
+  return sortie
+end
+
 -- La musique portant ce nom, ou nil.
 function Projet:musique(nom)
   for _, m in ipairs(self.musiques or {}) do
@@ -2604,6 +2797,7 @@ function chargeurPython(): string {
   return `${ENTETE('Python', '#')}from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -2921,6 +3115,9 @@ class Projet:
     textes: dict[str, dict[str, str]] = field(default_factory=dict)
     #: Le decoupage du niveau en salles, en cases. Vide : monde continu.
     salles: list[dict[str, Any]] = field(default_factory=list)
+    #: Les declencheurs du niveau. Vide : rien ne tire. La source du script
+    #: est du texte : un moteur qui ne l'execute pas sait au moins le dire.
+    declencheurs: list[dict[str, Any]] = field(default_factory=list)
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -2960,6 +3157,23 @@ class Projet:
             if m.get("nom") == nom:
                 return m
         return None
+
+    def declencheurs_de_salle(self, salle: str) -> list[dict[str, Any]]:
+        \"\"\"Les declencheurs qui tirent a l'entree de ce tableau, dans l'ordre.\"\"\"
+        return [d for d in self.declencheurs
+                if d.get("quand") == "salle" and d.get("salle") == salle]
+
+    def declencheurs_en(self, tuile: int, x: float, y: float) -> list[dict[str, Any]]:
+        \"\"\"Les declencheurs de zone dont le rectangle contient ce point du monde.\"\"\"
+        cx, cy = math.floor(x / tuile), math.floor(y / tuile)
+        sortie = []
+        for d in self.declencheurs:
+            if d.get("quand") != "zone":
+                continue
+            z = d.get("zone") or {"x": 0, "y": 0, "l": 0, "h": 0}
+            if z["x"] <= cx < z["x"] + z["l"] and z["y"] <= cy < z["y"] + z["h"]:
+                sortie.append(d)
+        return sortie
 
     def texte(self, clef: str, langue: str, **valeurs: Any) -> str:
         \"\"\"Le texte d'une clef, dans une langue.
@@ -3021,6 +3235,7 @@ class Projet:
             sons=d.get("sons", []), dialogues=d.get("dialogues", []),
             musiques=d.get("musiques", []), touches=d.get("touches", {}),
             textes=d.get("textes", {}), salles=d.get("salles", []),
+            declencheurs=d.get("declencheurs", []),
         )
 #: « la4 » rend 440. Un silence ou une note inconnue rend zero.
 _DEMI_TONS = {

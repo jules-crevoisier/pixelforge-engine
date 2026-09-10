@@ -14,6 +14,10 @@ import {
   type Noeud, type NoeudSprite, type NoeudCorps, Mouvements, trouverParNom,
 } from '../scene/noeud.ts'
 import { Salles, type Salle } from '../niveau/salles.ts'
+import type { Sonneur } from './son.ts'
+import type { Musicien } from './musique.ts'
+import type { Declencheurs } from './declencheurs.ts'
+import { retirerDe } from './entites.ts'
 
 /**
  * Le jeu : ce qui tient ensemble l'ecran, les entrees, la boucle et la scene.
@@ -62,6 +66,33 @@ export interface ContexteJeu {
   trouver(nom: string): Noeud | null
   /** Deplace un corps contre le decor. Rend ce qui a ete parcouru. */
   bouger(corps: NoeudCorps, dx: number, dy: number): { dx: number; dy: number; bloque: boolean }
+  /**
+   * Ce qu'un script peut FAIRE, au-dela de bouger des corps.
+   *
+   * Chaque verbe ici a un correspondant direct dans les donnees du projet —
+   * un son, une musique, un dialogue, une espece, une salle portent tous un
+   * NOM dans le fichier. C'est ce qui garde les scripts exportables : un
+   * verbe qui prendrait un objet du navigateur ne passerait pas la frontiere.
+   *
+   * Et chaque verbe REND quelque chose : un script qui joue un son inconnu
+   * merite de pouvoir s'en apercevoir, au lieu d'un silence sans explication.
+   */
+  /** Joue un son par son nom. Deja joue a ce pas par cette source : rien. */
+  jouer(son: string, source?: string): boolean
+  /** Lance une musique par son nom. Deja elle qui joue : rien. */
+  musique(nom: string): boolean
+  /** Ouvre une suite de repliques par son nom. Inconnue : rien. */
+  dire(dialogue: string): boolean
+  /** Secoue la camera. Le plus fort l'emporte. */
+  secouer(amplitude: number, ms: number): void
+  /** Gele la simulation — le hit-stop. Le plus long l'emporte. */
+  geler(ms: number): void
+  /** Le nom du tableau ou l'on est, ou vide si le monde est continu. */
+  readonly salle: string
+  /** Pose une entite d'une espece du catalogue. Espece inconnue : null. */
+  poser(espece: string, x: number, y: number): Noeud | null
+  /** Retire un noeud de la scene, ou qu'il soit. */
+  retirer(noeud: Noeud): boolean
 }
 
 export type Script = (c: ContexteJeu, noeud: Noeud) => void
@@ -232,6 +263,27 @@ export class Jeu {
   sprites = new Map<string, Atlas>()
   /** Scripts par nom de noeud. */
   scripts = new Map<string, Script>()
+  /**
+   * Les organes que le contexte des scripts expose, quand le jeu en a.
+   *
+   * Ils sont NULS par defaut, et les verbes du contexte rendent alors faux
+   * sans rien casser : un monde sans musique doit pouvoir executer un script
+   * qui en demande une — c'est le script qui apprend qu'il n'y en a pas, pas
+   * la boucle qui tombe.
+   */
+  sonneur: Sonneur | null = null
+  musicien: Musicien | null = null
+  /** Ouvre une suite de repliques par son nom. C'est le monde qui la branche. */
+  ouvrirDialogue: ((nom: string) => boolean) | null = null
+  /** Pose une entite du catalogue. C'est le peuplement qui le branche. */
+  poserEntite: ((espece: string, x: number, y: number) => Noeud | null) | null = null
+  /**
+   * Les declencheurs du niveau : « a l'entree de ce tableau », « au contact
+   * de cette zone ». Ils s'observent apres les scripts des noeuds, dans le
+   * meme pas — un declencheur qui tirerait au pas suivant mettrait un pas de
+   * retard sur tout ce qu'il fait, et un rejeu reseau le mettrait ailleurs.
+   */
+  declencheurs: Declencheurs | null = null
   private boucle: Boucle
   private cibleCamera: string | null = null
 
@@ -320,6 +372,9 @@ export class Jeu {
       const n = trouverParNom(this.racine, nom)
       if (n) script(ctx, n)
     }
+    // Les declencheurs regardent le monde APRES que les scripts l'ont bouge :
+    // un heros qui franchit la ligne a ce pas tire a ce pas, pas au suivant.
+    this.declencheurs?.avancer(ctx, this.salles?.nom ?? '', this.cibleCamera ?? '')
     if (this.cibleCamera) {
       const c = trouverParNom(this.racine, this.cibleCamera)
       if (c && this.cameraParSalle) {
@@ -439,6 +494,18 @@ export class Jeu {
       pas: this.boucle.pas,
       trouver: (nom) => trouverParNom(this.racine, nom),
       bouger: (corps, dx, dy) => this.bouger(corps, dx, dy),
+      // Le son passe par l'EVENEMENT du sonneur et non par un « joue » brut :
+      // c'est ce qui le rend sourd aux rejouages — un pas rembobine puis
+      // rejoue ne fait pas entendre le meme son deux fois.
+      jouer: (nom, source) =>
+        this.sonneur ? this.sonneur.evenement(this.boucle.pas, source ?? 'script', nom) : false,
+      musique: (nom) => this.musicien ? this.musicien.jouer(nom) : false,
+      dire: (nom) => this.ouvrirDialogue ? this.ouvrirDialogue(nom) : false,
+      secouer: (amplitude, ms) => this.secouer(amplitude, ms),
+      geler: (ms) => this.geler(ms),
+      salle: this.salles?.nom ?? '',
+      poser: (espece, x, y) => this.poserEntite ? this.poserEntite(espece, x, y) : null,
+      retirer: (noeud) => retirerDe(this.racine, noeud),
     }
   }
 
