@@ -29,6 +29,11 @@ import { engendrerPlan, Hasard, type SallePlan } from '../niveau/plan.ts'
 import { Aventure } from './aventure.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
 import { MODELES_DEMO, SYMBOLES_DEMO } from './salles-demo.ts'
+import { SONS_DEMO, brancherAudio } from './sons-demo.ts'
+import { rendre as rendreSon } from '../runtime/son.ts'
+import { Dialogue, replique } from '../runtime/dialogue.ts'
+import { Menu, entree } from '../runtime/menu.ts'
+import { dessinerDialogue, dessinerMenu, ecrireCentre } from '../runtime/rendu-texte.ts'
 import { assemblerEtage } from '../niveau/assemblage.ts'
 import { TUILE_SOL, TUILE_SORTIE } from './art.ts'
 
@@ -247,6 +252,68 @@ const ENTITES_CAVERNE: Record<string, string> = {
   g: 'gelee',
 }
 
+/**
+ * La pause : un menu par-dessus le jeu.
+ *
+ * ## Pourquoi elle arrete le monde
+ *
+ * Un menu ouvert pendant que le jeu continue fait mourir pendant qu'on lit,
+ * ce qui est la faute la plus injuste qu'un jeu puisse commettre. La pause ne
+ * met donc pas le jeu « en sourdine » : elle prend la main entierement, et le
+ * script du monde rend la main avant d'avancer quoi que ce soit.
+ *
+ * ## Pourquoi elle vit ici et non dans le moteur
+ *
+ * Ce qu'un menu de pause PROPOSE appartient au jeu : reprendre, recommencer,
+ * couper le son. Le moteur fournit le menu, la navigation, le dessin — il n'a
+ * pas a decider qu'un jeu se met en pause, ni avec quelles entrees.
+ */
+class Pause {
+  readonly menu = new Menu([
+    entree('Reprendre', 'reprendre'),
+    entree('Recommencer', 'recommencer'),
+    entree('Son : oui', 'son'),
+  ])
+
+  private ouvert = false
+  private surRecommencer: () => void
+
+  constructor(surRecommencer: () => void) { this.surRecommencer = surRecommencer }
+
+  get ouverte(): boolean { return this.ouvert }
+  ouvrir(): void { this.ouvert = true }
+  fermer(): void { this.ouvert = false }
+
+  avancer(c: ContexteJeu, sonneur: { volume: number }, pas: number): void {
+    const bouger = (d: number): void => {
+      if (this.menu.deplacer(d)) {
+        ;(sonneur as unknown as { evenement(p: number, s: string, n: string): boolean })
+          .evenement(pas, 'menu', 'menu')
+      }
+    }
+    if (c.entrees.consommer('haut')) bouger(-1)
+    if (c.entrees.consommer('bas')) bouger(1)
+    if (c.entrees.consommer('annuler')) { this.fermer(); return }
+    if (!c.entrees.consommer('action') && !c.entrees.consommer('saut')) return
+    ;(sonneur as unknown as { evenement(p: number, s: string, n: string): boolean })
+      .evenement(pas, 'menu', 'valider')
+    const quoi = this.menu.valider()
+    if (quoi === 'reprendre') this.fermer()
+    else if (quoi === 'recommencer') { this.surRecommencer(); this.fermer() }
+    else if (quoi === 'son') {
+      // Le volume bascule, et l'entree DIT dans quel etat elle est. Un
+      // interrupteur qui ne montre pas son etat se teste en appuyant dessus,
+      // c'est-a-dire en subissant ce qu'on voulait eviter.
+      sonneur.volume = sonneur.volume > 0 ? 0 : 0.6
+      this.menu.remplacer([
+        entree('Reprendre', 'reprendre'),
+        entree('Recommencer', 'recommencer'),
+        entree(`Son : ${sonneur.volume > 0 ? 'oui' : 'non'}`, 'son'),
+      ])
+    }
+  }
+}
+
 export function mondeCaverne(): Monde {
   const largeur = PLAN_CAVERNE[0].length
   const hauteur = PLAN_CAVERNE.length
@@ -325,6 +392,28 @@ export function mondeCaverne(): Monde {
   const peuplement = aventure.peuplement
   let pas = 0
 
+  /**
+   * Le mot d'accueil. Il dit ce que la barre d'aide dit deja — et ce n'est pas
+   * un doublon : personne ne lit une barre d'etat en commencant a jouer.
+   */
+  const dialogue = new Dialogue({ largeur: 320 - 8 - 10, vitesse: 42, lignes: 3 })
+  const ouvrirAccueil = (): void => {
+    dialogue.ouvrir([
+      replique('Cette caverne éprouve le contrôleur : le ressaut, les fosses,'
+        + ' et le puits qui se remonte de paroi en paroi.', { qui: 'Pixl' }),
+      replique('Espace pour sauter, Maj pour le dash. Bas + Espace descend'
+        + ' d’une passerelle. On saute sur la tête des gelées.', { qui: 'Pixl' }),
+      replique('Tu veux essayer ?', {
+        qui: 'Pixl',
+        choix: [
+          { texte: 'Oui, j’y vais', valeur: 'oui' },
+          { texte: 'Redis-moi ça', valeur: 'encore' },
+        ],
+      }),
+    ])
+  }
+  const pause = new Pause(() => { aventure.reinitialiser(); ouvrirAccueil() })
+
   /** Ce que le plan pose : balises, plateformes, caisses, creatures. */
   const poserEntites = (): void => {
     for (let y = 0; y < hauteur; y++) {
@@ -357,6 +446,11 @@ export function mondeCaverne(): Monde {
     peuplement,
     tuilePinceau: TUILE_FOND,
     installer(jeu) {
+      // Le son : la banque, puis le pont vers l'audio du navigateur. Le pont
+      // ne contient aucune decision — la synthese est ailleurs, et c'est elle
+      // qui est eprouvee.
+      aventure.sonneur.ajouter(...SONS_DEMO)
+      brancherAudio(aventure.sonneur, rendreSon)
       jeu.cartes.set('caverne', { carte, atlas: atlasDepuisLettres(PLANCHE_CAVERNE, CLE_CAVERNE, TUILE, 8) })
       jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
       jeu.suivreNoeud('heros')
@@ -370,8 +464,52 @@ export function mondeCaverne(): Monde {
       // elle, s'occupe de ce que le catalogue ne dit pas : la mort, la
       // reprise, les balises.
       jeu.scripts.set(racine.nom, (c) => {
+        // Le dialogue et la pause d'abord : quand l'un des deux est ouvert, le
+        // monde ne bouge plus. Laisser courir le jeu derriere une boite de
+        // texte fait mourir pendant qu'on lit — la faute la plus injuste qu'un
+        // jeu puisse commettre.
+        if (pause.ouverte) { pause.avancer(c, aventure.sonneur, c.pas); return }
+        if (c.entrees.consommer('annuler')) { pause.ouvrir(); return }
+        if (dialogue.ouvert) {
+          dialogue.avancerTemps(c.dt * 1000)
+          if (!dialogue.complet && c.pas % 3 === 0) {
+            aventure.sonneur.evenement(c.pas, 'dialogue', 'texte')
+          }
+          const a = c.entrees.axe()
+          if (c.entrees.consommer('haut')) dialogue.deplacer(-1)
+          if (c.entrees.consommer('bas')) dialogue.deplacer(1)
+          void a
+          if (c.entrees.consommer('action') || c.entrees.consommer('saut')) {
+            const quoi = dialogue.valider()
+            if (quoi !== 'rien') aventure.sonneur.evenement(c.pas, 'dialogue', 'valider')
+            // « Redis-moi ça » relit tout : c'est le seul choix qui a un effet
+            // ici, et il sert a montrer qu'un choix EN A un.
+            if (quoi === 'ferme' && dialogue.derniereValeur === 'encore') ouvrirAccueil()
+          }
+          return
+        }
         aventure.avancer(c, peuplement.regardDe(heros.id))
       })
+      aventure.installerEcran(jeu)
+      // L'interface se dessine APRES tout le reste, et donc par-dessus. On
+      // enchaine sur ce que l'aventure a pose au lieu de le remplacer : sans
+      // cela, brancher le dialogue ferait disparaitre les coeurs.
+      const dessinAventure = jeu.apresDessin
+      jeu.apresDessin = (ctx, ecran) => {
+        dessinAventure?.(ctx, ecran)
+        dessinerDialogue(ecran, dialogue, {
+          fond: '#12101c', bord: '#7fd4a8', ombre: '#12101c',
+        })
+        if (pause.ouverte) {
+          // Un voile plutot qu'un fond opaque : on garde le jeu sous les yeux,
+          // ce qui rappelle qu'il est en pause et non quitte.
+          ctx.fillStyle = 'rgba(10, 12, 18, 0.72)'
+          ctx.fillRect(0, 0, ecran.vue.largeur, ecran.vue.hauteur)
+          ecrireCentre(ecran, 'PAUSE', 40, { couleur: '#7fd4a8', ombre: '#12101c' })
+          dessinerMenu(ecran, pause.menu, 116, 66, { ombre: '#12101c' })
+        }
+      }
+      ouvrirAccueil()
       void pas
     },
     reinitialiser() {
@@ -383,8 +521,26 @@ export function mondeCaverne(): Monde {
       aventure.reinitialiser()
       aventure.reapparition = { ...depart }
       poserEntites()
+      pause.fermer()
+      ouvrirAccueil()
       pas = 0
     },
+    /**
+     * Ce que le banc peut interroger sans navigateur… et avec.
+     *
+     * Un monde qu'on ne peut observer que par sa barre d'etat s'observe comme
+     * un poisson dans un bocal : on voit qu'il tourne, on ne sait pas
+     * pourquoi. La sonde n'est jamais lue par le jeu lui-meme.
+     */
+    sonde: () => ({
+      dialogue: dialogue.ouvert,
+      complet: dialogue.complet,
+      lettres: dialogue.lignesVisibles().join('').length,
+      pause: pause.ouverte,
+      menu: pause.menu.curseur,
+      sons: aventure.sonneur.joue,
+      particules: aventure.particules.nombre,
+    }),
     etat: () => {
       const d = peuplement.diagnosticDe(heros.id)
       const compte = `${aventure.morts} mort${aventure.morts > 1 ? 's' : ''}`
@@ -698,7 +854,21 @@ export function mondeEtage(graine = 1): Monde {
           aventure.reapparition = { x: heros.x, y: heros.y }
         }
       })
+      aventure.sonneur.ajouter(...SONS_DEMO)
+      brancherAudio(aventure.sonneur, rendreSon)
       aventure.installerEcran(jeu)
+      const dessinEtage = jeu.apresDessin
+      jeu.apresDessin = (ctx, ecran) => {
+        dessinEtage?.(ctx, ecran)
+        // Le nom de la salle, en haut a droite : c'est ce qui manque le plus
+        // dans un etage engendre, ou toutes les salles se ressemblent.
+        const s = etage.salleEn(heros.x, heros.y)
+        if (s) {
+          ecrireCentre(ecran, (NOM_ROLE[s.role] ?? s.role).toUpperCase(), 4, {
+            couleur: s.role === 'commune' ? '#5a5f70' : '#f0c860', ombre: '#12101c',
+          })
+        }
+      }
     },
     reinitialiser() {
       heros.x = etage.depart.x

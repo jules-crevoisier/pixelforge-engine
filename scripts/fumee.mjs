@@ -39,12 +39,29 @@ await p.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' })
 let bilan = []
 const ok = (nom, v, d = '') => { bilan.push({ nom, v }); console.log(`${v ? '  ok  ' : ' ECHEC'} ${nom}${d ? ' — ' + d : ''}`) }
 
+/**
+ * Passe le mot d'accueil, comme un joueur le ferait.
+ *
+ * La caverne s'ouvre sur un dialogue qui ARRETE le monde : laisser courir le
+ * jeu derriere une boite de texte fait mourir pendant qu'on lit. Tout ce qui
+ * suit doit donc commencer par le refermer — et c'est aussi la preuve qu'on
+ * peut le refermer.
+ */
+const passerDialogue = async () => {
+  for (let i = 0; i < 8; i++) {
+    if (!(await p.evaluate(() => window.pfe.monde.sonde?.().dialogue ?? false))) return
+    await p.keyboard.press('Space')
+    await p.waitForTimeout(140)
+  }
+}
+
 for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.selectOption('#monde', id)
   await p.waitForTimeout(280)
   // Jouer, bouger, arreter
   await p.click('#jouer')
-  await p.waitForTimeout(120)
+  await p.waitForTimeout(160)
+  await passerDialogue()
   const avant = await p.evaluate(() => [window.pfe.monde.heros.x, window.pfe.monde.heros.y])
   await p.keyboard.down('ArrowRight'); await p.waitForTimeout(420); await p.keyboard.up('ArrowRight')
   if (id === 'caverne') { await p.keyboard.press('Space'); await p.waitForTimeout(300) }
@@ -120,6 +137,41 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
 
   await p.click('#jouer')
   await p.waitForTimeout(200)
+
+  // Le mot d'accueil : il s'ecrit lettre a lettre, un appui l'affiche en
+  // entier, un autre passe a la suite. C'est le seul endroit ou l'on peut
+  // verifier que la fonte, la boite et la frappe s'accordent vraiment.
+  const dial = () => p.evaluate(() => window.pfe.monde.sonde().dialogue)
+  ok('la caverne s’ouvre sur un mot d’accueil', await dial())
+  await p.waitForTimeout(250)
+  const ecritA = await p.evaluate(() => window.pfe.monde.sonde().lettres)
+  await p.waitForTimeout(400)
+  const ecritB = await p.evaluate(() => window.pfe.monde.sonde().lettres)
+  ok('le texte s’écrit lettre à lettre', ecritB > ecritA, `${ecritA} puis ${ecritB} lettres`)
+  await p.keyboard.press('Space')
+  await p.waitForTimeout(150)
+  ok('un appui affiche la réplique entière',
+    await p.evaluate(() => window.pfe.monde.sonde().complet), 'sans faire attendre qui a déjà lu')
+  await passerDialogue()
+  ok('et il se referme', !(await dial()))
+
+  // La pause : elle arrete le monde, et le menu boucle.
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(150)
+  ok('Échap ouvre la pause', await p.evaluate(() => window.pfe.monde.sonde().pause))
+  const avantPause = await p.evaluate(() => window.pfe.monde.heros.x)
+  await p.keyboard.down('ArrowRight'); await p.waitForTimeout(350); await p.keyboard.up('ArrowRight')
+  ok('et le monde ne bouge plus derrière',
+    (await p.evaluate(() => window.pfe.monde.heros.x)) === avantPause,
+    'sinon on meurt pendant qu’on lit')
+  await p.keyboard.press('ArrowDown')
+  await p.waitForTimeout(120)
+  ok('le curseur du menu descend',
+    (await p.evaluate(() => window.pfe.monde.sonde().menu)) === 1)
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(150)
+  ok('et Échap la referme', !(await p.evaluate(() => window.pfe.monde.sonde().pause)))
+
   const depart = await p.evaluate(() => [window.pfe.monde.heros.x, window.pfe.monde.heros.y])
   const morts = async () => {
     const m = /(\d+) mort/.exec(await p.evaluate(() => window.pfe.monde.etat()))
@@ -132,6 +184,20 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   for (let i = 0; i < 25 && mort === 0; i++) { await p.waitForTimeout(200); mort = await morts() }
   await p.keyboard.up('ArrowRight')
   ok('les pointes tuent', mort === 1, `${mort} mort(s)`)
+
+  // Le son et les particules, DANS le navigateur. Les bancs prouvent que la
+  // synthese et la gerbe sont justes ; ils ne disent rien du fait qu'un coup
+  // recu en produise. C'est le branchement qui peut manquer sans bruit.
+  const sonde = () => p.evaluate(() => window.pfe.monde.sonde())
+  const s1 = await sonde()
+  ok('mourir fait sonner et jaillir des particules',
+    s1.sons > 0 && s1.particules > 0,
+    `${s1.sons} sons joués, ${s1.particules} particules vivantes`)
+  await p.waitForTimeout(900)
+  const s2 = await sonde()
+  ok('et les particules disparaissent d’elles-mêmes',
+    s2.particules < s1.particules,
+    `${s1.particules} → ${s2.particules} — une particule immortelle est une fuite`)
 
   // Les corps mobiles, DANS LE NAVIGATEUR. Le banc construit son registre a la
   // main ; ici c'est le jeu qui le remplit depuis la scene, et c'est ce

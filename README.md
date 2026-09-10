@@ -445,6 +445,12 @@ seconde.
 - machines à états par espèce : bascules de distance, durées, état suivant
 - déclencheurs attachés à une image d'animation : frapper, tirer
 - projectiles, qui sont des entités comme les autres
+- une fonte de pixels 5×7, accents français et tout l'ASCII imprimable
+- du son décrit en données, synthétisé, attaché aux événements d'animation —
+  et qui ne se rejoue pas quand le réseau rembobine
+- des particules, hors de la simulation par construction
+- dialogue à la frappe, avec choix ; menus à curseur bouclant ; pause
+- sauvegarde de la partie, distincte du projet, avec la graine du monde
 - entrées déterministes : la même partie rejouée donne la même partie
 - instantané et rembobinage du moteur entier, résurrections comprises
 - rollback à deux, avec latence, gigue et pertes — éprouvé sur le vrai moteur
@@ -656,6 +662,108 @@ Ce qui manque encore, et qui se dit : un seul jeu d'entrées est actif par pas,
 donc un seul personnage dirigeable dans cette version. Faire lire à chaque entité
 *ses* entrées est un changement du contexte de jeu, pas du rembobinage.
 
+## Ce qu'un jeu a en plus de son gameplay
+
+![Le dialogue, le menu de pause, la fonte](docs/interface.png)
+
+Une fonte, du son, des étincelles, du texte, des menus, une sauvegarde. Aucun
+des six ne décide de quoi que ce soit — et c'est exactement pourquoi ils se
+dégradent sans qu'on s'en aperçoive : une lettre manquante ne fait tomber aucun
+banc, un son qui se rejoue cinquante fois après un rembobinage ne fait rien
+planter, un menu qui bute sur sa dernière ligne passe pour un choix.
+
+### Une fonte en pixels, écrite comme les planches
+
+`ctx.fillText` donnerait du texte anticrénelé — du gris sur les bords, dans un
+jeu où chaque pixel est une couleur de la palette. Sur un écran agrandi quatre
+fois, l'un appartient au jeu et l'autre est posé dessus. Et une police du
+système n'est pas la même partout : un dialogue cadré au pixel près chez soi
+déborde de sa boîte chez quelqu'un d'autre.
+
+Cinq sur sept, parce que c'est la plus petite taille où les minuscules restent
+lisibles avec des jambages. Un glyphe par ligne, sept rangées séparées par une
+barre — c'est fait pour le **diff** : quand un pixel bouge, on voit lequel, dans
+quelle lettre.
+
+Les accents ne sont pas une option. Une fonte sans « é » fait écrire « eleve »,
+et l'on finit par écrire tout le jeu sans accents « parce que la fonte ne les a
+pas ».
+
+Un caractère inconnu rend un **pavé plein**, jamais un blanc : un texte où les
+caractères manquants disparaissent se lit presque normalement, et l'on livre le
+jeu sans avoir vu qu'un mot était amputé. C'est ce qui a fait remarquer que le
+curseur des menus — un simple `>` — n'était pas dans la fonte : il s'affichait
+en pavé sur la capture d'écran. Un contrôle couvre maintenant tout l'ASCII
+imprimable, et il l'aurait dit avant que je regarde.
+
+### Le son, décrit en données
+
+Un projet doit se suffire à lui-même : c'est la règle qui a fait mettre les
+planches dans le fichier. Un fichier d'onde pour un bruit de pas pèse trente
+kilo-octets, ne se relit pas dans un diff, et rouvre le problème qu'on avait
+résolu pour les dessins.
+
+Un son est donc une description — une forme d'onde, une fréquence qui glisse,
+une enveloppe, une durée. Six nombres. C'est aussi ce que faisaient les machines
+de cette époque : trois oscillateurs et un bruit. La contrainte donne le son du
+genre, elle ne le limite pas.
+
+La synthèse est **pure** : elle remplit un tableau d'échantillons et ne connaît
+pas le navigateur. Un banc vérifie donc qu'un son dure ce qu'il annonce, que son
+enveloppe revient à zéro — un son coupé net à mi-volume claque, et le claquement
+s'entend plus que le son —, qu'il ne sature pas, et que les quatre formes d'onde
+donnent bien quatre sons différents. Ce qui touche à l'audio du navigateur tient
+en dix lignes, à part, et ne contient aucune décision.
+
+**Et un son ne se rejoue pas quand le réseau rembobine.** Les événements
+d'animation ressortent à chaque re-simulation : sans mémoire, une correction de
+cinquante pas ferait entendre cinquante bruits de pas d'un coup. Le sonneur
+retient ce qu'il a joué, par pas *et* par source — deux créatures qui marchent
+ensemble doivent s'entendre toutes les deux.
+
+### Les particules ne se photographient pas
+
+Une gerbe d'étincelles ne décide de rien. La mettre dans l'état du jeu
+obligerait à la copier dans chaque instantané gardé par le rembobinage, à la
+transmettre, à s'accorder dessus entre deux machines — pour quelque chose que
+personne ne peut contredire. Après une correction réseau, les étincelles ne sont
+pas aux mêmes endroits sur les deux machines, et personne ne s'en apercevra
+jamais. C'est précisément le critère.
+
+Un contrôle vérifie que `Particules` n'offre **pas** de `instantane()` : le jour
+où quelqu'un en ajoutera un « pour faire comme les autres », il tombera et dira
+pourquoi il ne faut pas.
+
+### Le dialogue, et l'appui qui n'attend pas
+
+Le texte s'écrit lettre à lettre — un pavé qui apparaît d'un coup se saute, et
+le texte qui se compose donne au joueur une raison d'appuyer, donc une prise. Le
+**deuxième** appui affiche la réplique entière : faire attendre quelqu'un qui a
+déjà lu est la faute la plus répandue du genre, et elle transforme un dialogue
+en corvée.
+
+Le dialogue **arrête le monde**. Laisser courir le jeu derrière une boîte de
+texte fait mourir pendant qu'on lit, ce qui est la faute la plus injuste qu'un
+jeu puisse commettre. Le banc de fumée le vérifie dans un vrai navigateur :
+Échap ouvre la pause, on tient la flèche droite, et le héros ne bouge pas.
+
+### La sauvegarde de la partie n'est pas le projet
+
+Le fichier de projet décrit le **jeu** — cartes, dessins, espèces. La sauvegarde
+décrit une **partie** — où en est ce joueur-ci, combien de cœurs, quelles salles
+il a vues. Les mélanger a une conséquence immédiate : ouvrir le jeu de quelqu'un
+d'autre le fait commencer là où cette personne s'était arrêtée. Et une plus
+lente : on ne peut plus corriger un niveau sans invalider les parties en cours.
+
+La graine en fait partie. Un étage engendré n'est reproductible que par elle ;
+une sauvegarde qui ne la porte pas rouvre un **autre** étage, avec le héros posé
+au milieu d'un mur. C'est le genre de défaut qu'on ne voit qu'après avoir
+engendré le deuxième niveau, c'est-à-dire trop tard.
+
+Une sauvegarde d'un autre projet est refusée avec la raison ; une abîmée est
+signalée au lieu d'être devinée ; une version plus récente se lit sans faire
+semblant de la comprendre.
+
 ## L'agent qui évalue, et qui reboucle
 
     npm run agent            # tout, navigateur compris
@@ -716,13 +824,13 @@ pire défaut d'une mesure.
     Dead Cells — combat et corps                   6/6
     Faire un jeu sans lire le moteur               8/8
     Le multijoueur, et ce qu'il exige d'abord      5/5
-    Ce qu'un jeu a en plus de son gameplay         0/5
-                                          477 vérifications
+    Ce qu'un jeu a en plus de son gameplay         7/7
+                                          535 vérifications
 
-La dernière ligne dit ce qui manque — le son, les particules, le dialogue, la
-sauvegarde de partie, les menus — et elle le dira jusqu'à ce que ce soit fait.
-C'est délibéré : quand la grille est entièrement verte, elle ne mesure plus
-rien.
+Elle est de nouveau entièrement verte, donc elle ne mesure plus rien : la
+prochaine étape est de l'élargir à ce qui manque encore — plusieurs personnages
+dirigeables en réseau, une musique, un éditeur de sons, un export du son vers
+Godot.
 
 Le relevé complet est dans [`docs/evaluation.md`](docs/evaluation.md).
 

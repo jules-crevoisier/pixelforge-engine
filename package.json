@@ -12,6 +12,7 @@
     "banc": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc.mjs",
     "banc:mondes": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-mondes.mjs",
     "banc:reseau": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-reseau.mjs",
+    "banc:habillage": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-habillage.mjs",
     "fumee": "node scripts/fumee.mjs",
     "agent": "node scripts/agent.mjs"
   },

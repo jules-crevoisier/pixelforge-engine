@@ -75,10 +75,20 @@ function lancer(nom, commande, arguments_) {
 
 const epreuves = []
 epreuves.push(lancer('build', 'npm', ['run', '-s', 'build']))
-for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau']) {
+for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau', 'banc:habillage']) {
   epreuves.push(lancer(b, 'npm', ['run', '-s', b]))
 }
+/**
+ * Ce qu'on a DELIBEREMENT saute, et qui n'est donc pas une regression.
+ *
+ * L'agent signalait « épreuve DISPARUE » pour la fumee des qu'on lui passait
+ * `--rapide`, et sortait en erreur. C'est accuser a tort — le pire defaut
+ * d'une mesure, celui qui la fait cesser d'etre lue. Un banc qu'on choisit de
+ * ne pas lancer et un banc qui a disparu du depot ne sont pas la meme chose.
+ */
+const sautees = []
 if (!rapide) epreuves.push(lancer('fumee', 'npm', ['run', '-s', 'fumee']))
+else sautees.push('fumee')
 
 const preuves = epreuves.flatMap((e) => e.verifications)
 const nomsPreuves = preuves.map((v) => v.nom)
@@ -263,16 +273,24 @@ const OBJECTIFS = [
   {
     jeu: 'Ce qu’un jeu a en plus de son gameplay',
     criteres: [
-      { nom: 'Son : des bruits attachés aux événements d’animation',
-        symboles: ['jouerSon'], indices: ['son', 'bruit'], preuves: 2 },
+      { nom: 'Une fonte de pixels, accents français compris',
+        symboles: ['LARGEUR_GLYPHE', 'couper', 'pixelsDe'],
+        indices: ['fonte', 'glyphe', 'ascii', 'francais'], preuves: 4 },
+      { nom: 'Son : décrit en données, attaché aux événements d’animation',
+        symboles: ['Sonneur', 'rendre', 'evenement'],
+        indices: ['son', 'bruit', 'enveloppe', 'onde'], preuves: 5 },
+      { nom: 'Et un son ne se rejoue pas quand le réseau rembobine',
+        symboles: ['oublierAvant'], indices: ['rejoue'], preuves: 1 },
       { nom: 'Particules et effets',
-        symboles: ['Particules'], indices: ['particule'], preuves: 2 },
-      { nom: 'Dialogue et texte à l’écran',
-        symboles: ['Dialogue'], indices: ['dialogue', 'texte a l'], preuves: 2 },
+        symboles: ['Particules', 'emettre'], indices: ['particule', 'gerbe'], preuves: 4 },
+      { nom: 'Dialogue : frappe, coupure, choix',
+        symboles: ['Dialogue', 'replique', 'lignesVisibles'],
+        indices: ['dialogue', 'replique', 'texte'], preuves: 5 },
       { nom: 'Sauvegarde de la PARTIE, distincte du projet',
-        symboles: ['sauvegardePartie'], indices: ['partie', 'progression'], preuves: 2 },
-      { nom: 'Écran-titre et menus',
-        symboles: ['Menu'], indices: ['menu', 'titre'], preuves: 2 },
+        symboles: ['Sauvegarde', 'VERSION_SAUVEGARDE', 'partieNeuve'],
+        indices: ['partie', 'sauvegarde', 'emplacement'], preuves: 5 },
+      { nom: 'Menus : curseur qui boucle, entrées inertes',
+        symboles: ['Menu', 'entree'], indices: ['menu', 'pause', 'curseur'], preuves: 4 },
     ],
   },
 ]
@@ -389,7 +407,7 @@ if (precedent) {
   // refuser la comparaison, et refuser rendrait le premier passage suivant
   // muet a chaque fois qu'on ecrit un banc de plus.
   const perduesEpreuves = (precedent.epreuves ?? []).map((e) => e.nom)
-    .filter((n) => !epreuves.some((e) => e.nom === n))
+    .filter((n) => !epreuves.some((e) => e.nom === n) && !sautees.includes(n))
   const neuvesEpreuves = epreuves.map((e) => e.nom)
     .filter((n) => !(precedent.epreuves ?? []).some((e) => e.nom === n))
   if (neuvesEpreuves.length) {
@@ -404,7 +422,11 @@ if (precedent) {
       detail: [],
     })
   }
-  const ignorees = perduesEpreuves
+  // Les criteres ne se comparent pas non plus quand on a saute une epreuve :
+  // ce qu'elle prouvait manque, et un critere tomberait sans avoir bouge.
+  const ignorees = [...perduesEpreuves, ...sautees.filter(
+    (n) => (precedent.epreuves ?? []).some((e) => e.nom === n),
+  )]
   const nomsDe = (source) => new Set(
     (source.epreuves ?? []).filter((e) => communes.has(e.nom)).flatMap((e) => e.noms ?? []),
   )

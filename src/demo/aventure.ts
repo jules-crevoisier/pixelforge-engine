@@ -6,6 +6,8 @@ import { Lecteur, type Clip } from '../runtime/animation.ts'
 import { type Projection, ORTHO_DESSUS } from '../noyau/projection.ts'
 import { rect } from '../noyau/pixel.ts'
 import { rectDeTuile, type Atlas } from '../runtime/atlas.ts'
+import { Sonneur } from '../runtime/son.ts'
+import { Particules, emission, type Emission } from '../runtime/particules.ts'
 import { Peuplement, type Espece } from '../runtime/entites.ts'
 import { clipsDemo, ESPECES_DEMO } from './especes-demo.ts'
 import { COEUR_PLEIN, COEUR_PERDU } from './art-creatures.ts'
@@ -104,6 +106,40 @@ export class Aventure {
    */
   reapparition: { x: number; y: number }
   private attenteReapparition = 0
+
+  /**
+   * Le son et les etincelles : de la PRESENTATION, pas de la simulation.
+   *
+   * Ils ne decident de rien, ils ne partent pas dans un instantane, et
+   * l'empreinte du jeu ne les voit pas. Le sonneur, lui, retient ce qu'il a
+   * deja joue : sans quoi une correction reseau de cinquante pas ferait
+   * entendre cinquante bruits de pas d'un coup.
+   */
+  readonly sonneur = new Sonneur()
+  readonly particules = new Particules(1)
+  /** Le pas courant, pour que le sonneur sache ce qu'il a deja joue. */
+  private pasCourant = 0
+
+  /** Les gerbes, decrites en donnees comme le reste. */
+  gerbes: Record<string, Emission> = {
+    // Le coup part vers le haut et retombe : c'est ce qui se lit comme un
+    // impact plutot que comme une explosion.
+    coup: emission({
+      nombre: 7, vie: 260, vieVariation: 90, vitesse: 90, vitesseVariation: 45,
+      angle: -90, ouverture: 180, pesanteur: 340,
+      couleurs: ['#fff0b0', '#f0c860', '#c0334a'],
+    }),
+    mort: emission({
+      nombre: 22, vie: 520, vieVariation: 200, vitesse: 130, vitesseVariation: 70,
+      angle: -90, ouverture: 300, pesanteur: 300,
+      couleurs: ['#e8ecf4', '#a8b4c8', '#4a3d6b'],
+    }),
+    ramasse: emission({
+      nombre: 10, vie: 380, vieVariation: 120, vitesse: 55, vitesseVariation: 25,
+      angle: -90, ouverture: 90, pesanteur: -40, frottement: 2,
+      couleurs: ['#fff0b0', '#7fd4a8', '#3f9b52'],
+    }),
+  }
   private delaiReapparition: number
 
   constructor(racine: Noeud, heros: NoeudSprite, opts: OptionsAventure = {}) {
@@ -157,6 +193,10 @@ export class Aventure {
    */
   avancer(c: ContexteJeu, regard: { x: number; y: number }): void {
     const dtMs = c.dt * 1000
+    // Le pas vient du CONTEXTE et non d'un compteur a nous : c'est lui que le
+    // rembobinage remet en arriere, et c'est sur lui que le sonneur se repere
+    // pour ne pas rejouer ce qu'il a deja joue.
+    this.pasCourant = c.pas
     this.vieHeros.x = this.heros.x
     this.vieHeros.y = this.heros.y
 
@@ -172,6 +212,7 @@ export class Aventure {
 
     this.reposArme = Math.max(0, this.reposArme - dtMs)
     if (c.entrees.consommer('action') && this.reposArme === 0 && !this.vieHeros.mort) {
+      this.sonneur.evenement(this.pasCourant, this.heros.id, 'coup')
       // Le torse, et non les pieds : c'est la hauteur ou une epee passe, et
       // c'est celle des creatures qu'on veut toucher.
       const torse = this.heros.y - TUILE / 2
@@ -198,7 +239,12 @@ export class Aventure {
     // La scene est la verite : une entite ajoutee par l'editeur entre dans le
     // jeu au pas suivant, une entite retiree en sort. Rien a prevenir.
     this.peuplement.synchroniser()
-    this.peuplement.avancer(c, this.heros, dtMs)
+    // Les evenements d'animation deviennent des sons. Le clip dit QUAND, la
+    // banque dit QUOI : le pas sonne a l'image ou le pied touche, pas a
+    // intervalle regulier.
+    for (const e of this.peuplement.avancer(c, this.heros, dtMs)) {
+      this.sonneur.evenement(this.pasCourant, e.id, e.nom)
+    }
     this.ramasser(c)
 
     for (const impact of this.combat.avancer(dtMs)) {
@@ -208,14 +254,24 @@ export class Aventure {
         // un effet que personne ne distingue a cette echelle.
         const corps = this.heros.enfants.find((e) => e.type === 'corps')
         if (corps) c.bouger(corps as never, impact.pousseeX * 0.06, impact.pousseeY * 0.06)
+        this.sonneur.evenement(this.pasCourant, this.heros.id, impact.fatal ? 'mort' : 'touche')
+        this.particules.emettre(
+          this.gerbes[impact.fatal ? 'mort' : 'coup'], this.heros.x, this.heros.y - TUILE / 2,
+        )
         if (impact.fatal) {
           this.morts++
           this.attenteReapparition = this.delaiReapparition
           this.combat.frappes.length = 0
           if (this.surMort) this.surMort()
         }
-      } else if (impact.fatal) {
-        if (this.peuplement.tuer(impact.cible)) this.abattus++
+      } else {
+        const vie = this.combat.vies.get(impact.cible)
+        this.particules.emettre(
+          this.gerbes[impact.fatal ? 'mort' : 'coup'],
+          vie ? vie.x : this.heros.x, (vie ? vie.y : this.heros.y) - TUILE / 2,
+        )
+        this.sonneur.evenement(this.pasCourant, impact.cible, impact.fatal ? 'abattu' : 'coup')
+        if (impact.fatal && this.peuplement.tuer(impact.cible)) this.abattus++
       }
     }
 
@@ -226,6 +282,7 @@ export class Aventure {
     }
 
     this.heros.visible = visibleSousInvulnerabilite(this.vieHeros.invulnerable)
+    this.particules.avancer(dtMs)
   }
 
   /**
@@ -250,12 +307,16 @@ export class Aventure {
         if (this.reapparition.x !== n.x || this.reapparition.y !== n.y) {
           this.reapparition = { x: n.x, y: n.y }
           this.balisesAtteintes++
+          this.sonneur.evenement(this.pasCourant, n.id, 'balise')
+          this.particules.emettre(this.gerbes.ramasse, n.x, n.y - TUILE / 2)
         }
         continue
       }
       if (e.soigne <= 0) continue
       if (this.vieHeros.pv >= this.pvMax) continue
       this.vieHeros.pv = Math.min(this.pvMax, this.vieHeros.pv + e.soigne)
+      this.sonneur.evenement(this.pasCourant, n.id, 'ramasse')
+      this.particules.emettre(this.gerbes.ramasse, n.x, n.y - TUILE / 2)
       this.peuplement.tuer(n.id)
       this.ramasses++
     }
@@ -304,6 +365,9 @@ export class Aventure {
       x: this.heros.x,
       y: this.heros.y,
     })
+    // Une partie qui recommence ne doit ni entendre ni voir la precedente.
+    this.sonneur.vider()
+    this.particules.vider()
   }
 
   /**
@@ -315,6 +379,15 @@ export class Aventure {
    */
   installerEcran(jeu: Jeu): void {
     jeu.apresDessin = (ctx: CanvasRenderingContext2D, ecran: Ecran): void => {
+      // Les etincelles AVANT l'interface : elles appartiennent au monde, donc
+      // elles passent sous les coeurs et suivent la camera. Les dessiner par
+      // dessus les ferait voler devant la jauge de vie.
+      const ox = -Math.round(jeu.camera.x)
+      const oy = -Math.round(jeu.camera.y)
+      for (const p of this.particules.points()) {
+        ctx.fillStyle = p.couleur
+        ctx.fillRect(p.x + ox, p.y + oy, 1, 1)
+      }
       const atlas = jeu.sprites.get('creatures') as Atlas | undefined
       if (!atlas) return
       void ecran
