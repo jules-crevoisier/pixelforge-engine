@@ -560,6 +560,12 @@ est devenu soit une correction, soit une ligne de ce carnet.
   deux chemins divergeaient, et la même partie ne se rejouait pas pareil
   selon qu'elle était locale ou imposée. Corollaire : une interface qui
   accepte plusieurs actions les consomme *toutes*, sans court-circuit.
+- **Un verbe termine le jeu.** `c.fin()` — l'écran de fin, avec le compte des
+  morts et des trouvailles, puis un appui qui ramène au titre, le jeu entier
+  remis à son départ. Il se *demande* : si un dernier dialogue est ouvert, la
+  fin attend qu'il soit lu — l'écran de fin qui avale les derniers mots du
+  jeu serait un beau gâchis. Le Gouffre s'en sert : sa sortie tient en quatre
+  lignes de déclencheur, musique de victoire comprise.
 - **Le nœud éphémère.** L'effet de taillade que l'aventure pose dans la scène
   partait dans le fichier à chaque sauvegarde — et la relecture en posait un
   de plus par-dessus. Ce qui appartient à l'exécution porte maintenant un
@@ -575,9 +581,6 @@ est devenu soit une correction, soit une ligne de ce carnet.
 3. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
    traversent le fichier et se jouent, mais s'écrivent à la main. Un bloc de
    plus, sur le modèle des sons.
-4. **Rien ne termine un jeu.** `c.dire('fin')` ouvre un dialogue, puis la
-   partie continue derrière. Il manque un verbe de fin — retour au titre,
-   générique — qui soit une donnée comme le reste.
 
 ## Ce que ça veut dire, concrètement
 
@@ -767,7 +770,7 @@ npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages,
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 110 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
+npm run fumee           # 112 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

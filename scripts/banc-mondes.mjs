@@ -3857,10 +3857,10 @@ console.log('\n--- les declencheurs : quand ceci arrive, joue ce script ---')
       && relu.declencheurs[0].zone.h === 4 && relu.declencheurs[0].unefois === true
       && relu.declencheurs[0].script === "c.jouer('coup')",
       `version ${relu.version}`)
+    const aide = (await import('../src/script/atelier.ts')).AIDE_SCRIPT
     check('et l\'aide de l\'atelier enseigne les nouveaux verbes',
-      (await import('../src/script/atelier.ts')).AIDE_SCRIPT.includes('c.jouer')
-      && (await import('../src/script/atelier.ts')).AIDE_SCRIPT.includes('c.dire')
-      && (await import('../src/script/atelier.ts')).AIDE_SCRIPT.includes('c.poser'),
+      ['c.jouer', 'c.dire', 'c.poser', 'c.aller', 'c.niveauSuivant', 'c.fin']
+        .every((v) => aide.includes(v)),
       'un verbe qu\'on ne decouvre pas n\'existe pas')
   }
 }

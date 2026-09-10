@@ -3782,7 +3782,7 @@
       },
       "qui": "",
       "unefois": true,
-      "script": "c.musique('victoire')\nc.jouer('ramasse')\nc.dire('fin')"
+      "script": "c.musique('victoire')\nc.jouer('ramasse')\nc.dire('fin')\nc.fin()"
     }
   ],
   "deroule": {

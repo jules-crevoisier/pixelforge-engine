@@ -164,6 +164,14 @@ export function mondeDepuisProjet(
   }
   let fluxActif = nomActif
   let titreOuvert = !!p.deroule?.titre
+  /**
+   * La fin du jeu, en deux temps : DEMANDEE par un script — souvent dans le
+   * meme souffle qu'un dernier dialogue — puis OUVERTE quand plus aucune
+   * interface ne la precede. Ouvrir l'ecran de fin par-dessus le dialogue de
+   * fin avalerait les derniers mots du jeu.
+   */
+  let finDemandee = false
+  let finOuverte = false
   const paires = new Map<string, Paire>()
   const fabriquerPaire = (r: Noeud, tuile: number): Paire => {
     const h = dirigeDans(recenserDans(r))
@@ -199,7 +207,7 @@ export function mondeDepuisProjet(
   const ordreDuJeu = (): string[] =>
     (p.deroule?.ordre?.length ? p.deroule.ordre : cartes.map((c) => c.nom))
 
-  return {
+  const monde: Monde = {
     id: `projet:${nomFichier}`,
     nom: `${p.nom} — ${nomFichier}`,
     aide: `Projet relu depuis « ${nomFichier} ». Les scripts écrits dans l’atelier ont été recompilés ;`
@@ -327,7 +335,8 @@ export function mondeDepuisProjet(
         fluxActif = nomCible
         return true
       }
-      jeu.interfaceOuverte = () => titreOuvert || dialogue.ouvert
+      jeu.finDuJeu = () => { finDemandee = true }
+      jeu.interfaceOuverte = () => titreOuvert || dialogue.ouvert || finDemandee || finOuverte
       /*
        * LA LUMIERE : la nuit du projet, avec les couleurs du projet.
        *
@@ -445,6 +454,19 @@ export function mondeDepuisProjet(
           if (valide.some(Boolean)) dialogue.valider()
           return
         }
+        // La fin : elle attend que le dernier dialogue soit lu, s'affiche,
+        // puis un appui ramene au TITRE — le jeu entier remis a son depart.
+        if (finOuverte) {
+          const appuis = [c.entrees.consommer('action'), c.entrees.consommer('saut')]
+          if (appuis.some(Boolean)) {
+            finOuverte = false
+            finDemandee = false
+            monde.reinitialiser()
+            jeu.cadrer()
+          }
+          return
+        }
+        if (finDemandee) { finOuverte = true; return }
         const paire = courant.paire
         if (!paire) return
         if (paire.aventure) {
@@ -476,6 +498,19 @@ export function mondeDepuisProjet(
         // change aussi la jauge qu'on regarde.
         courant.paire?.dessin?.(ctx, ecran)
         dessinerDialogue(ecran, dialogue, {})
+        if (finOuverte) {
+          ctx.fillStyle = 'rgba(10, 8, 16, 0.86)'
+          ctx.fillRect(0, 0, ecran.vue.largeur, ecran.vue.hauteur)
+          ecrireCentre(ecran, p.deroule?.titre || p.nom, Math.round(ecran.vue.hauteur * 0.3))
+          ecrireCentre(ecran, 'FIN', Math.round(ecran.vue.hauteur * 0.45))
+          const av = courant.paire?.aventure
+          if (av) {
+            ecrireCentre(ecran, `${av.morts} mort(s) · ${av.ramasses} trouvaille(s)`,
+              Math.round(ecran.vue.hauteur * 0.6))
+          }
+          ecrireCentre(ecran, 'Espace pour revenir au titre', Math.round(ecran.vue.hauteur * 0.75))
+          return
+        }
         if (titreOuvert && p.deroule?.titre) {
           // Le titre en pixels du jeu, comme tout le reste : un ecran-titre
           // en HTML aurait une autre taille de pixel que le jeu qu'il ouvre.
@@ -531,6 +566,8 @@ export function mondeDepuisProjet(
         fluxActif = nomActif
       }
       titreOuvert = !!p.deroule?.titre
+      finDemandee = false
+      finOuverte = false
       // Les « une fois » retirent : rejouer depuis le debut, c'est aussi
       // reentendre la musique du boss et relire le panneau d'entree.
       jeuCourant?.declencheurs?.oublier()
@@ -546,6 +583,8 @@ export function mondeDepuisProjet(
       pvMax: courant.paire?.aventure?.max ?? -1,
       morts: courant.paire?.aventure?.morts ?? 0,
       balises: courant.paire?.aventure?.balisesAtteintes ?? 0,
+      finOuverte,
     }),
   }
+  return monde
 }

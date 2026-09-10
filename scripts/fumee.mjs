@@ -943,6 +943,45 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
       && apresMort.pv === apresMort.pvMax && apresMort.heros.x < 25 * 16,
       `${apresMort.morts} mort(s), revenu en x=${Math.round(apresMort.heros?.x ?? -1)} avec `
       + `${apresMort.pv}/${apresMort.pvMax} cœurs — avant, il disparaissait et la partie restait ouverte sur du vide`)
+
+    /*
+     * LA FIN DU JEU : c.fin(), l'ecran de fin, le retour au titre.
+     *
+     * On saute au fond du gouffre — le declencheur de fin joue la victoire,
+     * ouvre le dernier dialogue, et DEMANDE la fin ; l'ecran de fin attend
+     * que le dialogue soit lu, puis un appui ramene au titre, jeu entier
+     * remis a son depart.
+     */
+    await p.evaluate(() => {
+      window.pfe.jeu.allerCarte('gouffre')
+      const f = (n) => (n.nom === 'heros' && n.espece ? n : n.enfants.map(f).find(Boolean))
+      const h = f(window.pfe.jeu.racine)
+      h.x = 57 * 16 + 8
+      h.y = 12 * 16
+    })
+    await p.waitForTimeout(400)
+    // Le dialogue de fin se lit — l'ecran de fin attend poliment derriere.
+    // On appuie JUSQU'A ce qu'il s'ouvre, pas un coup de plus : l'appui
+    // suivant est celui du retour au titre, et le compter ici fausserait tout.
+    let alaFin = null
+    for (let i = 0; i < 8; i++) {
+      alaFin = await p.evaluate(() => ({
+        ...window.pfe.monde.sonde(), musique: window.pfe.jeu.musicien?.nom ?? '',
+      }))
+      if (alaFin.finOuverte) break
+      await p.keyboard.press('Space')
+      await p.waitForTimeout(240)
+    }
+    ok('c.fin() ouvre l’écran de fin, une fois le dernier dialogue lu',
+      alaFin.finOuverte === true && alaFin.musique === 'victoire',
+      `FIN affichée, « ${alaFin.musique} » joue — avant, c.dire('fin') laissait la partie ouverte sur du vide`)
+    await p.keyboard.press('Space')
+    await p.waitForTimeout(400)
+    const auTitre = await p.evaluate(() => window.pfe.monde.sonde())
+    ok('et un appui ramène au TITRE, le jeu entier remis à son départ',
+      auTitre.finOuverte === false && auTitre.titreOuvert === true
+      && auTitre.carteActive === 'clairiere' && auTitre.morts === 0,
+      `retour à « Le Gouffre », niveau un, ${auTitre.morts} mort au compteur`)
     await p.click('#arreter')
     await p.waitForTimeout(250)
   }

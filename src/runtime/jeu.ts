@@ -105,6 +105,14 @@ export interface ContexteJeu {
   aller(carte: string): boolean
   /** La carte suivante du deroule. Au bout, ou sans deroule : rien. */
   niveauSuivant(): boolean
+  /**
+   * Termine le jeu : l'ecran de fin, puis le retour au titre.
+   *
+   * C'est un verbe et non un enchainement a ecrire soi-meme : « le jeu est
+   * fini » est une notion de MOTEUR — sans elle, c.dire('fin') ouvrait un
+   * dialogue et la partie continuait derriere, ouverte sur du vide.
+   */
+  fin(): void
 }
 
 export type Script = (c: ContexteJeu, noeud: Noeud) => void
@@ -312,6 +320,8 @@ export class Jeu {
    * pas — un monde sans nuit rend exactement ce qu'il rendait avant.
    */
   eclairage: Eclairage | null = null
+  /** Termine le jeu. C'est le monde qui le branche. */
+  finDuJeu: (() => void) | null = null
   private boucle: Boucle
   private cibleCamera: string | null = null
 
@@ -552,6 +562,7 @@ export class Jeu {
         const nom = this.prochaineCarte?.() ?? ''
         return nom ? (this.allerCarte?.(nom) ?? false) : false
       },
+      fin: () => { this.finDuJeu?.() },
     }
   }
 

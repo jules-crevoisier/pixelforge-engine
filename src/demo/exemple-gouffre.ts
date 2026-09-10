@@ -251,7 +251,9 @@ export function projetGouffre(): ProjetSerialise {
       declencheur('sortie-caverne', 'caverne', SORTIE,
         "if (c.niveauSuivant()) c.jouer('valider')", false),
       declencheur('fond-du-gouffre', 'gouffre', SORTIE,
-        "c.musique('victoire')\nc.jouer('ramasse')\nc.dire('fin')"),
+        // La fin se DEMANDE dans le meme souffle que le dernier dialogue :
+        // le moteur attend qu'il soit lu avant d'ouvrir l'ecran de fin.
+        "c.musique('victoire')\nc.jouer('ramasse')\nc.dire('fin')\nc.fin()"),
     ],
     dialogues: [
       {

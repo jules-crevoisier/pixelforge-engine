@@ -204,6 +204,9 @@ c.geler(50)       gèle la simulation (hit-stop)
 c.salle           le nom du tableau où l'on est
 c.poser('slime', x, y)       une entité du catalogue
 c.retirer(noeud)  l'enlève de la scène
+c.aller('grotte') change de carte, de scène, de créatures
+c.niveauSuivant() la carte suivante du déroulé
+c.fin()           l'écran de fin, puis le retour au titre
 
 n.x, n.y          position du nœud
 n.image           image de la planche
