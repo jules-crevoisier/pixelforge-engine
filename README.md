@@ -5,7 +5,17 @@ Un éditeur de jeux 2D **fait pour le pixel art**, de bout en bout.
 Ce n'est pas un moteur généraliste avec un mode pixel art. C'est l'inverse : la
 grille de pixels est le contrat de base, et tout le reste s'y plie.
 
-## Quatre mondes, un seul moteur
+![L'accueil : trois choix, une phrase](docs/accueil.png)
+
+On lance, on choisit — **jeu de plateforme** ou **vue de dessus** — et l'on est
+dans son jeu : un sol déjà posé, un héros dessus, les outils dans le dock de
+gauche avec leur raccourci, et le bas de l'écran qui explique l'outil courant.
+Peindre, poser une gelée, appuyer sur **▶ Jouer** : la première partie se joue
+dans la première minute.
+
+![L'éditeur : le dock, la palette d'entités, un niveau qui se peint](docs/editeur.png)
+
+## Quatre mondes d'exemple, un seul moteur
 
 |  |  |
 | --- | --- |
@@ -295,9 +305,12 @@ autre, et tout ce qui y renvoyait pointerait dans le vide.
 
 ![Un projet parti de zéro : la carte, les calques, les espèces](docs/projet.png)
 
-**Nouveau…** donne un projet vide et jouable — les deux ne se contredisent
-pas : il y a une carte, deux calques, un héros au milieu et le catalogue des
-espèces. Ce qui manque, c'est le décor, et c'est justement ce qu'on vient
+**Nouveau…** — ou l'accueil — donne un projet **né jouable** : une carte au
+sol déjà peint, deux calques, un héros posé dessus et le catalogue des
+espèces. En vue de côté, le sol du bas naît solide : un projet plateforme qui
+s'ouvrirait sur une chute libre dans le noir ne dirait pas « éditeur », il
+dirait « cassé ». Ce qui manque, c'est *votre* décor, et c'est justement ce
+qu'on vient
 dessiner. Un projet neuf sans héros s'ouvrirait sur un rectangle noir où
 « Jouer » ne ferait rien, et la première impression serait « c'est cassé ».
 
@@ -779,7 +792,7 @@ npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages,
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 115 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
+npm run fumee           # 119 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

@@ -148,7 +148,7 @@ export class PanneauProjet {
    * Des onglets rendent chaque section atteignable en un clic — au prix d'un
    * clic de plus pour celle qu'on regardait.
    */
-  private onglet: 'carte' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes' = 'carte'
+  private onglet: 'carte' | 'jeu' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes' = 'carte'
   /** La planche et la case qu'on dessine. */
   private plancheEditee = 0
   private caseEditee = 0
@@ -196,8 +196,14 @@ export class PanneauProjet {
     this.corps.textContent = ''
     this.onglets()
     if (this.onglet === 'carte') {
+      // La STRUCTURE : les cartes, leur taille, leurs calques, leurs salles.
       this.blocCartes(p); this.blocCarte(p); this.blocCalques(p); this.blocSalles(p)
-      this.blocDeclencheurs(p); this.blocDeroule(p); this.blocLumiere(p); this.blocNeuf()
+      this.blocNeuf()
+    } else if (this.onglet === 'jeu') {
+      // Le JEU : ce qui fait d'une liste de cartes une partie — le titre et
+      // l'ordre, les declencheurs, la lumiere. Empile sous « Carte », tout
+      // cela noyait la taille de la carte sous sept blocs.
+      this.blocDeroule(p); this.blocDeclencheurs(p); this.blocLumiere(p)
     }
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
@@ -210,7 +216,7 @@ export class PanneauProjet {
     const barre = document.createElement('div')
     barre.className = 'onglets'
     const items: [typeof this.onglet, string][] = [
-      ['carte', 'Carte'], ['dessin', 'Dessin'], ['animations', 'Animations'],
+      ['carte', 'Carte'], ['jeu', 'Jeu'], ['dessin', 'Dessin'], ['animations', 'Animations'],
       ['sons', 'Sons'], ['textes', 'Textes'], ['especes', 'Espèces'],
     ]
     for (const [id, nom] of items) {

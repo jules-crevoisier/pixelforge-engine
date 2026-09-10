@@ -643,6 +643,8 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     // eslint-disable-next-line no-new-func
     return bloc ? new Function('bloc', '...args', `return (${src})(bloc, ...args)`)(bloc, ...a) : null
   }, { src: fn.toString(), args: args })
+  await p.getByRole('button', { name: 'Jeu', exact: true }).click()
+  await p.waitForTimeout(200)
   await surBloc((bloc) => {
     ;[...bloc.querySelectorAll('button')].find((b) => b.textContent.includes('Déclencheur')).click()
   })
@@ -702,6 +704,8 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     // eslint-disable-next-line no-new-func
     return bloc ? new Function('bloc', '...args', `return (${src})(bloc, ...args)`)(bloc, ...a) : null
   }, { titre: titreBloc, src: fn.toString(), args: args })
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(200)
   await surBlocNomme('Cartes', (bloc) => {
     ;[...bloc.querySelectorAll('button')].find((b) => b.textContent === '+ Carte').click()
   })
@@ -726,6 +730,8 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     `carte → niveau2 → carte, ${retour.cartes.length} cartes conservées`)
 
   // Le titre, et un declencheur qui passe au niveau suivant.
+  await p.getByRole('button', { name: 'Jeu', exact: true }).click()
+  await p.waitForTimeout(200)
   await surBlocNomme('Déroulé', (bloc) => {
     const e = bloc.querySelector('input')
     e.value = 'La Grotte'
@@ -808,6 +814,8 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   // la mesure se ferait sur le niveau deux — vide, donc noir, donc aveugle.
   await p.click('#basculeProjet')
   await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Jeu', exact: true }).click()
+  await p.waitForTimeout(200)
   await surBlocNomme('Déclencheurs', (bloc) => {
     const ligne = [...bloc.querySelectorAll('.ligne')].at(-1)
     ;[...ligne.querySelectorAll('button')].find((b) => b.textContent === '✕').click()
@@ -822,6 +830,8 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.click('#arreter')
   await p.waitForTimeout(200)
   await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Jeu', exact: true }).click()
   await p.waitForTimeout(200)
   await surBlocNomme('Lumière', (bloc) => {
     const e = bloc.querySelector('input')
@@ -1356,6 +1366,73 @@ ok('Enregistrer telecharge le projet faute de dossier',
     sol.length >= 2 && Math.abs(medSol - deplacement) <= 2 && medSol - medFond > 20,
     `sol ${medSol} px contre fond ${medFond} px — un fond qui bougerait autant `
     + `n’aurait aucune profondeur`)
+}
+
+/*
+ * LE PREMIER LANCEMENT : l'accueil, et un jeu ne juste que jouable — JOUE.
+ *
+ * « Je lance ca, je comprends rien » : c'etait le retour, et il etait juste.
+ * Ce bloc refait le parcours de quelqu'un qui arrive : la page s'ouvre sur
+ * trois choix, « plateforme » donne un monde au sol deja pose, et trente
+ * secondes plus tard le heros a saute sur une plateforme qu'on vient de
+ * peindre. Si ce parcours casse, rien d'autre ne compte.
+ */
+{
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(900)
+  const cartes = await p.$$eval('.accueil-carte', (l) => l.map((e) => e.querySelector('b')?.textContent))
+  ok('le premier lancement s’ouvre sur l’accueil, trois départs nommés',
+    cartes.length === 3 && cartes.join('|').includes('plateforme'),
+    cartes.join(' · '))
+  await p.click('#accueilPlateforme')
+  await p.waitForTimeout(800)
+  const naissance = await p.evaluate(() => {
+    const m = window.pfe.monde
+    const f = (n) => (n.espece ? n : n.enfants.map(f).find(Boolean))
+    const h = f(m.racine)
+    let solides = 0
+    for (const v of m.carte.solides) if (v) solides++
+    return {
+      id: m.id, solides, heros: h ? { x: h.x, y: h.y } : null,
+      aide: document.getElementById('aide')?.textContent ?? '',
+      surSol: h ? m.carte.solide(Math.floor(h.x / 16), Math.floor(h.y / 16)) : false,
+    }
+  })
+  ok('« Jeu de plateforme » naît JOUABLE : un sol solide, le héros posé dessus',
+    naissance.id === 'projet:mon-jeu' && naissance.solides >= 80
+    && naissance.heros !== null && naissance.surSol === true,
+    `${naissance.solides} cases solides, héros les pieds sur la case ${Math.floor((naissance.heros?.y ?? 0) / 16)}`)
+  ok('et le pied de page explique l’outil courant, sans qu’on demande',
+    naissance.aide.includes('Mur'), `« ${naissance.aide.slice(0, 60)}… »`)
+  // On peint une plateforme au-dessus du heros, on joue, on saute dessus.
+  const cadre = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  await p.mouse.move(cadre[0] + cadre[2] * 0.56, cadre[1] + cadre[3] * 0.62)
+  await p.mouse.down()
+  for (let i = 0; i <= 6; i++) await p.mouse.move(cadre[0] + cadre[2] * (0.56 + i * 0.03), cadre[1] + cadre[3] * 0.62)
+  await p.mouse.up()
+  await p.waitForTimeout(200)
+  await p.click('#jouer')
+  await p.waitForTimeout(300)
+  const avantSaut = await p.evaluate(() => {
+    const f = (n) => (n.espece ? n : n.enfants.map(f).find(Boolean))
+    const h = f(window.pfe.monde.racine)
+    return { x: h.x, y: h.y }
+  })
+  await p.keyboard.down('ArrowRight')
+  await p.keyboard.down('Space')
+  await p.waitForTimeout(180)
+  await p.keyboard.up('Space')
+  await p.waitForTimeout(350)
+  await p.keyboard.up('ArrowRight')
+  const apresSaut = await p.evaluate(() => {
+    const f = (n) => (n.espece ? n : n.enfants.map(f).find(Boolean))
+    const h = f(window.pfe.monde.racine)
+    return { x: h.x, y: h.y }
+  })
+  ok('trente secondes après l’accueil, le héros saute sur ce qu’on vient de peindre',
+    apresSaut.x > avantSaut.x && apresSaut.y < avantSaut.y,
+    `de ${Math.round(avantSaut.x)},${Math.round(avantSaut.y)} à ${Math.round(apresSaut.x)},${Math.round(apresSaut.y)} — le parcours entier d’un premier lancement`)
+  await p.click('#arreter')
 }
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')

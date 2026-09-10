@@ -972,8 +972,12 @@ animations, la scène, le catalogue des espèces. Il se rouvre, il se joue, il
 s’exporte vers Godot ou Unity.</p>
 
 <h4>Commencer</h4>
-<p><b>Nouveau…</b> crée un projet vide avec une carte, deux calques et un héros
-au milieu. <b>Dossier…</b> choisit où il s’enregistre ; sans dossier,
+<p>L’accueil propose deux départs : <b>jeu de plateforme</b> (vue de côté,
+gravité, un sol déjà posé) ou <b>vue de dessus</b> (on marche dans les quatre
+sens). <b>Nouveau…</b> refait ce départ à tout moment. Les outils vivent dans
+le <b>dock de gauche</b> — un chiffre par outil, de <kbd>1</kbd> à
+<kbd>7</kbd> — et le bas de l’écran explique toujours l’outil courant.
+<b>Dossier…</b> choisit où le projet s’enregistre ; sans dossier,
 <b>Enregistrer</b> télécharge le fichier.</p>
 
 <h4>Dessiner</h4>
@@ -1025,10 +1029,11 @@ joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
 <code>n</code>, son nœud — pour qu’il traverse l’export.</p>
 
 <h4>Les raccourcis</h4>
-<p><kbd>Ctrl</kbd>+<kbd>S</kbd> enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd>
-défaire · <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire ·
-<kbd>+</kbd> / <kbd>−</kbd> le cadre d’édition · molette du milieu ou outil
-<b>Main</b> pour déplacer la vue.</p>
+<p><kbd>1</kbd>…<kbd>7</kbd> les outils du dock · <kbd>Ctrl</kbd>+<kbd>S</kbd>
+enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd> défaire ·
+<kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire · <kbd>+</kbd> /
+<kbd>−</kbd> le cadre d’édition · molette du milieu ou outil <b>Main</b> pour
+déplacer la vue.</p>
 `
 
 {
