@@ -6,10 +6,14 @@ import { COMPORTEMENTS, type Comportement, type Espece } from '../runtime/entite
 import {
   PROJECTIONS, projetNeuf, redimensionnerProjet, ajouterCalqueProjet,
   retirerCalqueProjet, modifierCalqueProjet, poserEspeceProjet, retirerEspeceProjet,
+  ajouterPlancheProjet,
   changerVueProjet,
   renommerSalleProjet, reglerSalleProjet, retirerSalleProjet,
 } from './projet-neuf.ts'
 import { chevauchements } from '../niveau/salles.ts'
+import {
+  plancheDepuisImage, plancheDepuisSprite, type ImageBrute,
+} from './importer.ts'
 
 /**
  * Le panneau Projet : ce qu'on ne peut pas faire au pinceau.
@@ -112,6 +116,16 @@ export class PanneauProjet {
   private message: HTMLElement
   private bascule: HTMLButtonElement
   private crochets: CrochetsProjet
+  /**
+   * La taille de case demandee au prochain import d'image.
+   *
+   * Elle se regle a cote du bouton : une feuille de sprites 16x16 et une
+   * feuille 32x32 sont toutes les deux courantes, et deviner se tromperait
+   * une fois sur deux. Un `.pixelforge` n'en a pas besoin — il connait sa
+   * taille d'image.
+   */
+  private tailleImport = { x: 16, y: 16 }
+
   /** L'espece en cours d'edition, par son identifiant. Vide : une neuve. */
   private especeEditee = ''
   /**
@@ -553,10 +567,78 @@ export class PanneauProjet {
    * quarante nuances de gris. On peint donc une lettre de la cle — ce qui
    * garantit au passage qu'un dessin ne peut pas sortir de la palette.
    */
+  /**
+   * Le bouton d'import : la porte d'entree de l'art dessine ailleurs.
+   *
+   * Une image devient une planche decoupee en cases ; un projet de l'editeur
+   * de sprites (`.pixelforge`) devient une planche dont chaque image
+   * d'animation est une case. Les avertissements de l'import — echelle
+   * ramenee, transparence aplatie, fusion simplifiee — sont DITS : chacun est
+   * une transformation du dessin de quelqu'un, et une transformation muette
+   * est une trahison.
+   */
+  private boutonImporter(d: HTMLElement): void {
+    const entree = document.createElement('input')
+    entree.type = 'file'
+    entree.accept = '.png,.gif,.webp,.jpg,.jpeg,.bmp,.pixelforge'
+    entree.style.display = 'none'
+    const b = bouton('Importer une image…',
+      'Une image (PNG, GIF…) découpée en cases, ou un projet de l’éditeur de sprites '
+      + '(.pixelforge) dont chaque image d’animation devient une case.',
+      () => entree.click())
+    entree.addEventListener('change', () => {
+      const f = entree.files?.[0]
+      entree.value = ''
+      if (f) void this.importerFichier(f)
+    })
+    const taille = (axe: 'x' | 'y', titre: string): HTMLInputElement => {
+      const e = document.createElement('input')
+      e.type = 'number'
+      e.value = String(this.tailleImport[axe])
+      e.style.width = '52px'
+      e.title = titre
+      e.addEventListener('change', () => {
+        this.tailleImport[axe] = Math.max(1, Math.round(Number(e.value)) || 16)
+      })
+      return e
+    }
+    const rangee = document.createElement('div')
+    rangee.className = 'bloc-actions'
+    rangee.append(b,
+      taille('x', 'Largeur d’une case de l’image importée, en pixels'),
+      taille('y', 'Hauteur d’une case de l’image importée, en pixels'),
+      entree)
+    d.appendChild(rangee)
+  }
+
+  private async importerFichier(f: File): Promise<void> {
+    try {
+      const nom = f.name.replace(/\.[^.]+$/, '')
+      const brut = f.name.toLowerCase().endsWith('.pixelforge')
+        ? await plancheDepuisSprite(await f.text(), decoderPngNavigateur, nom)
+        : plancheDepuisImage(await imageBruteDe(f), nom,
+          this.tailleImport.x, this.tailleImport.y)
+      this.appliquer(ajouterPlancheProjet(this.frais(), brut.planche),
+        `Planche « ${brut.planche.nom} » importée : ${brut.planche.dessins.length} case(s)`)
+      // La planche importee devient celle qu'on regarde : on importe pour la
+      // voir, pas pour la chercher dans une liste.
+      this.plancheEditee = this.crochets.planches().length - 1
+      this.caseEditee = 0
+      this.montrer()
+      if (brut.avertissements.length) this.crochets.dire(brut.avertissements.join(' '))
+    } catch (e) {
+      this.crochets.dire(`Import refusé : ${(e as Error).message}`)
+    }
+  }
+
   private blocDessin(): void {
     const planches = this.crochets.planches()
     const d = bloc(this.corps, 'Dessin')
-    if (planches.length === 0) { d.append('Ce projet n’a pas de planche.'); return }
+    this.boutonImporter(d)
+    if (planches.length === 0) {
+      d.append('Ce projet n’a pas de planche — importez une image, ou dessinez-en une.')
+      return
+    }
     this.plancheEditee = Math.min(this.plancheEditee, planches.length - 1)
     const planche = planches[this.plancheEditee]
     this.caseEditee = Math.min(this.caseEditee, Math.max(0, planche.dessins.length - 1))
@@ -907,4 +989,39 @@ export class PanneauProjet {
     }))
     d.appendChild(actions)
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ce que seul le navigateur sait faire : decoder une image            */
+/* ------------------------------------------------------------------ */
+
+/** Les pixels d'un fichier image, par le decodeur du navigateur. */
+async function imageBruteDe(f: File): Promise<ImageBrute> {
+  const bitmap = await createImageBitmap(f)
+  const c = document.createElement('canvas')
+  c.width = bitmap.width
+  c.height = bitmap.height
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('canevas 2D indisponible')
+  ctx.drawImage(bitmap, 0, 0)
+  const d = ctx.getImageData(0, 0, c.width, c.height)
+  return { largeur: d.width, hauteur: d.height, donnees: d.data }
+}
+
+/** Les pixels d'un PNG en base64 — les cels d'un projet de sprites. */
+async function decoderPngNavigateur(base64: string): Promise<ImageBrute> {
+  const img = new Image()
+  await new Promise<void>((ok, ko) => {
+    img.onload = () => ok()
+    img.onerror = () => ko(new Error('cel illisible'))
+    img.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
+  })
+  const c = document.createElement('canvas')
+  c.width = img.naturalWidth
+  c.height = img.naturalHeight
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('canevas 2D indisponible')
+  ctx.drawImage(img, 0, 0)
+  const d = ctx.getImageData(0, 0, c.width, c.height)
+  return { largeur: d.width, hauteur: d.height, donnees: d.data }
 }

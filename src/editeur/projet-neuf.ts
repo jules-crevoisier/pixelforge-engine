@@ -1,6 +1,6 @@
 import {
   VERSION_FORMAT, decrirePlanche, serialiserAnimation,
-  type ProjetSerialise, type CarteSerialisee, type NoeudSerialise,
+  type ProjetSerialise, type CarteSerialisee, type NoeudSerialise, type PlancheSerialisee,
 } from '../export/format.ts'
 import { matiereEnCaractere, caractereEnMatiere, VIDE } from '../tuiles/tilemap.ts'
 import { ORTHO_DESSUS, ORTHO_COTE, ISO, type Projection } from '../noyau/projection.ts'
@@ -310,6 +310,23 @@ export function modifierCalqueProjet(
     }
   }
   return { ...p, cartes: p.cartes.map((q, i) => (i === 0 ? { ...q, calques } : q)) }
+}
+
+/**
+ * Ajoute une planche au projet — celle qu'on vient d'importer.
+ *
+ * Le nom est dedouble s'il est pris : deux planches du meme nom rendraient
+ * « laquelle ? » sans reponse partout ou une espece ou une carte designe la
+ * sienne. On numerote au lieu d'ecraser — ecraser detruirait un dessin
+ * existant pour une collision de nom, ce qui est la pire reponse possible.
+ */
+export function ajouterPlancheProjet(
+  p: ProjetSerialise, planche: PlancheSerialisee,
+): ProjetSerialise {
+  let nom = planche.nom.trim() || 'importee'
+  let n = 2
+  while (p.planches.some((q) => q.nom === nom)) nom = `${planche.nom}-${n++}`
+  return { ...p, planches: [...p.planches, { ...planche, nom }] }
 }
 
 /* ------------------------------------------------------------------ */

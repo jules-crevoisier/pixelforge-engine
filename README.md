@@ -573,12 +573,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 298 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:mondes     # 320 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   #  91 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           #  93 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           #  96 vérifications de l'éditeur, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire
@@ -877,6 +877,44 @@ quelqu'un ajoute une ligne au menu et écrit son libellé en clair, parce que
 c'est plus court. Rien ne tombe — le menu s'affiche, en français, dans toutes
 les langues. Un contrôle lit donc la source du menu de pause et refuse toute
 chaîne posée en clair dans une entrée.
+
+### L'art de l'artiste entre enfin
+
+L'audit l'a dit sans ménagement : un moteur pixel art **sans import d'image**
+est un moteur où l'artiste n'a pas le droit de travailler avec ses outils. Les
+gens dessinent dans Aseprite, dans l'éditeur de sprites d'à côté — et exportent
+des PNG. La seule façon de mettre un dessin dans un projet était de le retaper
+lettre par lettre.
+
+Le bouton **Importer une image…** (onglet *Dessin*) accepte deux choses :
+
+- **une image** (PNG, GIF, WebP…), découpée en cases à la taille qu'on donne —
+  elle devient une planche, mêmes lettres et même clé que si on l'avait
+  dessinée ici ;
+- **un projet de l'éditeur de sprites** (`.pixelforge`) : chaque image de
+  l'animation devient une case, calques fondus de bas en haut avec leur
+  opacité. C'est le pont entre les deux produits — on dessine et on anime dans
+  l'un, on joue dans l'autre.
+
+Trois règles, et elles sont **dites** plutôt que faites en silence, parce que
+chacune transforme le dessin de quelqu'un :
+
+- la transparence partielle est aplatie — une planche ne connaît que le plein
+  et le vide — et l'import dit combien de pixels y sont passés ;
+- un export ×2/×3/×4 est détecté et ramené à l'échelle 1 (l'alpha compte dans
+  la détection : un dégradé de transparence n'est pas un gros pixel). Quand la
+  taille est *connue* — un `.pixelforge` la déclare — on ne devine pas : la
+  détection s'est fait avoir par un dessin sincèrement plat ;
+- au-delà de 86 couleurs, l'import **refuse** au lieu de quantifier. Ce n'est
+  plus du pixel art, c'est une photo ; quantifier en douce rendrait un dessin
+  qui ressemble à l'original sans être celui de l'artiste — la pire des
+  politesses.
+
+Le banc fait l'aller-retour qui prouve tout : la planche du héros, rendue en
+pixels puis réimportée, revient **au pixel près** — les lettres changent, les
+couleurs jamais. Et le banc de fumée passe par la vraie porte : un vrai PNG et
+un vrai `.pixelforge` fabriqués dans la page, choisis par le vrai bouton,
+décodés par le vrai navigateur.
 
 ### Peindre autrement que case par case
 

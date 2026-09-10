@@ -2389,6 +2389,237 @@ console.log('\n--- un projet enregistre puis relu ---')
   }
 
   /*
+   * L'IMPORT : la porte d'entree de l'art dessine ailleurs.
+   *
+   * Un moteur pixel art sans import d'image est un moteur ou l'artiste n'a
+   * pas le droit de travailler avec ses outils. On eprouve ici toute la
+   * logique — quantification, echelle, transparence, fusion de calques — sur
+   * des pixels fabriques ; le banc de fumee eprouvera le vrai decodage.
+   */
+  {
+    const imp = await import('../src/editeur/importer.ts')
+    const { ajouterPlancheProjet } = await import('../src/editeur/projet-neuf.ts')
+
+    /** Une image RGBA depuis des rangees de caracteres et une table. */
+    const image = (rangees, table) => {
+      const largeur = rangees[0].length
+      const hauteur = rangees.length
+      const donnees = new Uint8ClampedArray(largeur * hauteur * 4)
+      rangees.forEach((l, y) => [...l].forEach((c, x) => {
+        const v = table[c] ?? [0, 0, 0, 0]
+        donnees.set(v, (y * largeur + x) * 4)
+      }))
+      return { largeur, hauteur, donnees }
+    }
+    const R = [255, 0, 0, 255]
+    const V = [0, 255, 0, 255]
+    const B = [0, 0, 255, 255]
+
+    /* La quantification : couleurs -> lettres, vide -> point. */
+    {
+      const { planche, avertissements } = imp.plancheDepuisImage(
+        image(['rv.', '.vb', 'rrb', 'r.b'], { r: R, v: V, b: B }), 'essai', 3, 4)
+      check('une image devient une planche, couleur par couleur',
+        planche.dessins.length === 1 && planche.dessins[0].join('|') === 'ab.|.bc|aac|a.c'
+        && planche.cle.a === '#ff0000' && planche.cle.b === '#00ff00' && planche.cle.c === '#0000ff',
+        `${planche.dessins[0].join(' ')} — trois couleurs, trois lettres, le vide en point`)
+      check('et il n’y a rien à signaler quand il n’y a rien à faire',
+        avertissements.length === 0, avertissements.join(' | '))
+      const bis = imp.plancheDepuisImage(
+        image(['rv.', '.vb', 'rrb', 'r.b'], { r: R, v: V, b: B }), 'essai', 3, 4)
+      check('réimporter la même image rend la même planche, lettre pour lettre',
+        JSON.stringify(bis.planche) === JSON.stringify(planche),
+        'les lettres suivent l’ordre de rencontre, pas un tri qui changerait au moindre pixel')
+    }
+
+    /* Le decoupage en cases suit l'ordre d'une feuille de sprites. */
+    {
+      const { planche } = imp.plancheDepuisImage(
+        image(['rv', 'rv'], { r: R, v: V }), 'cases', 1, 1)
+      check('les cases se lisent de gauche à droite puis de haut en bas',
+        planche.colonnes === 2 && planche.dessins.length === 4
+        && planche.dessins.map((d) => planche.cle[d[0]]).join(',')
+          === '#ff0000,#00ff00,#ff0000,#00ff00',
+        'l’ordre que tous les outils de feuilles de sprites produisent')
+    }
+
+    /* La transparence partielle est aplatie, ET DITE. */
+    {
+      const { planche, avertissements } = imp.plancheDepuisImage(
+        image(['tm'], { t: [255, 0, 0, 40], m: [0, 255, 0, 200] }), 'alpha', 2, 1)
+      check('sous la moitié d’alpha c’est du vide, au-dessus c’est plein',
+        planche.dessins[0][0] === '.a' && planche.cle.a === '#00ff00',
+        'une planche ne connaît que le plein et le vide')
+      check('et l’aplatissement est DIT, pas fait en silence',
+        avertissements.some((a) => a.includes('transparence partielle')),
+        avertissements.join(' | ') || 'aucun avertissement')
+    }
+
+    /* Trop de couleurs : REFUSE, avec le remede dans le message. */
+    {
+      const grande = { largeur: 100, hauteur: 1, donnees: new Uint8ClampedArray(400) }
+      for (let x = 0; x < 100; x++) grande.donnees.set([x, 37, (x * 7) % 256, 255], x * 4)
+      let message = ''
+      try { imp.plancheDepuisImage(grande, 'photo', 100, 1) } catch (e) { message = e.message }
+      check('au-delà de l’alphabet, l’import refuse au lieu de quantifier',
+        message.includes('couleurs') && message.includes('Réduisez'),
+        `« ${message.slice(0, 80)}… » — quantifier en douce rendrait un dessin qui n’est plus celui de l’artiste`)
+    }
+
+    /* L'agrandissement x2 est detecte et ramene, ET DIT. */
+    {
+      const x2 = image(['rrvv', 'rrvv', 'bb..', 'bb..'], { r: R, v: V, b: B })
+      check('un export ×2 est détecté', imp.echelleDe(x2) === 2)
+      const { planche, avertissements } = imp.plancheDepuisImage(x2, 'x2', 2, 2)
+      check('et ramené à l’échelle 1, en le disant',
+        planche.dessins[0].join('|') === 'ab|c.'
+        && avertissements.some((a) => a.includes('agrandissement ×2')),
+        `${planche.dessins[0].join(' ')} — un pixel de quatre pixels casserait toutes les cases du projet`)
+      check('mais une image déjà à l’échelle 1 ne l’est pas',
+        imp.echelleDe(image(['rv', 'vr'], { r: R, v: V })) === 1,
+        'réduire un vrai damier détruirait le dessin')
+      // Un degrade d'alpha dans un bloc n'est pas un gros pixel.
+      const faux = image(['rr', 'rr'], { r: R })
+      faux.donnees[3] = 200
+      check('et l’alpha compte dans la détection',
+        imp.echelleDe(faux) === 1,
+        'deux pixels de même couleur et d’alpha différent ne font pas un bloc uniforme')
+    }
+
+    /* Une taille qui ne tombe pas juste : rognee, ET DIT. */
+    {
+      const { planche, avertissements } = imp.plancheDepuisImage(
+        image(['rvr', 'vrv', 'rrr'], { r: R, v: V }), 'rognee', 2, 2)
+      check('une image qui ne tombe pas juste est rognée, en le disant',
+        planche.dessins.length === 1 && planche.dessins[0].join('|') === 'ab|ba'
+        && avertissements.some((a) => a.includes('rognée')),
+        'rogner en silence ferait chercher longtemps la rangée du bas')
+    }
+
+    /*
+     * L'ALLER-RETOUR QUI PROUVE TOUT : une planche du moteur, rendue en
+     * pixels, importee — les couleurs doivent revenir au pixel pres. Les
+     * lettres peuvent changer ; les couleurs, jamais.
+     */
+    {
+      const { mondeCaverne: mc } = await import('../src/demo/mondes.ts')
+      const source = mc().planches.find((q) => q.nom === 'heros')
+      const largeur = source.largeurCase * source.colonnes
+      const rangees = Math.ceil(source.dessins.length / source.colonnes)
+      const hauteur = source.hauteurCase * rangees
+      const donnees = new Uint8ClampedArray(largeur * hauteur * 4)
+      source.dessins.forEach((dessin, i) => {
+        const ox = (i % source.colonnes) * source.largeurCase
+        const oy = Math.floor(i / source.colonnes) * source.hauteurCase
+        dessin.forEach((ligne, y) => [...ligne].forEach((c, x) => {
+          if (c === '.') return
+          const couleur = source.cle[c]
+          donnees.set([
+            parseInt(couleur.slice(1, 3), 16), parseInt(couleur.slice(3, 5), 16),
+            parseInt(couleur.slice(5, 7), 16), 255,
+          ], ((oy + y) * largeur + ox + x) * 4)
+        }))
+      })
+      const { planche: relue } = imp.plancheDepuisImage(
+        { largeur, hauteur, donnees }, 'heros', source.largeurCase, source.hauteurCase)
+      let faux = 0
+      for (let i = 0; i < source.dessins.length; i++) {
+        source.dessins[i].forEach((ligne, y) => [...ligne].forEach((c, x) => {
+          const attendu = c === '.' ? null : source.cle[c]
+          const rc = relue.dessins[i][y][x]
+          const obtenu = rc === '.' ? null : relue.cle[rc]
+          if (attendu !== obtenu) faux++
+        }))
+      }
+      check('la planche du héros survit à l’aller-retour pixels, au pixel près',
+        faux === 0 && relue.dessins.length === source.dessins.length,
+        faux ? `${faux} pixel(s) faux` : `${source.dessins.length} cases, `
+          + `${Object.keys(source.cle).length} couleurs — les lettres changent, les couleurs jamais`)
+    }
+
+    /*
+     * LE PONT : un projet de l'editeur de sprites. Le decodeur de PNG est
+     * injecte — ici, une table base64 -> pixels fabriques : la fusion,
+     * l'opacite et l'ordre s'eprouvent sans navigateur.
+     */
+    {
+      const cels = {
+        fond: image(['rr', 'rr'], { r: R }),
+        motif: image(['v.', '.v'], { v: V }),
+        demi: image(['bb', 'bb'], { b: B }),
+      }
+      const decoder = async (base64) => cels[base64]
+      const projetSprite = (calques) => JSON.stringify({
+        format: 'pixelforge', version: 1, name: 'perso', width: 2, height: 2,
+        frameDurations: [100, 100], layers: calques,
+      })
+
+      const un = await imp.plancheDepuisSprite(projetSprite([
+        { visible: true, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: 'fond' }, { opacity: 255, png: 'motif' }] },
+        { visible: true, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: 'motif' }, null] },
+        { visible: false, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: 'demi' }, { opacity: 255, png: 'demi' }] },
+        { visible: true, reference: true, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: 'demi' }, null] },
+      ]), decoder)
+      check('chaque image d’animation devient une case',
+        un.planche.dessins.length === 2 && un.planche.largeurCase === 2,
+        `${un.planche.dessins.length} cases de ${un.planche.largeurCase}×${un.planche.hauteurCase}`)
+      check('les calques se fondent de bas en haut',
+        un.planche.cle[un.planche.dessins[0][0][0]] === '#00ff00'
+        && un.planche.cle[un.planche.dessins[0][0][1]] === '#ff0000',
+        'le motif du calque haut passe devant le fond')
+      check('un calque caché et un calque de référence restent dehors',
+        !Object.values(un.planche.cle).includes('#0000ff'),
+        'le modèle qu’on décalque n’est pas du dessin')
+      check('une image sans cel sur un calque n’efface pas les autres',
+        un.planche.dessins[1].join('|') === 'a.|.a',
+        `${un.planche.dessins[1].join(' ')}`)
+      check('et l’import le dit : deux images, deux cases',
+        un.avertissements.some((a) => a.includes('2 images')),
+        un.avertissements.join(' | '))
+
+      /* L'opacite d'un calque assombrit vers le fond. */
+      const voile = await imp.plancheDepuisSprite(projetSprite([
+        { visible: true, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: 'fond' }, null] },
+        { visible: true, opacity: 128, blendMode: 'normal',
+          cels: [{ opacity: 255, png: 'demi' }, null] },
+      ]), decoder)
+      const c0 = voile.planche.cle[voile.planche.dessins[0][0][0]]
+      check('l’opacité d’un calque se fond au lieu d’être ignorée',
+        c0 !== '#0000ff' && c0 !== '#ff0000',
+        `${c0} — mi-bleu mi-rouge, ni l’un ni l’autre`)
+
+      /* Un mode de fusion exotique est aplati, ET DIT. */
+      const exotique = await imp.plancheDepuisSprite(projetSprite([
+        { visible: true, opacity: 255, blendMode: 'overlay',
+          cels: [{ opacity: 255, png: 'fond' }, null] },
+      ]), decoder)
+      check('un mode de fusion inconnu retombe sur le normal, en le disant',
+        exotique.avertissements.some((a) => a.includes('overlay')),
+        exotique.avertissements.join(' | '))
+
+      /* Un fichier qui n'en est pas un : refuse avec la raison. */
+      let refus = ''
+      try { await imp.plancheDepuisSprite('{"format":"autre"}', decoder) } catch (e) { refus = e.message }
+      check('un fichier qui n’est pas un projet de sprites est refusé',
+        refus.includes('éditeur de sprites'), refus)
+    }
+
+    /* Le nom se dedouble au lieu d'ecraser. */
+    {
+      const base = { planches: [{ nom: 'heros' }, { nom: 'heros-2' }] }
+      const apres = ajouterPlancheProjet(base, { nom: 'heros', largeurCase: 1, hauteurCase: 1, colonnes: 1, cle: {}, dessins: [] })
+      check('un nom de planche déjà pris est numéroté au lieu d’écraser',
+        apres.planches[2].nom === 'heros-2-2' || apres.planches[2].nom === 'heros-3',
+        `« ${apres.planches[2].nom} » — écraser détruirait un dessin pour une collision de nom`)
+    }
+  }
+
+  /*
    * PEINDRE UN NIVEAU CASE PAR CASE NE SE FAIT PAS.
    *
    * Une carte de quarante sur trente-trois, c'est mille trois cents clics, et

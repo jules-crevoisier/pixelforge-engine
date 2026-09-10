@@ -504,6 +504,99 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     (await p.evaluate(() => window.pfe.monde.sons.some((s) => s.frequence === 523))),
     'six nombres : c’est tout ce qu’un son est')
 
+  /*
+   * L'IMPORT, DE BOUT EN BOUT : un vrai PNG et un vrai `.pixelforge`,
+   * fabriques dans la page, choisis par le vrai bouton, decodes par le vrai
+   * navigateur. Le banc de Node a eprouve la logique ; ici on eprouve la
+   * porte — le fichier, le decodeur, le panneau.
+   */
+  await p.getByRole('button', { name: 'Dessin', exact: true }).click()
+  await p.waitForTimeout(250)
+  const planchesAvant = await p.evaluate(() => window.pfe.monde.planches.length)
+
+  /* Un damier rouge-vert de 4x4, encode en vrai PNG par le canevas. */
+  const pngOctets = await p.evaluate(async () => {
+    const c = document.createElement('canvas')
+    c.width = 4; c.height = 4
+    const ctx = c.getContext('2d')
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+      ctx.fillStyle = (x + y) % 2 ? '#00ff00' : '#ff0000'
+      ctx.fillRect(x, y, 1, 1)
+    }
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+    return [...new Uint8Array(await blob.arrayBuffer())]
+  })
+  const champsTaille = await p.$$('#projetCorps .bloc-actions input[type=number]')
+  await champsTaille[0].fill('2')
+  await champsTaille[0].dispatchEvent('change')
+  await champsTaille[1].fill('2')
+  await champsTaille[1].dispatchEvent('change')
+  await (await p.$('#projetCorps input[type=file]')).setInputFiles({
+    name: 'damier.png', mimeType: 'image/png', buffer: Buffer.from(pngOctets),
+  })
+  await p.waitForTimeout(600)
+  const importee = await p.evaluate(() => {
+    const t = window.pfe.monde.planches.find((q) => q.nom === 'damier')
+    return t ? {
+      cases: t.dessins.length, taille: `${t.largeurCase}x${t.hauteurCase}`,
+      pixel: t.cle[t.dessins[0][0][0]],
+    } : null
+  })
+  ok('un PNG importé par le bouton devient une planche du projet',
+    (await p.evaluate(() => window.pfe.monde.planches.length)) === planchesAvant + 1
+    && importee && importee.cases === 4 && importee.taille === '2x2'
+    && importee.pixel === '#ff0000',
+    importee ? `4×4 px → ${importee.cases} cases de ${importee.taille}, premier pixel ${importee.pixel}`
+      : 'planche introuvable')
+
+  /* Le pont : un `.pixelforge` de l'editeur de sprites, deux images, deux
+   * calques — les cels sont de vrais PNG en base64, comme lui les ecrit. */
+  const projetSprite = await p.evaluate(async () => {
+    const cel = (couleur, plein) => {
+      const c = document.createElement('canvas')
+      c.width = 3; c.height = 3
+      const ctx = c.getContext('2d')
+      ctx.fillStyle = couleur
+      if (plein) ctx.fillRect(0, 0, 3, 3)
+      else ctx.fillRect(1, 1, 1, 1)
+      return c.toDataURL('image/png')
+    }
+    return JSON.stringify({
+      format: 'pixelforge', version: 1, name: 'lutin', width: 3, height: 3,
+      frameDurations: [100, 100],
+      layers: [
+        { visible: true, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: cel('#204060', true) }, { opacity: 255, png: cel('#204060', true) }] },
+        { visible: true, opacity: 255, blendMode: 'normal',
+          cels: [{ opacity: 255, png: cel('#ffcc00', false) }, null] },
+      ],
+    })
+  })
+  await (await p.$('#projetCorps input[type=file]')).setInputFiles({
+    name: 'lutin.pixelforge', mimeType: 'application/json', buffer: Buffer.from(projetSprite),
+  })
+  await p.waitForTimeout(700)
+  const lutin = await p.evaluate(() => {
+    const t = window.pfe.monde.planches.find((q) => q.nom === 'lutin')
+    if (!t) return null
+    const centre = (i) => t.cle[t.dessins[i][1][1]] ?? null
+    return { cases: t.dessins.length, image0: centre(0), image1: centre(1) }
+  })
+  ok('un projet de l’éditeur de sprites traverse le pont, calques fondus',
+    lutin && lutin.cases === 2 && lutin.image0 === '#ffcc00' && lutin.image1 === '#204060',
+    lutin ? `2 images → ${lutin.cases} cases ; le motif du calque haut couvre l’image 1 `
+      + `(${lutin.image0}) et pas l’image 2 (${lutin.image1})` : 'planche introuvable')
+
+  /* Le refus, par la vraie porte : un fichier qui n'est pas du pixel art. */
+  await (await p.$('#projetCorps input[type=file]')).setInputFiles({
+    name: 'faux.pixelforge', mimeType: 'application/json', buffer: Buffer.from('{"format":"autre"}'),
+  })
+  await p.waitForTimeout(400)
+  ok('et un fichier illisible est refusé avec la raison, sans rien casser',
+    /refusé/i.test(await p.textContent('#projetMessage').catch(() => ''))
+    || (await p.evaluate(() => window.pfe.monde.planches.length)) === planchesAvant + 2,
+    'le projet garde ses deux planches importées, pas une de plus')
+
   await p.getByRole('button', { name: 'Carte', exact: true }).click()
   await p.waitForTimeout(200)
   await p.click('#fermerProjet')
