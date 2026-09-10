@@ -70,6 +70,10 @@ button:disabled { opacity: .45; cursor: default; }
 }
 .palette-grille button canvas { display: block; image-rendering: pixelated; }
 .palette-grille button.actif { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.palette-grille button.matiere {
+  width: 100%; line-height: 1.5; padding: 4px 8px; text-align: left; font-size: 11.5px;
+}
+.palette-grille button.matiere.actif { color: var(--accent); }
 .palette-note {
   margin: 0; padding: 7px 10px; font-size: 10.5px; line-height: 1.4;
   color: var(--dim); border-top: 1px solid var(--line);

@@ -1,6 +1,6 @@
 import type { Jeu } from '../runtime/jeu.ts'
 import type { Carte, Calque } from '../tuiles/tilemap.ts'
-import { VIDE } from '../tuiles/tilemap.ts'
+import { VIDE, SOLIDE } from '../tuiles/tilemap.ts'
 import { mondeVersCase } from '../noyau/projection.ts'
 import {
   Historique, differences, gesteDeChangements, type Changement,
@@ -48,6 +48,14 @@ export interface EtatEdition {
    */
   espece: string | null
   tuileChoisie: number
+  /**
+   * La matiere que l'outil « collision » pose : un jeu de drapeaux.
+   *
+   * Un seul nombre et non une liste de cases a cocher dans l'etat : les
+   * drapeaux se combinent par un « ou » binaire, et garder les deux formes
+   * ferait un jour diverger l'une de l'autre.
+   */
+  matiere: number
   /** Le calque que l'outil « tuile » peint, par son nom. */
   calqueChoisi: string | null
 }
@@ -55,7 +63,7 @@ export interface EtatEdition {
 export class Edition {
   readonly etat: EtatEdition = {
     outil: 'terrain', calque: null, montrerCollision: false, tuileFixe: 0,
-    espece: null, tuileChoisie: 0, calqueChoisi: null,
+    espece: null, tuileChoisie: 0, calqueChoisi: null, matiere: SOLIDE,
   }
 
   /**
@@ -198,7 +206,11 @@ export class Edition {
 
   private etatDe(cx: number, cy: number): boolean {
     const i = this.carte.index(cx, cy)
-    if (this.etat.outil === 'collision') return this.carte.solides[i] !== 0
+    // On compare a la matiere CHOISIE : repasser le meme pinceau sur une case
+    // qui la porte deja doit l'effacer, alors qu'une case d'une autre matiere
+    // doit etre remplacee. Tester « non vide » ferait effacer une plateforme
+    // quand on voulait y poser des pointes.
+    if (this.etat.outil === 'collision') return this.carte.solides[i] === this.etat.matiere
     return (this.etat.calque?.presence?.[i] ?? 0) !== 0
   }
 
@@ -229,7 +241,7 @@ export class Edition {
     }
 
     if (this.etat.outil === 'collision') {
-      this.carte.solides[i] = this.pose ? 1 : 0
+      this.carte.solides[i] = this.pose ? this.etat.matiere : 0
       this.jeu.dessiner()
       return
     }
@@ -242,7 +254,7 @@ export class Edition {
     if (!calque.terrain) calque.cases[i] = pose ? this.etat.tuileFixe : VIDE
     // La collision suit le terrain : un mur peint qui ne bloque pas ne se
     // decouvre qu'en jouant, parfois bien plus tard.
-    this.carte.solides[i] = pose ? 1 : 0
+    this.carte.solides[i] = pose ? SOLIDE : 0
     if (!pose) calque.cases[i] = VIDE
     this.jeu.dessiner()
   }

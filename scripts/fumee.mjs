@@ -107,6 +107,41 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   ok('et elle disparaît avec l\'outil', !(await p.isVisible('#paletteGrille')))
 }
 
+// Les matières : pointes, mort, réapparition
+{
+  await p.selectOption('#monde', 'caverne')
+  await p.waitForTimeout(300)
+  await p.click('[data-outil="collision"]')
+  await p.waitForTimeout(150)
+  const drapeaux = await p.$$eval('#paletteGrille button', b => b.map(x => x.textContent))
+  ok('la palette de matières montre les drapeaux',
+    drapeaux.includes('Blessante') && drapeaux.includes('Plateforme'), drapeaux.join(', '))
+  await p.click('[data-outil="terrain"]')
+
+  await p.click('#jouer')
+  await p.waitForTimeout(200)
+  const depart = await p.evaluate(() => [window.pfe.monde.heros.x, window.pfe.monde.heros.y])
+  const morts = async () => {
+    const m = /(\d+) mort/.exec(await p.evaluate(() => window.pfe.monde.etat()))
+    return m ? Number(m[1]) : -1
+  }
+  ok('on part vivant', (await morts()) === 0)
+  // Courir vers la droite : la première fosse est garnie de pointes.
+  await p.keyboard.down('ArrowRight')
+  let mort = 0
+  for (let i = 0; i < 25 && mort === 0; i++) { await p.waitForTimeout(200); mort = await morts() }
+  await p.keyboard.up('ArrowRight')
+  ok('les pointes tuent', mort === 1, `${mort} mort(s)`)
+
+  await p.waitForTimeout(900)
+  const apres = await p.evaluate(() => [window.pfe.monde.heros.x, window.pfe.monde.heros.y])
+  ok('et l\'on réapparaît au point de reprise',
+    apres[0] === depart[0] && apres[1] === depart[1],
+    `${apres.join(',')} — le départ est ${depart.join(',')}`)
+  await p.click('#arreter')
+  await p.waitForTimeout(150)
+}
+
 // Défaire et refaire
 {
   await p.selectOption('#monde', 'donjon')

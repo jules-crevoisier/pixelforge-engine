@@ -1,4 +1,4 @@
-import { Carte, VIDE } from '../tuiles/tilemap.ts'
+import { Carte, VIDE, SOLIDE } from '../tuiles/tilemap.ts'
 import type { Projection } from '../noyau/projection.ts'
 
 /**
@@ -131,7 +131,10 @@ export function versTiled(c: Carte, o: OptionsTiled): TiledCarte {
   let id = 1
   for (let cy = 0; cy < c.hauteur; cy++) {
     for (let cx = 0; cx < c.largeur; cx++) {
-      if (!c.solides[c.index(cx, cy)]) continue
+      // Tiled ne connait qu'une chose : bloque ou pas. On ne lui donne donc
+      // que le drapeau solide — une pointe traversable n'est pas un obstacle
+      // pour lui, et l'exporter comme tel ferait un mur invisible a l'import.
+      if (!(c.solides[c.index(cx, cy)] & SOLIDE)) continue
       objets.push({
         id: id++, name: '', type: 'solide',
         x: cx * c.tuile, y: cy * c.tuile, width: c.tuile, height: c.tuile,

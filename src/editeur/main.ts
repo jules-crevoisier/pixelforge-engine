@@ -325,6 +325,7 @@ const palettePanneau = new PalettePanneau(
     if (v.espece !== undefined) edition.etat.espece = v.espece
     if (v.tuile !== undefined) edition.etat.tuileChoisie = v.tuile
     if (v.calque !== undefined) edition.etat.calqueChoisi = v.calque
+    if (v.matiere !== undefined) edition.etat.matiere = v.matiere
   },
 )
 
@@ -338,6 +339,7 @@ function choisirOutil(o: Outil): void {
     espece: edition.etat.espece,
     tuile: edition.etat.tuileChoisie,
     calque: edition.etat.calqueChoisi,
+    matiere: edition.etat.matiere,
   })
   if (!jeu.tourne) { jeu.dessiner(); dessinerCollision() }
 }

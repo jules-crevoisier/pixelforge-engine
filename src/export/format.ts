@@ -35,6 +35,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **5** — les matieres. La grille de collision ne disait qu'un bit : ca bloque
+ * ou ca ne bloque pas. Elle porte maintenant des drapeaux — solide,
+ * plateforme, blessante, echelle, liquide — et s'ecrit donc en base
+ * trente-six, un caractere par case comme avant. Les anciens fichiers, faits
+ * de zeros et de uns, se relisent tels quels : zero vaut RIEN et un vaut
+ * SOLIDE dans les deux lectures. C'est ce qui permet de monter la version sans
+ * ecrire une seule ligne de migration.
+ *
  * **4** — les especes. Une carte et une scene disaient OU se trouvent les
  * creatures, jamais ce qu'elles sont : leur vie, leur vitesse et leur
  * intention vivaient dans le code du moteur. Un projet relu redevenait une
@@ -62,7 +70,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 4
+export const VERSION_FORMAT = 5
 
 export interface ProjetSerialise {
   version: number
@@ -169,7 +177,13 @@ export interface CarteSerialisee {
     terrain: { tuileDepart: number; jeu: string; dehorsEstPlein: boolean } | null
     presence: string[] | null
   }[]
-  /** Grille de collision, une ligne par rangee, en 0 et 1 colles. */
+  /**
+   * Ce que chaque case fait, une ligne par rangee, un caractere par case.
+   *
+   * En base trente-six, donc lisible : `0` ne fait rien, `1` est solide, `2`
+   * est une plateforme, `4` blesse, `5` est une plateforme qui blesse. Un
+   * diff montre toujours la case qui a change.
+   */
   solides: string[]
 }
 
@@ -231,7 +245,19 @@ export function serialiserNoeud(n: Noeud): NoeudSerialise {
 
 const ligneDe = (a: ArrayLike<number>, largeur: number, y: number, sep = ','): string => {
   const out: string[] = []
-  for (let x = 0; x < largeur; x++) out.push(String(a[y * largeur + x]))
+  for (let x = 0; x < largeur; x++) {
+    const v = a[y * largeur + x]
+    // Sans separateur, une case doit tenir en UN caractere : la base
+    // trente-six va jusqu'a trente-cinq, ce qui couvre tous les drapeaux.
+    // Ecrire « 16 » en decimal decalerait toute la rangee d'un cran.
+    //
+    // On BORNE, on ne masque pas. Un « et » binaire avec trente-cinq semble
+    // faire la meme chose et n'en fait rien : trente-cinq vaut 100011 en
+    // binaire, donc le drapeau quatre en sort a zero. La faute passait
+    // inapercue sur les valeurs zero, un et deux — c'est-a-dire sur tout ce
+    // qui existait avant les matieres.
+    out.push(sep === '' ? Math.min(35, Math.max(0, v)).toString(36) : String(v))
+  }
   return out.join(sep)
 }
 
@@ -297,7 +323,9 @@ export function versTexte(p: ProjetSerialise): string {
 /* ------------------------------------------------------------------ */
 
 const depuisLigne = (l: string, sep: string): number[] =>
-  sep === '' ? [...l].map(Number) : (l === '' ? [] : l.split(sep).map(Number))
+  sep === ''
+    ? [...l].map((c) => { const n = parseInt(c, 36); return Number.isNaN(n) ? 0 : n })
+    : (l === '' ? [] : l.split(sep).map(Number))
 
 export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number, t: number) => Carte): Carte {
   const c = fabrique(s.largeur, s.hauteur, s.tuile)

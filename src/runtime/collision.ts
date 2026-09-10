@@ -24,9 +24,22 @@ export interface GrilleSolide {
   readonly tuile: number
   readonly largeur: number
   readonly hauteur: number
-  /** Vrai si la case bloque le passage. */
+  /** Vrai si la case bloque le passage en toutes circonstances. */
   solide(cx: number, cy: number): boolean
+  /**
+   * Les drapeaux de la case — voir `tuiles/tilemap.ts`.
+   *
+   * Facultatif : une grille qui ne connait que le solide reste valable, et
+   * c'est ce que rendent les bancs les plus anciens. Sans cette fonction, une
+   * plateforme se comporte comme du vide, ce qui est le defaut le moins
+   * surprenant.
+   */
+  matiere?(cx: number, cy: number): number
 }
+
+/** Les drapeaux, redeclares ici pour que la collision ne dependeplus des tuiles. */
+export const M_SOLIDE = 1
+export const M_PLATEFORME = 2
 
 /** Les cases que couvre un rectangle du monde. */
 export function casesCouvertes(g: GrilleSolide, r: Rect): { x0: number; y0: number; x1: number; y1: number } {
@@ -53,6 +66,34 @@ export function toucheSolide(g: GrilleSolide, r: Rect): boolean {
   return false
 }
 
+/**
+ * Vrai si une plateforme arrete ce corps qui descend d'un pixel.
+ *
+ * ## La regle, et pourquoi elle est si etroite
+ *
+ * Une plateforme ne bloque QUE si le bas du corps arrive pile sur le haut de
+ * la case. On pourrait croire qu'il suffit de tester « il descend » — c'est ce
+ * qu'on ecrit d'abord, et c'est faux : un corps deja enfonce dans la
+ * plateforme, parce qu'il a saute par en dessous, s'y retrouverait pris a
+ * l'instant ou il redescend. Il faut le CROISEMENT du bord, pas la direction.
+ *
+ * Comme le deplacement se fait pixel par pixel, le croisement s'ecrit
+ * exactement : le bas du corps vaut le haut de la case, ni plus ni moins.
+ */
+export function plateformeArrete(g: GrilleSolide, r: Rect, traverse = false): boolean {
+  if (traverse || !g.matiere) return false
+  const bas = r.y + r.h
+  if (bas % g.tuile !== 0) return false
+  const cy = bas / g.tuile
+  const x0 = Math.floor(r.x / g.tuile)
+  const x1 = Math.floor((droite(r) - 1) / g.tuile)
+  for (let cx = x0; cx <= x1; cx++) {
+    if (cx < 0 || cy < 0 || cx >= g.largeur || cy >= g.hauteur) continue
+    if ((g.matiere(cx, cy) & M_PLATEFORME) !== 0) return true
+  }
+  return false
+}
+
 export interface Contact {
   /** Deplacement reellement effectue. */
   dx: number
@@ -70,7 +111,9 @@ export interface Contact {
  * de mouvement contre un mur ferait avancer d'un pixel des que le mur
  * disparait, sans que le joueur ait rien demande.
  */
-export function deplacer(g: GrilleSolide, boite: Rect, dx: number, dy: number): Contact {
+export function deplacer(
+  g: GrilleSolide, boite: Rect, dx: number, dy: number, traversePlateformes = false,
+): Contact {
   let x = boite.x
   let y = boite.y
   let bloqueX = false
@@ -84,7 +127,15 @@ export function deplacer(g: GrilleSolide, boite: Rect, dx: number, dy: number): 
 
   const pasY = Math.sign(dy)
   for (let i = 0; i < Math.abs(dy); i++) {
-    if (toucheSolide(g, rect(x, y + pasY, boite.w, boite.h))) { bloqueY = true; break }
+    const prochaine = rect(x, y + pasY, boite.w, boite.h)
+    if (toucheSolide(g, prochaine)) { bloqueY = true; break }
+    // Les plateformes n'arretent que ce qui descend, et seulement au moment ou
+    // le bord croise le leur. On teste la position ACTUELLE, avant le pas :
+    // c'est elle qui doit poser le bas du corps sur le haut de la case.
+    if (pasY > 0 && plateformeArrete(g, rect(x, y, boite.w, boite.h), traversePlateformes)) {
+      bloqueY = true
+      break
+    }
     y += pasY
   }
 

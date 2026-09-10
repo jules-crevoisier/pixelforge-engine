@@ -1,6 +1,6 @@
 import { espece, type Espece } from '../runtime/entites.ts'
 import { clipRegulier, type Clip } from '../runtime/animation.ts'
-import { GELEE, CHAUVE_SOURIS, TAILLADE, COEUR_PLEIN } from './art-creatures.ts'
+import { GELEE, CHAUVE_SOURIS, TAILLADE, COEUR_PLEIN, BALISE } from './art-creatures.ts'
 import { DIR_BAS, DIR_HAUT, DIR_DROITE, TEMPS_REPOS, TEMPS_MARCHE, imageHeros } from './art.ts'
 
 /**
@@ -65,6 +65,17 @@ export const ESPECES_DEMO: Espece[] = [
     vigilance: 400,
     boite: { x: -5, y: -12, l: 10, h: 8 },
   }),
+  espece('balise', {
+    nom: 'Balise de reprise',
+    clip: 'balise',
+    camp: 'neutre',
+    pv: 9999,
+    vitesse: 0,
+    degats: 0,
+    reprise: true,
+    comportement: 'immobile',
+    boite: { x: -6, y: -16, l: 12, h: 16 },
+  }),
   espece('coeur', {
     nom: 'Cœur',
     clip: 'coeur',
@@ -126,5 +137,8 @@ export function clipsCreatures(): Clip[] {
     clipRegulier('chauve-souris', CHAUVE_SOURIS, 110),
     clipRegulier('taillade', TAILLADE, 60, { boucle: 'unique' }),
     clipRegulier('coeur', [COEUR_PLEIN], 1000),
+    // La balise clignote doucement : allumee, eteinte, allumee. Un point de
+    // reprise immobile se confond avec le decor.
+    clipRegulier('balise', BALISE, 520, { boucle: 'aller-retour' }),
   ]
 }

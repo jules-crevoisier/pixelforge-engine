@@ -4,6 +4,7 @@ import type { ContexteJeu } from './jeu.ts'
 import { Combat, visibleSousInvulnerabilite, type Camp } from './combat.ts'
 import { Lecteur, type Clip } from './animation.ts'
 import { rect } from '../noyau/pixel.ts'
+import { BLESSANTE } from '../tuiles/tilemap.ts'
 import { type Projection, ORTHO_DESSUS, deprojeter } from '../noyau/projection.ts'
 import { Plateformeur, lireEntrees, type ReglagesPlateforme } from './plateforme.ts'
 
@@ -76,6 +77,16 @@ export interface Espece {
    * placement, la serialisation et le rendu.
    */
   soigne: number
+  /**
+   * Toucher cette entite deplace le point de reprise.
+   *
+   * Une balise est une entite comme une autre : ce qui la distingue est une
+   * valeur dans sa description. Inventer un systeme de points de reprise a
+   * cote du systeme d'entites aurait fait ecrire deux fois le placement, la
+   * serialisation et le rendu — pour un objet qu'on pose dans l'editeur
+   * exactement comme on pose une gelee.
+   */
+  reprise: boolean
   comportement: Comportement
   /**
    * Distance a laquelle elle remarque la cible, en pixels. Zero : jamais.
@@ -114,6 +125,7 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
     vitesse: p.vitesse ?? 40,
     degats: p.degats ?? 1,
     soigne: p.soigne ?? 0,
+    reprise: p.reprise ?? false,
     comportement: p.comportement ?? 'patrouille',
     vigilance: p.vigilance ?? 0,
     boite: p.boite ?? { x: -5, y: -8, l: 10, h: 8 },
@@ -135,6 +147,9 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
  * pour qu'une creature ne s'immobilise pas net au bord de l'ecran.
  */
 export const RAYON_ACTIVITE = 340
+
+/** Ce qu'une case blessante retire, par defaut. */
+export const DEGATS_MATIERE = 1
 
 /** Duree d'un bond, et du repos qui suit, en millisecondes. */
 const DUREE_BOND = 520
@@ -176,6 +191,13 @@ export class Peuplement {
   projection: Projection
   /** Taille de case du monde orthogonal ou vivent les entites. */
   tuile: number
+  /**
+   * Ce qu'une case blessante retire. Zero pour un monde sans piege.
+   *
+   * C'est un reglage de JEU et non de moteur : la meme pointe tue en un coup
+   * dans Celeste et retire un demi-coeur dans Isaac.
+   */
+  degatsMatiere = DEGATS_MATIERE
 
   constructor(
     racine: Noeud, combat: Combat, especes: Espece[] = [], clips: Clip[] = [],
@@ -290,6 +312,16 @@ export class Peuplement {
     })
   }
 
+  /**
+   * Remet a neuf le controleur d'une entite dirigee.
+   *
+   * Une reapparition doit effacer la vitesse, le tampon de saut et le dash en
+   * cours : sans cela on renait en tombant a la vitesse ou l'on est mort.
+   */
+  reinitialiserControleur(id: string): void {
+    this.vivantes.get(id)?.plateformeur?.reinitialiser()
+  }
+
   /** La direction que regarde une entite, en unites d'ecran. */
   regardDe(id: string): { x: number; y: number } {
     return this.vivantes.get(id)?.regard ?? { x: 0, y: 1 }
@@ -313,7 +345,10 @@ export class Peuplement {
     const evenements: { id: string; nom: string }[] = []
     for (const v of this.vivantes.values()) {
       const vie = this.combat.vies.get(v.noeud.id)
-      if (!vie) continue
+      // Un mort n'agit pas, ne frappe pas, et ne se fait pas frapper. Le
+      // laisser vivre le temps d'un compte a rebours donnerait des degats
+      // posthumes et un compteur qui monte par deux.
+      if (!vie || vie.mort) continue
       const dx = cible.x - v.noeud.x
       const dy = cible.y - v.noeud.y
       const distance = Math.hypot(dx, dy)
@@ -337,6 +372,20 @@ export class Peuplement {
         evenements.push({ id: v.noeud.id, nom })
       }
       v.noeud.image = v.lecteur.image
+
+      // Le decor qui blesse. La frappe appartient au camp « decor », donc a
+      // personne : une pointe pique le heros comme la creature qui marche
+      // dessus. Et comme c'est une frappe ordinaire, les images
+      // d'invulnerabilite s'appliquent sans qu'on les reecrive.
+      if (this.degatsMatiere > 0 && !vie.mort) {
+        const b = v.espece.boite
+        const boite = rect(v.noeud.x + b.x, v.noeud.y + b.y, b.l, b.h)
+        if (matieresSous(c.carte, boite) & BLESSANTE) {
+          // La poussee remonte : sortir d'une pointe par le haut est ce qu'on
+          // veut neuf fois sur dix, et ce qui evite d'y rester coince.
+          this.combat.frapper('decor', boite, this.degatsMatiere, 1, 120, 0, -1)
+        }
+      }
 
       // Le contact blesse par une frappe d'une seule image, refaite a chaque
       // pas. Une « zone qui blesse en permanence » serait un deuxieme
@@ -557,4 +606,35 @@ function jouerClipDirige(v: Vivante, bouge: boolean): void {
   const nom = `${bouge ? e.clip : 'repos'}-${cote}`
   if (v.lecteur.clips.has(nom)) v.lecteur.jouer(nom)
   else v.lecteur.jouer(e.clip)
+}
+
+/**
+ * Les matieres que ce rectangle du monde touche, reunies.
+ *
+ * On reunit au lieu de rendre la premiere : une boite a cheval sur du sol et
+ * sur une pointe touche bien la pointe, et prendre la case du coin haut-gauche
+ * ferait dependre les degats de la facon dont on est arrive.
+ */
+export function matieresSous(
+  g: {
+    tuile: number
+    matiere?(cx: number, cy: number): number
+    solide(cx: number, cy: number): boolean
+  },
+  r: { x: number; y: number; w: number; h: number },
+): number {
+  // Une grille qui ne connait que le solide reste valable : c'est ce que
+  // rendent les bancs les plus anciens, et une carte importee d'ailleurs.
+  const lire = g.matiere
+    ? (cx: number, cy: number): number => (g.matiere as (a: number, b: number) => number)(cx, cy)
+    : (cx: number, cy: number): number => (g.solide(cx, cy) ? 1 : 0)
+  let m = 0
+  const x0 = Math.floor(r.x / g.tuile)
+  const y0 = Math.floor(r.y / g.tuile)
+  const x1 = Math.floor((r.x + r.w - 1) / g.tuile)
+  const y1 = Math.floor((r.y + r.h - 1) / g.tuile)
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) m |= lire(cx, cy)
+  }
+  return m
 }

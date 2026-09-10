@@ -29,6 +29,8 @@ export const CLE_CREATURES: Record<string, string> = {
   Y: '#fff0b0',
   s: '#e8ecf4',
   S: '#a8b4c8',
+  n: '#8a7a5c',
+  N: '#4e4638',
 }
 
 type Grille = string[][]
@@ -196,11 +198,36 @@ function taillade(avancement: number): string[] {
   return enDessin(g)
 }
 
+/**
+ * La balise de reprise : un fanion.
+ *
+ * Deux images, eteinte et allumee. Un point de reprise qui ne change pas
+ * d'aspect quand on le touche laisse douter qu'il ait servi — et l'on
+ * refait le passage par prudence.
+ */
+const fanion = (allume: boolean): string[] => {
+  const g = vide()
+  for (let y = 3; y < TUILE; y++) g[y][5] = 'o'
+  for (let y = 4; y < TUILE - 1; y++) g[y][6] = allume ? 'n' : 'N'
+  for (let y = 3; y <= 8; y++) {
+    for (let x = 7; x <= 12 - Math.max(0, y - 6) * 2; x++) {
+      g[y][x] = allume ? (x < 9 ? 'Y' : 'y') : 'N'
+    }
+    g[y][Math.max(7, 13 - Math.max(0, y - 6) * 2)] = 'o'
+  }
+  for (let x = 3; x < 9; x++) { g[TUILE - 1][x] = 'o'; g[TUILE - 2][x] = allume ? 'n' : 'N' }
+  return enDessin(g)
+}
+
+const BALISE_ETEINTE = fanion(false)
+const BALISE_ALLUMEE = fanion(true)
+
 export const PLANCHE_CREATURES: string[][] = [
   gelee(0), gelee(0.22), gelee(0), gelee(-0.18),
   CHAUVE_HAUTE, CHAUVE_BASSE,
   COEUR, COEUR_VIDE,
   taillade(0), taillade(1),
+  BALISE_ETEINTE, BALISE_ALLUMEE,
 ]
 
 export const GELEE = [0, 1, 2, 3]
@@ -208,4 +235,5 @@ export const CHAUVE_SOURIS = [4, 5]
 export const COEUR_PLEIN = 6
 export const COEUR_PERDU = 7
 export const TAILLADE = [8, 9]
-export const COLONNES_CREATURES = 5
+export const BALISE = [10, 11]
+export const COLONNES_CREATURES = 6

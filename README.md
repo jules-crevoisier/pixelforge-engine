@@ -34,7 +34,9 @@ Ce que ça achète, mode par mode :
 - **Vue de côté** — le contrôleur de plateforme complet : coyote time, tampon de
   saut, hauteur variable, correction de coin, apex flottant, glissade et saut
   muraux, dash. Le puits du niveau se remonte en sautant d'une paroi à l'autre,
-  et le banc le **prouve** en le rejouant avec le vrai contrôleur.
+  et le banc le **prouve** en le rejouant avec le vrai contrôleur. Les pointes
+  tuent en un coup, on repart à la dernière balise, et les passerelles se
+  traversent par en dessous.
 - **Isométrique** — les losanges 2:1 pavent le plan sans un pixel de fond
   visible, le clic vise le bon losange jusqu'aux bords, et tuiles et personnages
   sont mêlés dans un seul tri : un mur passe devant ou derrière le héros selon
@@ -90,6 +92,40 @@ Une créature au-delà de 340 pixels ne fait rien. Ce n'est pas une optimisation
 c'est une règle de jeu : sans elle, les vingt-deux créatures de l'étage
 convergent dès la première seconde et le joueur les affronte toutes dans le
 couloir de départ.
+
+## Ce qu'une case FAIT, et pas seulement ce qu'elle montre
+
+La grille de collision ne disait qu'une chose : ça bloque, ou ça ne bloque pas.
+Avec ce seul bit on ne peut écrire ni une pointe, ni une plateforme qu'on
+traverse par en dessous, ni une échelle, ni de l'eau — c'est-à-dire qu'on ne
+peut faire ni Celeste, ni Dead Cells, ni la moitié d'un Isaac.
+
+Une case porte maintenant des **drapeaux** : `Solide`, `Plateforme`,
+`Blessante`, `Échelle`, `Liquide`. Des drapeaux et non un type unique, parce
+qu'une pointe peut être solide et de l'eau peut blesser : un type obligerait à
+inventer « solide-et-blessant », puis « solide-et-blessant-et-liquide ». Ils se
+peignent avec l'outil **Collision**, en cases à cocher.
+
+### La plateforme, et la règle qui n'est pas celle qu'on croit
+
+Une plateforme ne bloque **que** si le bas du corps arrive pile sur le haut de
+la case. On écrit d'abord « elle bloque ce qui descend », et c'est faux : un
+corps déjà engagé dedans, parce qu'il a sauté par en dessous, s'y retrouve pris
+à l'instant où il redescend. Il faut le **croisement du bord**, pas la
+direction. Le banc garde ce cas précis.
+
+### Mourir, et repartir
+
+Une pointe blesse par une frappe ordinaire, du camp `decor` — qui n'appartient
+à personne, et pique donc le héros comme la créature qui marche dessus. Traiter
+les pièges comme un second mécanisme aurait demandé de réécrire les images
+d'invulnérabilité une deuxième fois.
+
+La mort mène à une **réapparition**, six dixièmes de seconde plus tard, au
+dernier point de reprise — et l'on repart invulnérable un instant, sans quoi
+renaître dans la pointe qui vient de tuer recommence la mort à l'image suivante.
+Le point de reprise se déplace en touchant une **balise**, qui est une entité
+comme les autres : une valeur dans sa description la distingue d'un cœur.
 
 ## Les entités sont des données
 
@@ -196,7 +232,10 @@ seconde.
 - boucle à pas fixe avec plafond de rattrapage
 - collisions axe par axe, pixel par pixel — pas de traversée de mur
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
-- édition : terrain, gomme, collision, tuile précise, entités, déplacement de la
+- matières de case : solide, plateforme traversable par en dessous, blessante,
+  échelle, liquide — et elles se combinent
+- mort, réapparition et points de reprise
+- édition : terrain, gomme, matières, tuile précise, entités, déplacement de la
   vue — et le pinceau vise le bon losange en isométrique, pas la case d'à côté
 - défaire et refaire (Ctrl+Z, Ctrl+Maj+Z), y compris sur les entités posées
 - projet enregistré et relu dans un dossier local, planches et projection comprises
@@ -313,10 +352,10 @@ avec un terrain.
 npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
-npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 131 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:plateforme # 29 vérifications du contrôleur et des plateformes
+npm run banc:mondes     # 142 vérifications : mondes, animations, combat, étages, scripts, projets, historique
 npm run banc:langages   # 66 vérifications : chargeurs, accord entre langages, paquets
-npm run fumee           # 31 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           # 35 vérifications de l'éditeur, dans un vrai navigateur
 npm run build
 ```
 

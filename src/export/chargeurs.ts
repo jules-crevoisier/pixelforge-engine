@@ -168,6 +168,8 @@ export interface Espece {
   vitesse: number
   degats: number
   soigne: number
+  /** Toucher cette entite deplace le point de reprise. */
+  reprise: boolean
   comportement: string
   vigilance: number
   boite: Boite
@@ -516,6 +518,8 @@ namespace PixelForge
         public float vitesse;
         public int degats;
         public int soigne;
+        /// <summary>Toucher cette entite deplace le point de reprise.</summary>
+        public bool reprise;
         public string comportement;
         public float vigilance;
         public Boite boite;
@@ -1063,6 +1067,8 @@ pub struct Espece {
     pub vitesse: f64,
     pub degats: i32,
     pub soigne: i32,
+    /// Toucher cette entite deplace le point de reprise.
+    pub reprise: bool,
     pub comportement: String,
     pub vigilance: f64,
     pub boite: Boite,
@@ -1470,6 +1476,7 @@ class Espece:
     vitesse: float = 0.0
     degats: int = 0
     soigne: int = 0
+    reprise: bool = False
     comportement: str = "immobile"
     vigilance: float = 0.0
     boite: dict[str, float] = field(default_factory=dict)

@@ -29,8 +29,16 @@ import { type Rect, rect, seChevauchent } from '../noyau/pixel.ts'
  * fouille l'arbre de scene serait a reecrire pour chaque jeu.
  */
 
-/** A qui l'on appartient. Deux camps ne se blessent qu'entre eux. */
-export type Camp = 'heros' | 'ennemi' | 'neutre'
+/**
+ * A qui l'on appartient. Une frappe ne blesse jamais son propre camp.
+ *
+ * `decor` n'appartient a personne, et c'est tout son interet : une pointe
+ * blesse le heros ET la creature qui marche dessus. Traiter les pieges comme
+ * un deuxieme mecanisme, a cote des frappes, aurait demande de reecrire les
+ * images d'invulnerabilite une seconde fois — donc deux endroits ou se
+ * tromper, et deux comportements qui divergent un jour.
+ */
+export type Camp = 'heros' | 'ennemi' | 'neutre' | 'decor'
 
 export interface Vitalite {
   max: number

@@ -2,6 +2,7 @@ import type { Jeu } from '../runtime/jeu.ts'
 import type { Atlas } from '../runtime/atlas.ts'
 import { rectDeTuile } from '../runtime/atlas.ts'
 import type { Espece, Peuplement } from '../runtime/entites.ts'
+import { MATIERES } from '../tuiles/tilemap.ts'
 import type { Outil } from './edition.ts'
 
 /**
@@ -48,11 +49,11 @@ function vignette(atlas: Atlas, index: number): HTMLCanvasElement {
 export class Palette {
   private a: AttachesPalette
   private jeu: () => Jeu
-  private choix: (v: { espece?: string; tuile?: number; calque?: string }) => void
+  private choix: (v: { espece?: string; tuile?: number; calque?: string; matiere?: number }) => void
 
   constructor(
     attaches: AttachesPalette, jeu: () => Jeu,
-    choix: (v: { espece?: string; tuile?: number; calque?: string }) => void,
+    choix: (v: { espece?: string; tuile?: number; calque?: string; matiere?: number }) => void,
   ) {
     this.a = attaches
     this.jeu = jeu
@@ -62,12 +63,48 @@ export class Palette {
   /** Remplit la palette pour cet outil, ou la cache si l'outil n'en a pas. */
   montrer(
     outil: Outil, especes: Espece[], peuplement: Peuplement | null,
-    actuel: { espece: string | null; tuile: number; calque: string | null },
+    actuel: { espece: string | null; tuile: number; calque: string | null; matiere: number },
   ): void {
     this.a.grille.innerHTML = ''
     if (outil === 'entite') { this.remplirEspeces(especes, peuplement, actuel.espece); return }
     if (outil === 'tuile') { this.remplirTuiles(actuel); return }
+    if (outil === 'collision') { this.remplirMatieres(actuel.matiere); return }
     this.a.panneau.hidden = true
+  }
+
+  /**
+   * Les matieres, en cases a cocher.
+   *
+   * Elles se COMBINENT : une pointe peut etre solide, de l'eau peut blesser.
+   * Une liste de choix exclusifs obligerait a inventer « solide-et-blessant »,
+   * puis « solide-et-blessant-et-liquide ». Des cases a cocher disent la meme
+   * chose et laissent passer la combinaison qu'on n'avait pas prevue.
+   */
+  private remplirMatieres(matiere: number): void {
+    this.a.panneau.hidden = false
+    this.a.titre.textContent = 'Matière'
+    let courante = matiere
+    const dire = (): void => {
+      const noms = MATIERES.filter((m) => (courante & m.drapeau) !== 0).map((m) => m.nom)
+      this.a.note.textContent = noms.length
+        ? `${noms.join(' + ')} — les drapeaux se combinent.`
+        : 'Aucun drapeau : la case ne fait rien. Clic droit efface aussi.'
+    }
+    for (const m of MATIERES) {
+      const b = document.createElement('button')
+      b.className = 'matiere'
+      b.textContent = m.nom
+      b.title = m.aide
+      b.classList.toggle('actif', (courante & m.drapeau) !== 0)
+      b.addEventListener('click', () => {
+        courante ^= m.drapeau
+        b.classList.toggle('actif', (courante & m.drapeau) !== 0)
+        this.choix({ matiere: courante })
+        dire()
+      })
+      this.a.grille.appendChild(b)
+    }
+    dire()
   }
 
   private remplirEspeces(

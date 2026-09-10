@@ -967,6 +967,51 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
       pres.x !== 100 + 40 && proche.av.pv < 3, `${proche.av.pv} pv sur 3`)
   }
 
+  // La reapparition : mourir mille fois n'est supportable que si mourir est
+  // bref, et si l'on repart ou l'on s'etait arrete.
+  {
+    const e = monter()
+    e.av.reapparition = { x: 300, y: 300 }
+    e.av.peuplement.poser('gelee', 106, 100)
+    let i = 0
+    while (i < 400 && !e.av.mort) { e.av.avancer(e.ctx, { x: 1, y: 0 }); i++ }
+    check('on finit par mourir', e.av.mort && e.av.morts === 1, `${e.av.morts} mort(s)`)
+
+    // Le delai par defaut est de six dixiemes : quarante pas de soixantieme.
+    for (let k = 0; k < 60; k++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('puis l\'on reapparait au point de reprise, en vie',
+      !e.av.mort && e.av.pv === e.av.max && e.heros.x === 300 && e.heros.y === 300,
+      `${e.av.pv}/${e.av.max} pv en ${e.heros.x},${e.heros.y}`)
+
+    // Et l'on repart protege : renaitre dans la pointe qui vient de tuer
+    // recommencerait la mort a l'image suivante.
+    e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('et protege un instant', e.av.pv === e.av.max,
+      'sinon on remeurt sans comprendre ce qui se passe')
+  }
+
+  // Une balise deplace le point de reprise, et ne se ramasse pas.
+  {
+    const e = monter()
+    // On ecarte d'abord le point de reprise : sans cela il vaut deja la
+    // position du heros, et le test ne prouverait rien.
+    e.av.reapparition = { x: 0, y: 0 }
+    const avant = { ...e.av.reapparition }
+    const b = e.av.peuplement.poser('balise', 100, 100)
+    for (let k = 0; k < 5; k++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('toucher une balise deplace le point de reprise',
+      e.av.reapparition.x === 100 && e.av.reapparition.y === 100
+      && (avant.x !== 100 || avant.y !== 100) && e.av.balisesAtteintes === 1,
+      `${avant.x},${avant.y} -> ${e.av.reapparition.x},${e.av.reapparition.y}`)
+    check('et la balise reste : on peut y revenir',
+      e.av.peuplement.nombre === 1 && e.av.ramasses === 0,
+      `l'entite ${b.nom} est toujours la`)
+
+    // Une deuxieme fois ne la compte pas deux fois.
+    for (let k = 0; k < 5; k++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('la repasser ne la compte pas deux fois', e.av.balisesAtteintes === 1)
+  }
+
   // La mort appelle ce qu'on lui a donne, et une seule fois.
   {
     const racine = creerNoeud('noeud', 'essai')
@@ -977,7 +1022,11 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
     heros.enfants.push(corps)
     racine.enfants.push(heros)
     let morts = 0
-    const av = new Aventure(racine, heros, { pvHeros: 1, surMort: () => morts++ })
+    // Sans reapparition : on meurt, et l'on reste mort. C'est ce qui permet
+    // de compter les annonces sans que la boucle recommence.
+    const av = new Aventure(racine, heros, {
+      pvHeros: 1, surMort: () => morts++, reapparitionMs: 0,
+    })
     av.peuplement.poser('gelee', 106, 100)
     const ctx = {
       dt: 1 / 60,
@@ -988,6 +1037,7 @@ console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
     for (let i = 0; i < 240; i++) av.avancer(ctx, { x: 1, y: 0 })
     check('la mort est annoncee une seule fois', morts === 1 && av.mort,
       `${morts} annonce(s), pv ${av.pv}`)
+    check('et un mort ne se fait plus toucher', av.pv === 0, `${av.pv} pv`)
   }
 }
 
@@ -1168,7 +1218,7 @@ console.log('\n--- l\'etage engendre ---')
 console.log('\n--- un projet enregistre puis relu ---')
 
 {
-  const { serialiserProjet, versTexte, relireNoeud, VERSION_FORMAT } =
+  const { serialiserProjet, versTexte, relireNoeud, relireCarte, VERSION_FORMAT } =
     await import('../src/export/format.ts')
   const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
   const { Palette, depuisHex } = await import('../src/noyau/palette.ts')
@@ -1301,6 +1351,37 @@ console.log('\n--- un projet enregistre puis relu ---')
       `${peuplement.nombre} entités adoptées, ${bougees} ont bougé en une seconde`)
   }
 
+  // Les matieres traversent l'aller-retour, y compris celles qui ne sont pas
+  // du solide. C'est ce qui permet a une pointe de rester une pointe.
+  {
+    const { Carte, SOLIDE, PLATEFORME, BLESSANTE, LIQUIDE, ECHELLE,
+            matiereEnCaractere, caractereEnMatiere } =
+      await import('../src/tuiles/tilemap.ts')
+    const c = new Carte(6, 2, 16)
+    c.ajouterCalque('sol')
+    const valeurs = [0, SOLIDE, PLATEFORME, BLESSANTE, SOLIDE | BLESSANTE, LIQUIDE | ECHELLE]
+    valeurs.forEach((v, i) => { c.solides[i] = v })
+
+    const projet = serialiserProjet('m', { largeur: 320, hauteur: 180 },
+      new Palette('p', []), [{ nom: 'm', carte: c }], [], [], [], undefined, [])
+    const ligne = projet.cartes[0].solides[0]
+    check('chaque case tient en un caractere, quelle que soit sa matiere',
+      ligne.length === 6,
+      `« ${ligne} » — en decimal, la valeur 16 en prendrait deux et decalerait la rangee`)
+
+    const relu = relireCarte(projet.cartes[0], (l, h, t) => new Carte(l, h, t))
+    check('et les matieres reviennent toutes',
+      valeurs.every((v, i) => relu.solides[i] === v),
+      `${[...relu.solides].slice(0, 6).join(',')} contre ${valeurs.join(',')}`)
+
+    check('un ancien fichier fait de zeros et de uns se relit tel quel',
+      caractereEnMatiere('0') === 0 && caractereEnMatiere('1') === SOLIDE,
+      'aucune migration a ecrire')
+    check('et un caractere illisible ne fait pas tomber la lecture',
+      caractereEnMatiere('?') === 0 && matiereEnCaractere(LIQUIDE) === 'g',
+      'une carte a moitie lue vaut mieux qu\'une exception')
+  }
+
   // Une propriete inconnue du lecteur ne doit pas disparaitre en silence :
   // perdre des donnees sans rien dire est pire que refuser de les lire.
   {
@@ -1314,7 +1395,7 @@ console.log('\n--- un projet enregistre puis relu ---')
       'une liste blanche par type perdrait tout champ ajoute depuis')
   }
 
-  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 4,
+  check('la version du format est ecrite dans le fichier', VERSION_FORMAT === 5,
     'un chargeur d\'un autre langage doit pouvoir DIRE qu\'il ne comprend pas')
 }
 

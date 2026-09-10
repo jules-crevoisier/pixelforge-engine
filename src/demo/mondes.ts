@@ -1,4 +1,4 @@
-import { Carte, VIDE } from '../tuiles/tilemap.ts'
+import { Carte, VIDE, SOLIDE, BLESSANTE, PLATEFORME } from '../tuiles/tilemap.ts'
 import { creerNoeud, type Noeud, type NoeudSprite, type NoeudCorps } from '../scene/noeud.ts'
 import type { Vue } from '../runtime/ecran.ts'
 import type { Jeu, ContexteJeu } from '../runtime/jeu.ts'
@@ -12,7 +12,10 @@ import {
   DIR_BAS, DIR_DROITE, TEMPS_REPOS, imageHeros,
 } from './art.ts'
 import type { Clip } from '../runtime/animation.ts'
-import { CLE_CAVERNE, PLANCHE_CAVERNE, TUILE_FOND, TUILE_LANTERNE } from './art-cote.ts'
+import {
+  CLE_CAVERNE, PLANCHE_CAVERNE, TUILE_FOND, TUILE_LANTERNE,
+  TUILE_POINTES, TUILE_PASSERELLE,
+} from './art-cote.ts'
 import {
   CLE_ISO, PLANCHE_ISO, LARGEUR_ISO, HAUTEUR_ISO, HAUTEUR_DESSIN_ISO,
   ISO_SOL, ISO_HERBE, ISO_EAU, ISO_MUR, ISO_CAISSE, ISO_SORTIE,
@@ -207,10 +210,11 @@ const PLAN_CAVERNE = [
   '#.........................................#',
   '#.......#######################...........#',
   '#.........................................#',
-  '#....L..............###...................#',
+  '#....L....!.........###...................#',
   '#...####################################..#',
   '#......................................#..#',
   '#......................................#..#',
+  '#..........===........===..............#..#',
   '#......................................#..#',
   '#......................................#..#',
   '#......................................#..#',
@@ -218,12 +222,11 @@ const PLAN_CAVERNE = [
   '#......................................#..#',
   '#......................................#..#',
   '#......................................#..#',
+  '#............................##....!...#..#',
   '#......................................#..#',
-  '#............................##........#..#',
-  '#......................................#..#',
-  '#..@..............###.....................#',
+  '#..@..............###.....!...............#',
   '############...#########..#################',
-  '############...#########..#################',
+  '############^^^#########^^#################',
   '###########################################',
   '###########################################',
 ]
@@ -236,6 +239,10 @@ export function mondeCaverne(): Monde {
   const roche = carte.ajouterCalque('roche', {
     terrain: { tuileDepart: 0, jeu: 'blob47', dehorsEstPlein: true },
   })
+  // Pointes et passerelles vont sur leur propre calque : elles ne suivent
+  // aucun voisinage, et les melanger au terrain ferait recalculer leur dessin
+  // a chaque coup de pinceau sur la roche d'a cote.
+  const decor = carte.ajouterCalque('pieges', { presence: new Uint8Array(largeur * hauteur) })
 
   let depart = { x: TUILE, y: TUILE }
   for (let y = 0; y < hauteur; y++) {
@@ -246,7 +253,19 @@ export function mondeCaverne(): Monde {
       if (fond.presence) fond.presence[i] = 1
       if (c === '#') {
         if (roche.presence) roche.presence[i] = 1
-        carte.solides[i] = 1
+        carte.solides[i] = SOLIDE
+      }
+      // Les pointes ne sont PAS solides : on tombe dedans, on ne s'y cogne
+      // pas. Une pointe solide arrete la chute et laisse vivant, ce qui est
+      // exactement le contraire de ce qu'on en attend.
+      if (c === '^') {
+        decor.cases[i] = TUILE_POINTES
+        carte.solides[i] = BLESSANTE
+      }
+      // La passerelle, elle, ne bloque que ce qui tombe dessus.
+      if (c === '=') {
+        decor.cases[i] = TUILE_PASSERELLE
+        carte.solides[i] = PLATEFORME
       }
       if (c === '@') depart = { x: x * TUILE + TUILE / 2, y: y * TUILE + TUILE }
     }
@@ -280,15 +299,32 @@ export function mondeCaverne(): Monde {
 
   const projection = ORTHO_COTE(TUILE)
   const animations = clipsDemo()
-  const combat = new Combat()
-  const peuplement = new Peuplement(racine, combat, ESPECES_DEMO, animations, projection, TUILE)
   ;(heros as unknown as { espece: string }).espece = 'heros-cote'
+  // Un seul point de vie : une pointe tue. C'est le contrat de Celeste, et il
+  // ne tient que parce que la reapparition est immediate — mourir mille fois
+  // n'est supportable que si mourir est bref.
+  const aventure = new Aventure(racine, heros, {
+    pvHeros: 1, clips: animations, projection, tuile: TUILE, reapparitionMs: 450,
+  })
+  const peuplement = aventure.peuplement
   let pas = 0
+
+  /** Les balises du plan, posees comme des entites ordinaires. */
+  const poserBalises = (): void => {
+    for (let y = 0; y < hauteur; y++) {
+      for (let x = 0; x < largeur; x++) {
+        if (PLAN_CAVERNE[y][x] === '!') {
+          peuplement.poser('balise', x * TUILE + TUILE / 2, y * TUILE + TUILE)
+        }
+      }
+    }
+  }
+  poserBalises()
 
   return {
     id: 'caverne',
     nom: 'Caverne — vue de côté',
-    aide: 'Flèches pour courir, Espace pour sauter, Maj pour le dash. Le puits de droite se remonte en sautant d’une paroi à l’autre.',
+    aide: 'Flèches pour courir, Espace pour sauter, Maj pour le dash, Bas + Espace pour descendre d’une passerelle. Les pointes tuent ; on repart à la dernière balise.',
     vue: { largeur: 320, hauteur: 180 },
     projection,
     carte,
@@ -315,24 +351,31 @@ export function mondeCaverne(): Monde {
       jeu.margeCamera = { x: 24, y: 34 }
       // Le heros est une entite de comportement « plateformeur » : tout le
       // controleur — coyote, tampon, hauteur variable, saut mural, dash —
-      // vient du catalogue, et un projet enregistre le retrouve.
-      jeu.scripts.set(racine.nom, scriptPeuplement(
-        peuplement, combat, () => heros, (e) => { if (e === 'pas') pas++ },
-      ))
+      // vient du catalogue, et un projet enregistre le retrouve. L'aventure,
+      // elle, s'occupe de ce que le catalogue ne dit pas : la mort, la
+      // reprise, les balises.
+      jeu.scripts.set(racine.nom, (c) => {
+        aventure.avancer(c, peuplement.regardDe(heros.id))
+      })
+      void pas
     },
     reinitialiser() {
       heros.x = depart.x
       heros.y = depart.y
       heros.image = imageHeros(DIR_DROITE, TEMPS_REPOS)
       heros.miroir = false
-      combat.reinitialiser()
-      peuplement.oublier()
+      heros.visible = true
+      aventure.reinitialiser()
+      aventure.reapparition = { ...depart }
+      poserBalises()
       pas = 0
     },
     etat: () => {
       const d = peuplement.diagnosticDe(heros.id)
-      if (!d) return `arrêté · ${pas} pas`
-      return `${d.etat} · vx ${Math.round(d.vx)} · vy ${Math.round(d.vy)} · ${pas} pas`
+      const compte = `${aventure.morts} mort${aventure.morts > 1 ? 's' : ''}`
+        + ` · ${aventure.balisesAtteintes} balise${aventure.balisesAtteintes > 1 ? 's' : ''}`
+      if (!d) return `arrêté · ${compte}`
+      return `${d.etat} · vx ${Math.round(d.vx)} · vy ${Math.round(d.vy)} · ${compte}`
         + `${d.coinCorrige ? ' · coin corrigé' : ''}`
     },
   }
@@ -617,7 +660,14 @@ export function mondeEtage(graine = 1): Monde {
       jeu.cameraParSalle = { largeur: etage.largeurSalle, hauteur: etage.hauteurSalle }
       jeu.scripts.set('etage', () => {
         const s = etage.salleEn(heros.x, heros.y)
-        if (s) visitees.add(s)
+        if (!s) return
+        if (!visitees.has(s)) {
+          visitees.add(s)
+          // On repart la ou l'on est ENTRE dans la salle, et non au depart de
+          // l'etage : c'est la regle d'Isaac, et c'est celle qui rend la mort
+          // instructive au lieu d'etre punitive.
+          aventure.reapparition = { x: heros.x, y: heros.y }
+        }
       })
       aventure.installerEcran(jeu)
     },

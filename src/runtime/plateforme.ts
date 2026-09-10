@@ -1,5 +1,5 @@
 import { Accumulateur } from '../noyau/pixel.ts'
-import { type GrilleSolide, toucheSolide } from './collision.ts'
+import { type GrilleSolide, toucheSolide, plateformeArrete } from './collision.ts'
 import { rect, type Rect } from '../noyau/pixel.ts'
 import type { Entrees } from './entree.ts'
 
@@ -86,6 +86,16 @@ export interface ReglagesPlateforme {
   /** Duree pendant laquelle le saut mural garde la main sur l'horizontale. */
   blocageApresMur: number
 
+  /**
+   * Duree pendant laquelle on traverse les plateformes, en secondes.
+   *
+   * Descendre d'une plateforme, c'est appuyer vers le bas et sauter. Il faut
+   * alors cesser de la voir un instant — assez pour la franchir, pas assez
+   * pour traverser la suivante. Un dixieme de seconde couvre une case de seize
+   * pixels a n'importe quelle vitesse de chute.
+   */
+  traverseePlateforme: number
+
   /** Vitesse du dash, en pixels par seconde. */
   vitesseDash: number
   /** Duree du dash, en secondes. */
@@ -115,6 +125,7 @@ export const REGLAGES_DEFAUT: ReglagesPlateforme = {
   vitesseGlissade: 46,
   pousseeMur: 130,
   blocageApresMur: 0.16,
+  traverseePlateforme: 0.1,
 
   vitesseDash: 260,
   dureeDash: 0.14,
@@ -177,6 +188,8 @@ export class Plateformeur {
   private dashDispo = true
   private coinCorrige = false
   private sautsUtilises = 0
+  /** Secondes restantes pendant lesquelles les plateformes sont ignorees. */
+  private traversee = 0
   /** Sauts en l'air autorises. 0 = pas de double saut. */
   sautsAeriens = 0
 
@@ -208,6 +221,7 @@ export class Plateformeur {
     this.tientSaut = false; this.blocageMur = 0
     this.tempsDash = 0; this.recupDash = 0
     this.dashDispo = true; this.sautsUtilises = 0
+    this.traversee = 0
   }
 
   /**
@@ -222,6 +236,7 @@ export class Plateformeur {
     dirX: number, sauteDemande: boolean, sauteTenu: boolean,
     dashDemande = false, dirYDash = 0,
   ): void {
+    /* eslint-disable-next-line no-param-reassign -- voir la traversee, plus bas */
     this.coinCorrige = false
     const r = this.r
     const gravite = gravitéDe(r)
@@ -230,8 +245,22 @@ export class Plateformeur {
     const boiteA = (dx: number, dy: number): Rect =>
       rect(corps.x + corps.boite.x + dx, corps.y + corps.boite.y + dy, corps.boite.l, corps.boite.h)
 
+    // Descendre d'une plateforme : vers le bas ET sauter. On cesse alors de
+    // la voir le temps de la franchir. Le tampon de saut est consomme au
+    // passage, sans quoi on retomberait en sautant aussitot.
+    if (this.traversee > 0) this.traversee -= dt
+    if (sauteDemande && dirYDash > 0 && this.auSol
+      && plateformeArrete(g, boiteA(0, 0)) && !toucheSolide(g, boiteA(0, 1))) {
+      this.traversee = r.traverseePlateforme
+      sauteDemande = false
+      this.tamponRestant = 0
+    }
+
     const solAvant = this.auSol
-    this.auSol = toucheSolide(g, boiteA(0, 1)) && this.vy >= 0
+    // Une plateforme porte aussi : sans cela on tombe au travers de ce sur
+    // quoi on vient d'atterrir, parce que le sol se cherche avec `solide`.
+    this.auSol = (toucheSolide(g, boiteA(0, 1))
+      || (this.traversee <= 0 && plateformeArrete(g, boiteA(0, 0)))) && this.vy >= 0
     this.murCote = 0
     if (!this.auSol) {
       if (toucheSolide(g, boiteA(-1, 0))) this.murCote = -1
@@ -359,9 +388,19 @@ export class Plateformeur {
     // Vertical, avec correction de coin a la montee.
     const sy = Math.sign(pas.y)
     for (let i = 0; i < Math.abs(pas.y); i++) {
-      if (!toucheSolide(g, rect(corps.x + b.x, corps.y + b.y + sy, b.l, b.h))) {
+      const ici = rect(corps.x + b.x, corps.y + b.y, b.l, b.h)
+      // Une plateforme n'arrete que ce qui descend, et seulement au moment ou
+      // le bas du corps croise le haut de la case.
+      const posee = sy > 0 && this.traversee <= 0 && plateformeArrete(g, ici)
+      if (!posee && !toucheSolide(g, rect(corps.x + b.x, corps.y + b.y + sy, b.l, b.h))) {
         corps.y += sy
         continue
+      }
+      if (posee) {
+        this.auSol = true
+        this.vy = 0
+        this.acc.bloquerY()
+        break
       }
       if (sy < 0 && this.corrigerCoin(g, corps)) {
         // Le decalage a libere le passage : on rejoue ce pixel.

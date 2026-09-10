@@ -106,11 +106,70 @@ const LANTERNE = [
   'ffffffffffffffff',
 ]
 
+/**
+ * Les pointes, calculees.
+ *
+ * Quatre dents dans la case, dessinees au BAS et pointant vers le haut : c'est
+ * la seule disposition qui dise, sans un mot, d'ou vient le danger. Des
+ * pointes centrees dans leur case laissent croire qu'on peut passer dessous.
+ *
+ * La dent s'elargit d'un pixel toutes les deux rangees. Un pixel par rangee
+ * donnerait une aiguille qu'on ne voit pas ; deux, un triangle mou.
+ */
+function pointes(): string[] {
+  const g = Array.from({ length: TUILE }, () => Array.from({ length: TUILE }, () => 'f'))
+  const HAUT_DENT = 6
+  // DEUX dents et non quatre. Sur seize pixels, quatre dents font quatre
+  // pixels chacune : le triangle n'a pas la place de s'affiner et se lit
+  // comme un rectangle. Deux dents de huit pixels ont une pointe.
+  for (let dent = 0; dent < 2; dent++) {
+    const centre = dent * 8 + 4
+    for (let y = HAUT_DENT; y < TUILE - 2; y++) {
+      const demi = Math.floor((y - HAUT_DENT) / 2) + 1
+      for (let x = centre - demi; x < centre + demi; x++) {
+        if (x < 0 || x >= TUILE) continue
+        // Le cote gauche capte la lumiere, le droit est dans l'ombre : la
+        // meme regle que partout ici, sans quoi les dents ont l'air plates.
+        g[y][x] = x < centre ? 'c' : 'r'
+      }
+      if (centre - demi - 1 >= 0) g[y][centre - demi - 1] = 'o'
+      if (centre + demi < TUILE) g[y][centre + demi] = 'o'
+    }
+  }
+  for (let x = 0; x < TUILE; x++) { g[TUILE - 2][x] = 'r'; g[TUILE - 1][x] = 'o' }
+  return g.map((l) => l.join(''))
+}
+const POINTES = pointes()
+
+/** Une passerelle : solide quand on tombe dessus, traversable par en dessous. */
+const PASSERELLE = [
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'cccccccccccccccc',
+  'RRRRRRRRRRRRRRRR',
+  'rrrrrrrrrrrrrrrr',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+  'ffffffffffffffff',
+]
+
 export const PLANCHE_CAVERNE: string[][] = [
   ...MASQUES_BLOB47.map(rocheDepuisMasque),
   FOND,
   LANTERNE,
+  POINTES,
+  PASSERELLE,
 ]
 
 export const TUILE_FOND = 47
 export const TUILE_LANTERNE = 48
+export const TUILE_POINTES = 49
+export const TUILE_PASSERELLE = 50

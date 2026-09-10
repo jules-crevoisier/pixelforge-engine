@@ -1,4 +1,4 @@
-import { Carte, VIDE } from '../tuiles/tilemap.ts'
+import { Carte, VIDE, SOLIDE } from '../tuiles/tilemap.ts'
 
 /**
  * LDtk, dans les deux sens.
@@ -90,7 +90,9 @@ export function versLdtk(nom: string, c: Carte, o: OptionsLdtk): LdtkProjet {
     __cHei: c.hauteur,
     __gridSize: c.tuile,
     visible: true,
-    intGridCsv: Array.from(c.solides, (v) => (v ? 1 : 0)),
+    // L'IntGrid de LDtk ne porte qu'une matiere par case : on n'y met que le
+    // solide, et l'on perd les autres drapeaux. C'est signale a l'import.
+    intGridCsv: Array.from(c.solides, (v) => ((v & SOLIDE) ? 1 : 0)),
   })
 
   // Les calques de dessin. LDtk les range du dessus vers le dessous, a
@@ -172,7 +174,7 @@ export function depuisLdtk(p: LdtkProjet): RapportLdtk {
           )
         }
         for (let i = 0; i < c.solides.length && i < l.intGridCsv.length; i++) {
-          c.solides[i] = l.intGridCsv[i] ? 1 : 0
+          c.solides[i] = l.intGridCsv[i] ? SOLIDE : 0
         }
         continue
       }

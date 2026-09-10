@@ -31,11 +31,13 @@ const T = 8
 const DT = 1 / 60
 const BOITE = { x: -3, y: -8, l: 6, h: 8 }
 
+/** `#` est solide, `-` est une plateforme qu'on traverse par en dessous. */
 const grilleDe = (plan) => ({
   tuile: T,
   largeur: plan[0].length,
   hauteur: plan.length,
   solide: (cx, cy) => plan[cy][cx] === '#',
+  matiere: (cx, cy) => (plan[cy][cx] === '#' ? 1 : (plan[cy][cx] === '-' ? 2 : 0)),
 })
 
 /** Vrai si la boite posee en (x, y) ne touche aucun solide. */
@@ -287,6 +289,89 @@ console.log('\n--- ce qui ne doit jamais arriver ---')
     dansMur === 0, `${dansMur} image(s) dans un solide`)
   check('et la position reste entiere du debut a la fin', entier,
     'le contrat de pixel tient sous le desordre')
+}
+
+console.log('\n--- les plateformes qu\'on traverse par en dessous ---')
+
+{
+  const PLAN = [
+    '..........',
+    '..........',
+    '..-----...',
+    '..........',
+    '..........',
+    '##########',
+  ]
+  const g = grilleDe(PLAN)
+
+  // On tombe DESSUS : elle porte.
+  {
+    const p = new Plateformeur()
+    const c = poser(g, 5 * T, 2 * T - 1, 'au-dessus de la plateforme')
+    let posee = false
+    for (let i = 0; i < 90; i++) {
+      p.avancer(g, c, DT, 0, false, false)
+      if (p.diagnostic().auSol) { posee = true; break }
+    }
+    check('on se pose sur une plateforme en tombant dessus',
+      posee && Math.round(c.y) === 2 * T,
+      `y = ${Math.round(c.y)}, le haut de la case est a ${2 * T}`)
+  }
+
+  // On la traverse par EN DESSOUS.
+  {
+    const p = new Plateformeur()
+    const c = poser(g, 5 * T, 5 * T, 'sur le sol, sous la plateforme')
+    let plusHaut = c.y
+    for (let i = 0; i < 60; i++) {
+      p.avancer(g, c, DT, 0, i === 0, i < 20)
+      plusHaut = Math.min(plusHaut, c.y)
+    }
+    check('et on la traverse en sautant par en dessous',
+      plusHaut < 2 * T - 2,
+      `atteint y = ${Math.round(plusHaut)} — la plateforme est a ${2 * T}`)
+  }
+
+  // Le defaut que la regle du CROISEMENT evite : un corps deja engage dans la
+  // plateforme, parce qu'il vient de la traverser, ne doit pas y rester pris
+  // en redescendant. Tester « il descend » suffirait a l'y coller.
+  {
+    const p = new Plateformeur()
+    const c = poser(g, 5 * T, 2 * T + 4, 'a cheval sur la plateforme')
+    for (let i = 0; i < 90; i++) p.avancer(g, c, DT, 0, false, false)
+    check('un corps engage dans la plateforme retombe au sol',
+      Math.round(c.y) === 5 * T,
+      `y = ${Math.round(c.y)} — il devait retomber a ${5 * T}, pas rester a ${2 * T}`)
+  }
+
+  // Descendre volontairement : bas + saut.
+  {
+    const p = new Plateformeur()
+    const c = poser(g, 5 * T, 2 * T - 1, 'au-dessus de la plateforme')
+    for (let i = 0; i < 60 && !p.diagnostic().auSol; i++) p.avancer(g, c, DT, 0, false, false)
+    const surLaPlateforme = Math.round(c.y)
+    for (let i = 0; i < 120; i++) {
+      p.avancer(g, c, DT, 0, i === 0, i < 3, false, i === 0 ? 1 : 0)
+    }
+    check('bas plus saut fait descendre de la plateforme',
+      surLaPlateforme === 2 * T && Math.round(c.y) === 5 * T,
+      `de ${surLaPlateforme} a ${Math.round(c.y)}`)
+  }
+
+  // Et le sens inverse : sans appuyer vers le bas, on saute au lieu de tomber.
+  {
+    const p = new Plateformeur()
+    const c = poser(g, 5 * T, 2 * T - 1, 'au-dessus de la plateforme')
+    for (let i = 0; i < 60 && !p.diagnostic().auSol; i++) p.avancer(g, c, DT, 0, false, false)
+    let plusHaut = c.y
+    for (let i = 0; i < 60; i++) {
+      p.avancer(g, c, DT, 0, i === 0, i < 20)
+      plusHaut = Math.min(plusHaut, c.y)
+    }
+    check('sauter sans appuyer vers le bas ne fait pas traverser',
+      plusHaut < 2 * T && Math.round(c.y) === 2 * T,
+      `monte a ${Math.round(plusHaut)}, retombe sur la plateforme a ${Math.round(c.y)}`)
+  }
 }
 
 const rates = bilan.filter((b) => !b.ok)

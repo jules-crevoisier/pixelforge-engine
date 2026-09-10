@@ -47,6 +47,15 @@ const POUSSEE = 190
 export interface OptionsAventure {
   pvHeros?: number
   surMort?: () => void
+  /**
+   * Millisecondes entre la mort et la reapparition. Zero : on ne reapparait
+   * pas, et c'est au jeu de decider quoi faire.
+   *
+   * Six dixiemes : assez pour voir qu'on est mort, assez peu pour ne pas
+   * attendre. Celeste tient a cette valeur — mourir mille fois n'est
+   * supportable que si mourir est bref.
+   */
+  reapparitionMs?: number
   /** Le catalogue employe. Par defaut celui de la demonstration. */
   especes?: Espece[]
   /** Les clips. Par defaut tous ceux de la demonstration, heros compris. */
@@ -61,7 +70,18 @@ export class Aventure {
   readonly peuplement: Peuplement
   readonly lecteurTaillade = new Lecteur(clipsDemo())
   private heros: NoeudSprite
-  private vieHeros: Vitalite
+  /**
+   * La vitalite du heros, quand PERSONNE d'autre ne la tient.
+   *
+   * Des que le heros porte une espece, c'est le peuplement qui l'inscrit au
+   * combat, et l'aventure doit se servir de CETTE inscription-la. En garder
+   * une deuxieme donnait deux objets pour un seul personnage : le combat
+   * blessait l'un, l'aventure lisait l'autre, et le heros mourait sans jamais
+   * reapparaitre — parce que celle qu'on lisait n'etait jamais morte. Le
+   * defaut ne se voyait pas au banc, dont le heros de test ne porte pas
+   * d'espece, et se voyait tout de suite en jouant.
+   */
+  private vieDeSecours: Vitalite
   private taillade: NoeudSprite
   private reposArme = 0
   private pvMax: number
@@ -70,17 +90,36 @@ export class Aventure {
   abattus = 0
   /** Ce qu'il a ramasse. */
   ramasses = 0
+  /** Combien de fois il est mort. Celeste en fait un titre de gloire. */
+  morts = 0
+  /** Combien de balises il a allumees. */
+  balisesAtteintes = 0
+
+  /**
+   * Ou l'on repart.
+   *
+   * C'est le jeu qui le deplace — a l'entree d'une salle, a un drapeau, a un
+   * feu de camp. L'aventure ne fait que s'en servir : elle n'a aucune idee de
+   * ce qui merite d'etre un point de reprise.
+   */
+  reapparition: { x: number; y: number }
+  private attenteReapparition = 0
+  private delaiReapparition: number
 
   constructor(racine: Noeud, heros: NoeudSprite, opts: OptionsAventure = {}) {
     this.heros = heros
     this.pvMax = opts.pvHeros ?? 3
     this.surMort = opts.surMort ?? null
+    this.delaiReapparition = opts.reapparitionMs ?? 600
+    this.reapparition = { x: heros.x, y: heros.y }
     this.peuplement = new Peuplement(
       racine, this.combat, opts.especes ?? ESPECES_DEMO, opts.clips ?? clipsDemo(),
       opts.projection ?? ORTHO_DESSUS(opts.tuile ?? TUILE), opts.tuile ?? TUILE,
     )
 
-    this.vieHeros = this.combat.inscrire(heros.id, {
+    // Le peuplement d'abord : s'il adopte le heros, c'est lui qui l'inscrit.
+    this.peuplement.synchroniser()
+    this.vieDeSecours = this.combat.vies.get(heros.id) ?? this.combat.inscrire(heros.id, {
       max: this.pvMax,
       camp: 'heros',
       boite: { x: -5, y: -14, l: 10, h: 14 },
@@ -100,6 +139,11 @@ export class Aventure {
     racine.enfants.push(this.taillade)
   }
 
+  /** La vitalite qui fait foi : celle du combat, toujours. */
+  private get vieHeros(): Vitalite {
+    return this.combat.vies.get(this.heros.id) ?? this.vieDeSecours
+  }
+
   get pv(): number { return this.vieHeros.pv }
   get max(): number { return this.pvMax }
   get mort(): boolean { return this.vieHeros.mort }
@@ -115,6 +159,16 @@ export class Aventure {
     const dtMs = c.dt * 1000
     this.vieHeros.x = this.heros.x
     this.vieHeros.y = this.heros.y
+
+    // La mort d'abord : un mort ne frappe pas, ne ramasse pas, et ne se fait
+    // pas frapper. Le laisser vivre le temps du compte a rebours donnerait des
+    // degats posthumes, et un compteur de morts qui monte par deux.
+    if (this.vieHeros.mort) {
+      this.attenteReapparition -= dtMs
+      this.heros.visible = Math.floor(this.attenteReapparition / 90) % 2 === 0
+      if (this.delaiReapparition > 0 && this.attenteReapparition <= 0) this.reapparaitre()
+      return
+    }
 
     this.reposArme = Math.max(0, this.reposArme - dtMs)
     if (c.entrees.consommer('action') && this.reposArme === 0 && !this.vieHeros.mort) {
@@ -154,7 +208,12 @@ export class Aventure {
         // un effet que personne ne distingue a cette echelle.
         const corps = this.heros.enfants.find((e) => e.type === 'corps')
         if (corps) c.bouger(corps as never, impact.pousseeX * 0.06, impact.pousseeY * 0.06)
-        if (impact.fatal && this.surMort) this.surMort()
+        if (impact.fatal) {
+          this.morts++
+          this.attenteReapparition = this.delaiReapparition
+          this.combat.frappes.length = 0
+          if (this.surMort) this.surMort()
+        }
       } else if (impact.fatal) {
         if (this.peuplement.tuer(impact.cible)) this.abattus++
       }
@@ -185,12 +244,41 @@ export class Aventure {
     )
     for (const n of touches) {
       const e = this.peuplement.especeDeNoeud(n.id)
-      if (!e || e.soigne <= 0) continue
+      if (!e) continue
+      // Une balise ne se ramasse pas : elle reste, et l'on peut y revenir.
+      if (e.reprise) {
+        if (this.reapparition.x !== n.x || this.reapparition.y !== n.y) {
+          this.reapparition = { x: n.x, y: n.y }
+          this.balisesAtteintes++
+        }
+        continue
+      }
+      if (e.soigne <= 0) continue
       if (this.vieHeros.pv >= this.pvMax) continue
       this.vieHeros.pv = Math.min(this.pvMax, this.vieHeros.pv + e.soigne)
       this.peuplement.tuer(n.id)
       this.ramasses++
     }
+  }
+
+  /**
+   * Remet le heros sur pied a son point de reprise.
+   *
+   * Il repart INVULNERABLE un instant. Sans cela, reapparaitre dans la pointe
+   * qui vient de tuer recommence la mort a l'image suivante, et l'on ne
+   * comprend meme pas ce qui se passe.
+   */
+  reapparaitre(): void {
+    this.heros.x = this.reapparition.x
+    this.heros.y = this.reapparition.y
+    this.heros.visible = true
+    this.vieHeros.mort = false
+    this.vieHeros.pv = this.pvMax
+    this.vieHeros.invulnerable = 900
+    this.vieHeros.x = this.heros.x
+    this.vieHeros.y = this.heros.y
+    this.attenteReapparition = 0
+    this.peuplement.reinitialiserControleur(this.heros.id)
   }
 
   /** Remet la vie, vide le peuplement et efface les frappes en vol. */
@@ -200,11 +288,16 @@ export class Aventure {
     this.peuplement.oublier()
     this.abattus = 0
     this.ramasses = 0
+    this.morts = 0
+    this.balisesAtteintes = 0
+    this.attenteReapparition = 0
+    this.reapparition = { x: this.heros.x, y: this.heros.y }
     this.reposArme = 0
     this.taillade.visible = false
     this.lecteurTaillade.reinitialiser()
     this.heros.visible = true
-    this.vieHeros = this.combat.inscrire(this.heros.id, {
+    this.peuplement.synchroniser()
+    this.vieDeSecours = this.combat.vies.get(this.heros.id) ?? this.combat.inscrire(this.heros.id, {
       max: this.pvMax,
       camp: 'heros',
       boite: { x: -5, y: -14, l: 10, h: 14 },

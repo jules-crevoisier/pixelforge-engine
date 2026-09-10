@@ -23,6 +23,67 @@ import { type JeuDeTuiles, tuilePour } from './terrain.ts'
 /** Une case vide. Zero serait ambigu : c'est aussi la premiere tuile. */
 export const VIDE = -1
 
+/**
+ * Ce qu'une case FAIT, en plus de ce qu'elle montre.
+ *
+ * ## Pourquoi un bit ne suffisait pas
+ *
+ * La grille de collision ne disait qu'une chose : ca bloque, ou ca ne bloque
+ * pas. Avec ce seul bit on ne peut ecrire ni une pointe, ni une plateforme
+ * qu'on traverse par en dessous, ni une echelle, ni de l'eau — c'est-a-dire
+ * qu'on ne peut faire ni Celeste, ni Dead Cells, ni la moitie d'un Isaac. Ces
+ * quatre-la ne sont pas des cas particuliers : ce sont les briques dont tout
+ * le monde se sert.
+ *
+ * ## Pourquoi des drapeaux et non une liste de types
+ *
+ * Une pointe peut etre solide (un bloc herisse) ou non (des piques au sol
+ * qu'on traverse en sautant). De l'eau peut blesser. Un type unique par case
+ * obligerait a inventer « solide-et-blessant », puis « solide-et-blessant-et
+ * -liquide ». Des drapeaux se combinent, et la combinaison qu'on n'a pas
+ * prevue marche quand meme.
+ */
+export const RIEN = 0
+export const SOLIDE = 1
+/**
+ * Une plateforme : solide quand on TOMBE dessus, traversable autrement.
+ *
+ * La regle exacte est dans `deplacer` : elle ne bloque que si le bas du corps
+ * arrive pile sur le haut de la case. Tester « on descend » ne suffit pas —
+ * un corps deja enfonce dedans resterait pris.
+ */
+export const PLATEFORME = 2
+export const BLESSANTE = 4
+export const ECHELLE = 8
+export const LIQUIDE = 16
+
+/** Le nom de chaque drapeau, pour l'editeur et les rapports. */
+export const MATIERES: { drapeau: number; nom: string; aide: string }[] = [
+  { drapeau: SOLIDE, nom: 'Solide', aide: 'Bloque dans toutes les directions.' },
+  { drapeau: PLATEFORME, nom: 'Plateforme', aide: 'Solide quand on tombe dessus, traversable par en dessous.' },
+  { drapeau: BLESSANTE, nom: 'Blessante', aide: 'Fait mal à ce qui la touche. Une pointe, un brasier.' },
+  { drapeau: ECHELLE, nom: 'Échelle', aide: 'On y monte. Ne bloque pas.' },
+  { drapeau: LIQUIDE, nom: 'Liquide', aide: 'On y avance moins vite. Ne bloque pas.' },
+]
+
+/**
+ * La matiere, en un caractere.
+ *
+ * En base trente-six : une case reste UN caractere, une rangee reste une
+ * ligne, et un diff montre toujours la case qui a change. Les anciens fichiers
+ * n'ecrivaient que des zeros et des uns — ils se relisent tels quels, puisque
+ * zero vaut RIEN et un vaut SOLIDE dans les deux lectures.
+ */
+export const matiereEnCaractere = (m: number): string =>
+  // On borne, on ne masque pas : « et 35 » vaut 100011 en binaire et effacerait
+  // le drapeau quatre. Cinq drapeaux montent a trente-et-un, la borne ne sert
+  // donc jamais — elle est la pour que le sixieme ne casse rien en silence.
+  Math.min(35, Math.max(0, m)).toString(36)
+export const caractereEnMatiere = (c: string): number => {
+  const n = parseInt(c, 36)
+  return Number.isNaN(n) ? 0 : n
+}
+
 export interface Calque {
   nom: string
   /** Index de tuile par case, ou VIDE. */
@@ -44,7 +105,13 @@ export class Carte {
   readonly hauteur: number
   readonly tuile: number
   calques: Calque[] = []
-  /** Grille de collision, independante du dessin. */
+  /**
+   * Ce que chaque case FAIT : un jeu de drapeaux, independant du dessin.
+   *
+   * Le nom est reste au pluriel de « solide » parce que c'est ce qu'il porte
+   * neuf fois sur dix, et que le renommer aurait touche tout le depot pour un
+   * gain de vocabulaire.
+   */
   solides: Uint8Array
 
   constructor(largeur: number, hauteur: number, tuile = 16) {
@@ -73,9 +140,20 @@ export class Carte {
     return c
   }
 
+  /** La matiere d'une case. Hors carte : solide, on ne sort pas du monde. */
+  matiere(cx: number, cy: number): number {
+    if (!this.dedans(cx, cy)) return SOLIDE
+    return this.solides[this.index(cx, cy)]
+  }
+
+  /** Vrai si la case bloque en toutes circonstances. */
   solide(cx: number, cy: number): boolean {
-    if (!this.dedans(cx, cy)) return true
-    return this.solides[this.index(cx, cy)] !== 0
+    return (this.matiere(cx, cy) & SOLIDE) !== 0
+  }
+
+  /** La matiere au point du monde donne, en pixels. */
+  matiereEn(x: number, y: number): number {
+    return this.matiere(Math.floor(x / this.tuile), Math.floor(y / this.tuile))
   }
 
   /**
