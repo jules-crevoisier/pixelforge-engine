@@ -331,9 +331,20 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await p.click('#basculeAide')
   await p.waitForTimeout(200)
   ok('l’aide s’ouvre', await p.evaluate(() => document.getElementById('aideBoite').open))
+  // L'aide doit NOMMER chaque outil de la barre. C'est ce qui l'empeche de
+  // deriver : on ajoute un outil, on oublie d'en parler, et l'aide devient
+  // fausse par omission — le seul defaut d'une aide qu'on ne remarque jamais,
+  // puisque ce qui manque ne se voit pas.
+  const outilsBarre = await p.$$eval('#outils button', (b) => b.map((x) => x.textContent.trim()))
+  const texteAide = await p.textContent('#aideCorps')
+  const boutonsBarre = ['Jouer', 'Arrêter', 'Nouveau…', 'Dossier…', 'Enregistrer', 'Script', 'Projet']
+  const oublies = [...outilsBarre, ...boutonsBarre].filter((o) => !texteAide.includes(o))
+  ok('l’aide nomme chaque outil et chaque commande de la barre',
+    oublies.length === 0, oublies.length ? `oubliés : ${oublies.join(', ')}` : `${outilsBarre.length + boutonsBarre.length} commandes citées`)
+
   await p.click('#fermerAide')
   await p.waitForTimeout(150)
-  ok('et se referme', !(await p.evaluate(() => document.getElementById('aideBoite').open)))
+  ok('et l’aide se referme', !(await p.evaluate(() => document.getElementById('aideBoite').open)))
 }
 
 // L'atelier

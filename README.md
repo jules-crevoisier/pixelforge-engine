@@ -563,6 +563,77 @@ npm run fumee           # 35 vérifications de l'éditeur, dans un vrai navigate
 npm run build
 ```
 
+## L'agent qui évalue, et qui reboucle
+
+    npm run agent            # tout, navigateur compris
+    npm run agent -- --rapide    # sans le navigateur
+    npm run agent -- --ecrire    # met à jour docs/evaluation.{json,md}
+
+Une note monte toute seule d'une itération à l'autre : on ajoute du code, on se
+sent avancé, on écrit 7/10 là où l'on écrivait 6. Elle ne se contredit jamais,
+donc elle n'apprend rien. Ce que l'agent produit n'est pas une note : c'est un
+**état**, et la différence avec l'état précédent.
+
+**Il ne juge pas, il cherche des preuves.** Un critère n'est pas tenu parce que
+le code a l'air de le faire. Il est tenu quand il existe des vérifications qui
+deviendraient rouges si la chose disparaissait, et que les symboles nommés
+existent dans les sources. Chaque ligne du rapport est donc falsifiable : on
+peut aller lire les preuves, et l'on peut les casser exprès pour voir le critère
+tomber. C'est ce qu'on a fait — supprimer une vérification du banc fait sortir
+l'agent en erreur, la remettre le fait taire.
+
+C'est aussi ce qui rend le rebouclage utile. **Une preuve qui disparaît est une
+régression que rien d'autre ne détecte** : les bancs restent verts, le build
+passe, et l'on a simplement cessé de vérifier quelque chose. L'agent échoue
+dans ce cas-là, exactement comme pour un banc rouge.
+
+### Ce que le premier rebouclage a trouvé — dans l'agent lui-même
+
+Le premier passage a nommé cinq critères où le code existait mais la preuve
+manquait. On les a écrits — de vraies vérifications, jamais un élargissement
+des indices : régler la mesure sur le résultat voulu la rend inutile.
+
+Le deuxième passage a trouvé trois défauts, tous dans l'agent :
+
+- **Il se lisait lui-même.** Un critère nommant le symbole `jouerSon` se
+  déclarait tenu parce que le mot figurait… dans la ligne du critère. La mesure
+  se satisfaisait de son propre énoncé, ce qui est la plus complète des
+  illusions : elle passe au vert pour tout ce qu'on lui demande de chercher, et
+  d'autant mieux qu'on lui en demande davantage.
+- **Il comparait au mot près, non.** L'indice « son » se retrouvait dans
+  « raison » et « moisson », « mur » dans « murale », « coup » dans
+  « coupure » : trente et une preuves apparaissaient pour un critère qui n'en
+  avait aucune. Une mesure trop indulgente est pire qu'une mesure absente, parce
+  qu'elle rassure.
+- **Il criait au loup.** Un passage sans navigateur, comparé à un passage
+  complet, annonçait cinquante-cinq vérifications disparues. Un agent qui se
+  trompe une fois sur deux cesse d'être lu — et c'est alors qu'il manque la
+  vraie régression. Il refuse maintenant de comparer ce qui n'a pas tourné des
+  deux côtés, et refuse d'enregistrer un relevé partiel.
+
+Et une quatrième dans la langue : la normalisation Unicode sépare l'accent de
+sa lettre mais ne touche pas à « œ ». L'agent déclarait donc manquante une
+preuve nommée « un cœur posé par une salle dessinée » — accuser à tort est le
+pire défaut d'une mesure.
+
+### Où en est le projet, d'après lui
+
+    Celeste — plateforme de précision              8/8
+    The Binding of Isaac — salles engendrées       7/7
+    Dead Cells — combat et corps                   6/6
+    Faire un jeu sans lire le moteur               8/8
+    Le multijoueur, et ce qu'il exige d'abord      1/4
+    Ce qu'un jeu a en plus de son gameplay         0/5
+                                          446 vérifications
+
+Les deux dernières lignes viennent d'être ajoutées, et c'est délibéré : quand
+la grille est entièrement verte, elle ne mesure plus rien. Elle dit maintenant
+ce qui manque — le déterminisme des entrées, l'instantané, le réseau, le son,
+les particules, le dialogue, la sauvegarde de partie, les menus — et elle le
+dira jusqu'à ce que ce soit fait.
+
+Le relevé complet est dans [`docs/evaluation.md`](docs/evaluation.md).
+
 ## La méthode
 
 Chaque règle est éprouvée dans les **deux sens** : sur un cas où elle doit se

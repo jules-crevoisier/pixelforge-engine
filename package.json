@@ -11,7 +11,8 @@
     "banc:langages": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-langages.mjs",
     "banc": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc.mjs",
     "banc:mondes": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-mondes.mjs",
-    "fumee": "node scripts/fumee.mjs"
+    "fumee": "node scripts/fumee.mjs",
+    "agent": "node scripts/agent.mjs"
   },
   "devDependencies": {
     "playwright": "^1.47.0",

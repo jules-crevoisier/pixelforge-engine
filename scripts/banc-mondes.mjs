@@ -1961,6 +1961,179 @@ console.log('\n--- les corps mobiles, dans le peuplement ---')
   }
 }
 
+/*
+ * Les cinq controles ci-dessous ont ete ecrits parce que l'agent
+ * d'evaluation les reclamait — voir `scripts/agent.mjs`. Il ne demandait pas
+ * du code : le code existait. Il demandait des PREUVES, c'est-a-dire des
+ * verifications qui deviendraient rouges si la chose disparaissait.
+ *
+ * On aurait pu faire taire l'agent en elargissant ses indices, ou en
+ * renommant les verifications existantes pour qu'elles tombent dans ses
+ * mailles. Ce serait regler la mesure sur le resultat voulu, et la mesure ne
+ * servirait plus a rien. Chacun de ces cinq controles eprouve donc quelque
+ * chose que rien n'eprouvait.
+ */
+
+console.log('\n--- ce que l\'agent d\'evaluation reclamait ---')
+
+{
+  const { MODELES_DEMO, SYMBOLES_DEMO } = await import('../src/demo/salles-demo.ts')
+  const { lireModele } = await import('../src/niveau/modeles.ts')
+  const { engendrerPlan } = await import('../src/niveau/plan.ts')
+  const { assemblerEtage } = await import('../src/niveau/assemblage.ts')
+  const { ORTHO_COTE } = await import('../src/noyau/projection.ts')
+
+  // A. Les roles. Un etage a exactement UN depart, UN boss, UN tresor, UNE
+  //    boutique — et le boss est au bout d'une impasse, le plus loin possible
+  //    du depart. C'est ce qui fait la forme d'un etage d'Isaac : on sait
+  //    qu'on approche parce qu'on s'eloigne.
+  {
+    let uniques = 0
+    let bossImpasse = 0
+    let bossPlusLoin = 0
+    const N = 40
+    for (let graine = 1; graine <= N; graine++) {
+      const pl = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+      const compte = (r) => pl.salles.filter((s) => s.role === r).length
+      if (compte('depart') === 1 && compte('boss') === 1
+        && compte('tresor') === 1 && compte('boutique') === 1) uniques++
+      const boss = pl.salles.find((s) => s.role === 'boss')
+      const depart = pl.salles.find((s) => s.role === 'depart')
+      if (boss && boss.voisines.filter(Boolean).length === 1) bossImpasse++
+      // La distance de Manhattan sur la grille de cellules : pas la vraie
+      // distance a pied, mais elle suffit a dire « au bout ».
+      const loinBoss = boss ? Math.abs(boss.cx - depart.cx) + Math.abs(boss.cy - depart.cy) : 0
+      const median = pl.salles
+        .map((s) => Math.abs(s.cx - depart.cx) + Math.abs(s.cy - depart.cy))
+        .sort((a, b) => a - b)[Math.floor(pl.salles.length / 2)]
+      if (loinBoss >= median) bossPlusLoin++
+    }
+    check('chaque étage a un seul départ, un seul boss, un seul trésor, une seule boutique',
+      uniques === N, `${uniques} étages sur ${N}`)
+    check('et le boss est au bout d’une impasse, du côté le plus loin du départ',
+      bossImpasse === N && bossPlusLoin >= N - 2,
+      `${bossImpasse}/${N} en impasse, ${bossPlusLoin}/${N} au-delà de la salle médiane`)
+  }
+
+  // B. Le retournement des modeles. Il est cense quadrupler la variete ; s'il
+  //    ne changeait rien a l'ecran, on aurait quatre fois la meme salle et
+  //    l'illusion d'en avoir seize.
+  {
+    const rendre = (m, mx, my) => Array.from({ length: 9 }, (_, y) =>
+      Array.from({ length: 18 }, (_, x) => lireModele(m, x, y, mx, my, 18, 9)).join('')).join('|')
+    const dissymetriques = MODELES_DEMO.filter((m) => {
+      const vus = new Set([
+        rendre(m, false, false), rendre(m, true, false),
+        rendre(m, false, true), rendre(m, true, true),
+      ])
+      return vus.size === 4
+    })
+    check('un modèle dissymétrique donne bien quatre salles différentes une fois retourné',
+      dissymetriques.length >= 2,
+      `${dissymetriques.length} modèles sur ${MODELES_DEMO.length} rendent 4 dessins distincts`)
+  }
+
+  // C. Le coeur de la chambre au tresor. Il est POSE par un dessin ; encore
+  //    faut-il qu'il tombe sur une case libre, sinon il est dans un mur et la
+  //    salle promet un tresor qu'elle ne donne pas.
+  {
+    let salles = 0
+    let atteignables = 0
+    for (let graine = 1; graine <= 30; graine++) {
+      const pl = engendrerPlan(graine, { salles: 12, largeur: 9, hauteur: 7 })
+      const e = assemblerEtage(pl, { modeles: MODELES_DEMO, symboles: SYMBOLES_DEMO })
+      for (const q of e.entites.filter((x) => x.espece === 'coeur')) {
+        salles++
+        const cx = Math.floor(q.x / e.carte.tuile)
+        const cy = Math.floor((q.y - 1) / e.carte.tuile)
+        if (!e.carte.solide(cx, cy)) atteignables++
+      }
+    }
+    check('un cœur posé par une salle dessinée tombe sur une case libre',
+      salles > 0 && atteignables === salles,
+      `${atteignables} cœurs libres sur ${salles} posés`)
+  }
+
+  // D. La pesanteur ne s'ACCUMULE pas contre le sol. C'est le meme piege que
+  //    l'accumulateur du controleur : garder la vitesse acquise contre un sol
+  //    ferait s'enfoncer d'un coup a l'instant ou le sol disparait, sans que
+  //    personne n'ait rien demande.
+  {
+    const { creerNoeud } = await import('../src/scene/noeud.ts')
+    const { Combat } = await import('../src/runtime/combat.ts')
+    const { Peuplement, espece } = await import('../src/runtime/entites.ts')
+    const { CorpsMobiles, grilleAvecCorps } = await import('../src/runtime/corps.ts')
+    const { clipRegulier } = await import('../src/runtime/animation.ts')
+    const T = 16
+    let solHaut = 20
+    const decor = {
+      tuile: T, largeur: 40, hauteur: 40,
+      solide: (cx, cy) => cy >= solHaut,
+      matiere: (cx, cy) => (cy >= solHaut ? 1 : 0),
+    }
+    const lourde = espece('lourde', {
+      camp: 'ennemi', pv: 2, vitesse: 0, degats: 0, comportement: 'immobile',
+      clip: 'immobile', boite: { x: -5, y: -7, l: 10, h: 7 }, pesante: true,
+    })
+    const racine = creerNoeud('noeud', 'essai')
+    const combat = new Combat()
+    const corps = new CorpsMobiles()
+    const peuplement = new Peuplement(racine, combat, [lourde],
+      [clipRegulier('immobile', [0], 1000)], ORTHO_COTE(T), T)
+    peuplement.degatsMatiere = 0
+    const restes = new Map()
+    const hote = (cible) => {
+      const ch = (n) => {
+        for (const e of n.enfants) { if (e.id === cible.id) return n; const r = ch(e); if (r) return r }
+        return null
+      }
+      return ch(racine)
+    }
+    const ctx = {
+      dt: 1 / 60,
+      entrees: { consommer: () => false, tenue: () => false, axe: () => ({ x: 0, y: 0 }) },
+      racine, carte: decor, grille: grilleAvecCorps(decor, corps), corps, pas: 0,
+      trouver: () => null,
+      bouger: (cps, dx, dy) => {
+        const r = restes.get(cps.id) ?? { x: 0, y: 0 }
+        r.x += dx; r.y += dy
+        const px = Math.trunc(r.x); const py = Math.trunc(r.y)
+        r.x -= px; r.y -= py
+        restes.set(cps.id, r)
+        // On bute sur le sol, comme le vrai deplacement.
+        const h = hote(cps)
+        if (!h) return { dx: 0, dy: 0, bloque: false }
+        let fait = 0
+        const sy = Math.sign(py)
+        for (let i = 0; i < Math.abs(py); i++) {
+          const bas = h.y + fait + sy
+          if (sy > 0 && Math.floor((bas - 1) / T) >= solHaut) break
+          fait += sy
+        }
+        h.x += px
+        h.y += fait
+        return { dx: px, dy: fait, bloque: fait !== py }
+      },
+    }
+    const n = peuplement.poser('lourde', 200, 100)
+    peuplement.synchroniser()
+    for (let i = 0; i < 400; i++) peuplement.avancer(ctx, { x: 200, y: 100 }, 1000 / 60)
+    const posee = n.y
+    for (let i = 0; i < 200; i++) peuplement.avancer(ctx, { x: 200, y: 100 }, 1000 / 60)
+    check('une créature pesante se pose sur le sol et n’y descend plus',
+      posee === solHaut * T && n.y === posee,
+      `posée à ${posee}, toujours à ${n.y} trois secondes plus tard`)
+    // Le sol disparait : elle doit repartir de zero, pas a la vitesse limite.
+    solHaut = 30
+    const avantChute = n.y
+    peuplement.avancer(ctx, { x: 200, y: 100 }, 1000 / 60)
+    const premierPas = n.y - avantChute
+    check('et sa vitesse de chute est remise à zéro tant qu’elle est posée',
+      premierPas <= 1,
+      `${premierPas} px au premier pas après la disparition du sol — la vitesse limite en ferait 5`)
+  }
+}
+
 console.log('\n--- l\'editeur autonome : creer, redimensionner, ajouter ---')
 
 {
