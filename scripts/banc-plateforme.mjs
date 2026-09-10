@@ -675,6 +675,221 @@ console.log('\n--- les pentes ---')
   }
 }
 
+console.log('\n--- les demi-pentes : deux cases pour monter d’une ---')
+
+{
+  const { sommetPente, toucheSolide, hauteurPente } = await import('../src/runtime/collision.ts')
+  const { rect } = await import('../src/noyau/pixel.ts')
+  const { hauteurSol, PENTE_DROITE, PENTE_GAUCHE, PENTE_DEMI, PENTE_HAUTE, PENTE,
+          BLESSANTE, SOLIDE, PLATEFORME, ECHELLE, LIQUIDE,
+          matiereEnCaractere, caractereEnMatiere, estPente } =
+    await import('../src/tuiles/tilemap.ts')
+
+  const BAS_D = PENTE_DROITE | PENTE_DEMI
+  const HAUT_D = PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE
+  const BAS_G = PENTE_GAUCHE | PENTE_DEMI
+  const HAUT_G = PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE
+  const FORMES = [PENTE_DROITE, PENTE_GAUCHE, BAS_D, HAUT_D, BAS_G, HAUT_G]
+
+  // La forme : un pixel de montee toutes les DEUX colonnes, sur seize.
+  {
+    const bas = [...Array(16)].map((q, x) => hauteurSol(BAS_D, x, 16))
+    const haut = [...Array(16)].map((q, x) => hauteurSol(HAUT_D, x, 16))
+    check('une demi-pente monte d’un pixel toutes les deux colonnes',
+      bas[0] === 15 && bas[1] === 15 && bas[2] === 14 && bas[15] === 8,
+      `${bas.join(' ')} — une pente entière irait de 15 à 0`)
+    check('sa moitié haute reprend là où la basse s’arrête, sans marche',
+      haut[0] === 7 && bas[15] - haut[0] === 1 && haut[15] === 0,
+      `la basse finit à ${bas[15]}, la haute commence à ${haut[0]}`)
+
+    // Le pas est REGULIER : c'est ce qui distingue une pente d'un escalier.
+    // Un pas irregulier ne se voit pas sur les extremites, seulement au milieu.
+    const pas = bas.slice(1).map((h, i) => bas[i] - h)
+    check('et son pas est régulier d’un bout à l’autre',
+      pas.every((d) => d === 0 || d === 1) && pas.filter((d) => d === 1).length === 7,
+      `${pas.join('')} — jamais deux pixels d’un coup, ce qui ferait un escalier`)
+  }
+
+  // Le miroir : la version gauche doit etre l'exacte image de la droite.
+  // L'ecrire deux fois est le moyen le plus sur de n'en corriger qu'une.
+  {
+    // Une moitie BASSE reste une moitie basse dans le miroir : c'est la case
+    // qui change de cote, pas la forme. Apparier la basse a la haute est la
+    // faute qu'on fait en ecrivant ce controle, et elle passe pour un defaut
+    // du moteur.
+    const ecarts = []
+    for (let x = 0; x < 16; x++) {
+      if (hauteurSol(BAS_G, x, 16) !== hauteurSol(BAS_D, 15 - x, 16)) ecarts.push(`basse ${x}`)
+      if (hauteurSol(HAUT_G, x, 16) !== hauteurSol(HAUT_D, 15 - x, 16)) ecarts.push(`haute ${x}`)
+    }
+    check('la demi-pente gauche est l’exact miroir de la droite',
+      ecarts.length === 0,
+      ecarts.length ? `${ecarts.length} colonnes fausses, ex. ${ecarts[0]}` : '32 colonnes')
+  }
+
+  /*
+   * LES DEUX COPIES DE LA REGLE.
+   *
+   * La collision redeclare la formule pour ne rien devoir a l'editeur. C'est
+   * defendable, mais deux copies divergent : un pixel d'ecart et le
+   * personnage s'enfonce dans la cote sans qu'on sache laquelle a tort. On
+   * les compare donc pour chaque forme et chaque colonne, a deux tailles de
+   * tuile — un decalage a droite se comporte autrement sur une tuile impaire.
+   */
+  {
+    const ecarts = []
+    for (const tuile of [8, 16, 24, 32]) {
+      for (const forme of FORMES) {
+        for (let x = 0; x < tuile; x++) {
+          if (hauteurSol(forme, x, tuile) !== hauteurPente(forme, x, tuile)) {
+            ecarts.push(`${forme}@${x}/${tuile}`)
+          }
+        }
+      }
+    }
+    check('la collision et les tuiles calculent la MÊME hauteur, partout',
+      ecarts.length === 0,
+      ecarts.length ? `${ecarts.length} écarts, ex. ${ecarts[0]}` : '6 formes × 4 tailles de tuile')
+  }
+
+  /*
+   * L'ECRITURE EN UN CARACTERE.
+   *
+   * C'est ici qu'un defaut a dormi : la base trente-six bornait a
+   * trente-cinq, si bien qu'une pente montant a GAUCHE — soixante-quatre —
+   * se relisait en mur. Toute colline tournee vers la gauche se rouvrait
+   * fausse, et rien ne le disait. On verifie donc l'aller-retour pour chaque
+   * matiere que le format peut porter.
+   */
+  {
+    const combinaisons = []
+    for (let v = 0; v <= (SOLIDE | PLATEFORME | BLESSANTE | ECHELLE | LIQUIDE); v++) combinaisons.push(v)
+    for (const f of FORMES) { combinaisons.push(f); combinaisons.push(f | BLESSANTE) }
+    const perdues = combinaisons.filter((v) => caractereEnMatiere(matiereEnCaractere(v)) !== v)
+    check('chaque matière survit à l’aller-retour en un caractère',
+      perdues.length === 0,
+      perdues.length ? `${perdues.length} perdues, ex. ${perdues[0]}` : `${combinaisons.length} combinaisons`)
+    check('et chacune tient toujours en UN caractère',
+      combinaisons.every((v) => matiereEnCaractere(v).length === 1),
+      'une case sur deux caractères doublerait le fichier et rendrait une rangée illisible')
+    check('deux matières différentes ne s’écrivent jamais pareil',
+      new Set(combinaisons.map(matiereEnCaractere)).size === combinaisons.length,
+      `${new Set(combinaisons.map(matiereEnCaractere)).size} caractères pour ${combinaisons.length} matières`)
+
+    // La compatibilite : les trente-six premieres valeurs s'ecrivaient en base
+    // trente-six, et doivent s'ecrire pareil. Un fichier d'avant se relit.
+    const memeQuAvant = [...Array(32)].every((q, v) => matiereEnCaractere(v) === v.toString(36))
+    check('un fichier écrit avant se relit sans une ligne de migration',
+      memeQuAvant && caractereEnMatiere('w') === PENTE_DROITE,
+      '0 à 31 comme en base trente-six, et « w » vaut toujours une pente montant à droite')
+  }
+
+  // Le franchissement, dans un vrai monde. Une demi-pente qui se calcule bien
+  // mais ne se monte pas ne sert a rien.
+  {
+    /*
+     * `d` et `D` : les deux cases d'une demi-pente montant a droite, basse
+     * puis haute. `g` et `G` : la meme, montant a gauche, la HAUTE d'abord
+     * puisqu'on la rencontre en premier en allant a droite.
+     */
+    const plan = [
+      '..................',
+      '..................',
+      '..................',
+      '..................',
+      '.......dD#Gg......',
+      '....dD####..######',
+      '####..............',
+    ]
+    check('le plan des demi-pentes est bien rectangulaire',
+      plan.every((l) => l.length === plan[0].length), `${plan[0].length} colonnes`)
+    const MATIERE = { '#': SOLIDE, d: BAS_D, D: HAUT_D, g: BAS_G, G: HAUT_G }
+    const g = {
+      tuile: T, largeur: plan[0].length, hauteur: plan.length,
+      solide: (cx, cy) => plan[cy][cx] === '#',
+      matiere: (cx, cy) => MATIERE[plan[cy][cx]] ?? 0,
+    }
+    check('une demi-pente n’arrête pas comme un mur',
+      !toucheSolide(g, rect(4 * T + 2, 5 * T + 2, 4, 4)),
+      'sinon on se cogne dans le bas de la côte au lieu de la monter')
+
+    /*
+     * Une SEULE traversee, mesuree en continu.
+     *
+     * On monte deux demi-pentes, on tient un palier, on redescend l'autre
+     * versant. Couper la mesure en deux boucles de trois cents images faisait
+     * commencer la deuxieme apres la descente : elle mesurait un personnage
+     * immobile et le declarait bon.
+     */
+    const c = new Plateformeur()
+    const corps = { x: 1 * T, y: 5 * T, boite: { ...BOITE } }
+    for (let i = 0; i < 30; i++) c.avancer(g, corps, DT, 0, false, false)
+    const depart = corps.y
+    let plusHaut = corps.y
+    let apresLeSommet = null
+    let imagesEnLAir = 0
+    let pireEcart = 0
+    for (let i = 0; i < 300; i++) {
+      c.avancer(g, corps, DT, 1, false, false)
+      plusHaut = Math.min(plusHaut, corps.y)
+      // La descente commence quand on a cesse de monter depuis vingt images.
+      if (corps.y > plusHaut && apresLeSommet === null) apresLeSommet = corps.y
+      if (!c.diagnostic().auSol) imagesEnLAir++
+      const sol = sommetPente(g, rect(corps.x + BOITE.x, corps.y + BOITE.y, BOITE.l, BOITE.h))
+      if (sol !== null) pireEcart = Math.max(pireEcart, sol - (corps.y + BOITE.y + BOITE.h))
+    }
+    check('on monte deux demi-pentes en marchant, sans sauter',
+      plusHaut <= depart - 2 * T,
+      `de ${depart} à ${plusHaut}, soit ${depart - plusHaut} px — deux cases de ${T}`)
+    check('et l’on ne quitte JAMAIS le sol en le faisant',
+      imagesEnLAir === 0,
+      `${imagesEnLAir} image(s) en l’air sur 300 — trois suffisent à déclencher le coyote, `
+      + 'changer l’animation en « chute » et rendre un saut aérien possible')
+    check('on redescend l’autre versant en le suivant, sans décoller',
+      apresLeSommet !== null && corps.y > plusHaut && pireEcart <= 1,
+      `remonté à ${plusHaut}, redescendu à ${corps.y}, jamais plus de ${pireEcart} px au-dessus de la pente`)
+
+    /*
+     * LE REVERS DU COLLAGE AU SOL.
+     *
+     * Coller au sol pour ne pas sautiller sur une marche d'un pixel ne doit
+     * pas coller au-dessus du vide. Une regle qui retient le personnage au
+     * bord d'une falaise est bien pire que le defaut qu'elle corrige : le jeu
+     * cesse d'obeir.
+     */
+    {
+      const falaise = [
+        '........', '........', '####....', '####....',
+        '........', '........', '........', '........',
+      ]
+      const gf = {
+        tuile: T, largeur: 8, hauteur: 8,
+        solide: (cx, cy) => falaise[cy][cx] === '#',
+        matiere: (cx, cy) => (falaise[cy][cx] === '#' ? SOLIDE : 0),
+      }
+      const cf = new Plateformeur()
+      const cf2 = { x: 1 * T, y: 1 * T, boite: { ...BOITE } }
+      for (let i = 0; i < 30; i++) cf.avancer(gf, cf2, DT, 0, false, false)
+      const surLeBord = cf2.y
+      for (let i = 0; i < 40; i++) cf.avancer(gf, cf2, DT, 1, false, false)
+      check('mais on ne colle PAS au-dessus du vide : une falaise se tombe',
+        cf2.y > surLeBord + 2 * T && !cf.diagnostic().auSol,
+        `tombé de ${cf2.y - surLeBord} px — le collage ne retient personne au-dessus du vide`)
+    }
+  }
+
+  // Le revers : `estPente` ne doit pas se declencher sur autre chose, sinon
+  // toute case marquee « demi » sans direction cesserait de bloquer.
+  check('« demi » ou « haute » seuls ne font PAS une pente',
+    !estPente(PENTE_DEMI) && !estPente(PENTE_HAUTE) && !estPente(SOLIDE)
+    && estPente(BAS_G) && estPente(PENTE_DROITE),
+    'une case sans direction n’est pas une côte, et doit rester ce qu’elle est')
+  check('et le masque PENTE couvre exactement les quatre drapeaux',
+    PENTE === (PENTE_DROITE | PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE)
+    && (PENTE & SOLIDE) === 0 && (PENTE & BLESSANTE) === 0,
+    'un masque qui deborderait sur « blessante » effacerait les pointes d’une rampe')
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)

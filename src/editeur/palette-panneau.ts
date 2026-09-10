@@ -2,7 +2,7 @@ import type { Jeu } from '../runtime/jeu.ts'
 import type { Atlas } from '../runtime/atlas.ts'
 import { rectDeTuile } from '../runtime/atlas.ts'
 import type { Espece, Peuplement } from '../runtime/entites.ts'
-import { MATIERES } from '../tuiles/tilemap.ts'
+import { MATIERES, FORMES_PENTE_NOMMEES, PENTE, BLESSANTE } from '../tuiles/tilemap.ts'
 import type { Outil } from './edition.ts'
 
 /**
@@ -73,37 +73,66 @@ export class Palette {
   }
 
   /**
-   * Les matieres, en cases a cocher.
+   * Les matieres : des cases a cocher, PUIS une forme de pente exclusive.
    *
-   * Elles se COMBINENT : une pointe peut etre solide, de l'eau peut blesser.
-   * Une liste de choix exclusifs obligerait a inventer « solide-et-blessant »,
-   * puis « solide-et-blessant-et-liquide ». Des cases a cocher disent la meme
-   * chose et laissent passer la combinaison qu'on n'avait pas prevue.
+   * Les cinq matieres se combinent — une pointe peut etre solide, de l'eau
+   * peut blesser. Les six formes de pente, non : une case n'a qu'une surface,
+   * et le format ne sait pas ecrire « monte a droite » et « solide » ensemble.
+   * Les proposer comme des cases a cocher laisserait composer ce que
+   * l'enregistrement perdrait — et c'est exactement le genre de perte qu'on
+   * ne remarque qu'en rouvrant le projet.
+   *
+   * Choisir une pente efface donc les matieres qui la contrediraient, en
+   * gardant « blessante » : une rampe herissee de pointes existe.
    */
   private remplirMatieres(matiere: number): void {
     this.a.panneau.hidden = false
     this.a.titre.textContent = 'Matière'
     let courante = matiere
     const dire = (): void => {
+      const forme = FORMES_PENTE_NOMMEES.find((f) => (courante & PENTE) === f.drapeaux)
       const noms = MATIERES.filter((m) => (courante & m.drapeau) !== 0).map((m) => m.nom)
+      if (forme) noms.unshift(forme.nom)
       this.a.note.textContent = noms.length
-        ? `${noms.join(' + ')} — les drapeaux se combinent.`
+        ? `${noms.join(' + ')}${forme ? ' — une pente n’est jamais solide.' : ' — les drapeaux se combinent.'}`
         : 'Aucun drapeau : la case ne fait rien. Clic droit efface aussi.'
+    }
+    const boutons: { rafraichir: () => void }[] = []
+    const poser = (v: number): void => {
+      courante = v
+      for (const b of boutons) b.rafraichir()
+      this.choix({ matiere: courante })
+      dire()
     }
     for (const m of MATIERES) {
       const b = document.createElement('button')
       b.className = 'matiere'
       b.textContent = m.nom
       b.title = m.aide
-      b.classList.toggle('actif', (courante & m.drapeau) !== 0)
       b.addEventListener('click', () => {
-        courante ^= m.drapeau
-        b.classList.toggle('actif', (courante & m.drapeau) !== 0)
-        this.choix({ matiere: courante })
-        dire()
+        // Cocher une matiere pleine retire la pente : les deux decrivent le
+        // meme sol, et le fichier ne peut en porter qu'un.
+        const sansPente = m.drapeau === BLESSANTE ? courante : courante & ~PENTE
+        poser(sansPente ^ m.drapeau)
       })
+      boutons.push({ rafraichir: () => b.classList.toggle('actif', (courante & m.drapeau) !== 0) })
       this.a.grille.appendChild(b)
     }
+    for (const f of FORMES_PENTE_NOMMEES) {
+      const b = document.createElement('button')
+      b.className = 'matiere pente'
+      b.textContent = f.nom
+      b.title = f.aide
+      b.addEventListener('click', () => {
+        // Recliquer la forme choisie la retire : sans cela on ne pourrait
+        // plus revenir a une case plate sans passer par le clic droit.
+        const deja = (courante & PENTE) === f.drapeaux
+        poser(deja ? courante & ~PENTE : (courante & BLESSANTE) | f.drapeaux)
+      })
+      boutons.push({ rafraichir: () => b.classList.toggle('actif', (courante & PENTE) === f.drapeaux) })
+      this.a.grille.appendChild(b)
+    }
+    for (const b of boutons) b.rafraichir()
     dire()
   }
 

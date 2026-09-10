@@ -1,5 +1,5 @@
 import type { Carte } from '../tuiles/tilemap.ts'
-import { VIDE } from '../tuiles/tilemap.ts'
+import { VIDE, matiereEnCaractere, caractereEnMatiere } from '../tuiles/tilemap.ts'
 import type { Noeud } from '../scene/noeud.ts'
 import type { Palette } from '../noyau/palette.ts'
 import { versHex } from '../noyau/palette.ts'
@@ -37,6 +37,19 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  * la rangee qui a change au lieu d'un pate de caracteres.
  *
  * ## L'histoire des versions
+ *
+ * **8** — les demi-pentes, et la reparation de l'ecriture des matieres. La
+ * grille de collision s'ecrivait en base trente-six, avec une borne a
+ * trente-cinq « pour que rien ne casse en silence » : une pente montant a
+ * GAUCHE vaut soixante-quatre, sortait « z », et se relisait en mur. Toute
+ * colline tournee vers la gauche se rouvrait fausse. L'alphabet passe a
+ * soixante-deux caracteres, une case tient toujours en UN, et les
+ * trente-deux premieres valeurs ne bougent pas — un fichier d'avant se relit
+ * sans migration. Les caracteres 32 et au-dela designent desormais une FORME
+ * de pente et non une somme de drapeaux : « w » valait une pente montant a
+ * droite et la vaut toujours, les suivants changent de sens. Les six
+ * chargeurs lisent la meme table, et un banc verifie qu'ils repondent tous
+ * la meme chose, colonne par colonne.
  *
  * **7** — les musiques, les textes traduits et le plan de touches. Meme regle
  * que la version 6, appliquee a ce qui restait dehors : ce qui n'est pas dans
@@ -83,7 +96,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 7
+export const VERSION_FORMAT = 8
 
 export interface ProjetSerialise {
   version: number
@@ -295,15 +308,9 @@ const ligneDe = (a: ArrayLike<number>, largeur: number, y: number, sep = ','): s
   const out: string[] = []
   for (let x = 0; x < largeur; x++) {
     const v = a[y * largeur + x]
-    // Sans separateur, une case doit tenir en UN caractere : la base
-    // trente-six va jusqu'a trente-cinq, ce qui couvre tous les drapeaux.
-    // Ecrire « 16 » en decimal decalerait toute la rangee d'un cran.
-    //
-    // On BORNE, on ne masque pas. Un « et » binaire avec trente-cinq semble
-    // faire la meme chose et n'en fait rien : trente-cinq vaut 100011 en
-    // binaire, donc le drapeau quatre en sort a zero. La faute passait
-    // inapercue sur les valeurs zero, un et deux — c'est-a-dire sur tout ce
-    // qui existait avant les matieres.
+    // Sans separateur, une case doit tenir en UN caractere : ecrire « 16 » en
+    // decimal decalerait toute la rangee d'un cran. C'est le cas du masque de
+    // presence, dont les valeurs sont zero ou un.
     out.push(sep === '' ? Math.min(35, Math.max(0, v)).toString(36) : String(v))
   }
   return out.join(sep)
@@ -325,7 +332,14 @@ export function serialiserCarte(nom: string, c: Carte): CarteSerialisee {
       terrain: l.terrain ? { ...l.terrain } : null,
       presence: l.presence ? lignes(l.presence, '') : null,
     })),
-    solides: lignes(c.solides, ''),
+    // Les matieres passent par LEUR ecriture, celle de `tuiles/tilemap.ts`, et
+    // non par la base trente-six d'a cote. Les deux ont diverge : la seconde
+    // bornait a trente-cinq, si bien qu'une pente montant a gauche —
+    // soixante-quatre — sortait « z » et se relisait en mur. Une valeur, un
+    // seul endroit qui sait l'ecrire.
+    solides: Array.from({ length: c.hauteur }, (_, y) =>
+      Array.from({ length: c.largeur }, (_, x) =>
+        matiereEnCaractere(c.solides[y * c.largeur + x])).join('')),
   }
 }
 
@@ -420,7 +434,9 @@ export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number,
     }
   }
   s.solides.forEach((ligne, y) => {
-    depuisLigne(ligne, '').forEach((v, x) => { c.solides[c.index(x, y)] = v })
+    [...ligne].forEach((car, x) => {
+      if (x < c.largeur) c.solides[c.index(x, y)] = caractereEnMatiere(car)
+    })
   })
   return c
 }

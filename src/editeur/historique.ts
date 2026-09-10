@@ -76,7 +76,7 @@ export class Historique {
 
 /** Une case qui a change : ou, et ce qu'elle valait de part et d'autre. */
 export interface Changement {
-  tableau: Int32Array | Uint8Array
+  tableau: Int32Array | Uint16Array | Uint8Array
   index: number
   avant: number
   apres: number
@@ -90,7 +90,7 @@ export interface Changement {
  * tableau que plus personne ne regarde.
  */
 export function differences(
-  vivant: Int32Array | Uint8Array, photo: Int32Array | Uint8Array,
+  vivant: Int32Array | Uint16Array | Uint8Array, photo: Int32Array | Uint16Array | Uint8Array,
 ): Changement[] {
   const out: Changement[] = []
   for (let i = 0; i < vivant.length; i++) {

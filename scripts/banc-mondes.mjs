@@ -1723,6 +1723,63 @@ console.log('\n--- un projet enregistre puis relu ---')
       LANGUES_DEMO.every((l) => TEXTES_DEMO[l]), LANGUES_DEMO.join(', '))
   }
 
+  /*
+   * L'EDITEUR NE DOIT PAS LAISSER COMPOSER CE QUE LE FICHIER PERD.
+   *
+   * Les cinq matieres se combinent librement ; les six formes de pente
+   * s'excluent — une case n'a qu'une surface. Le format le sait : il ecrit une
+   * FORME et non une somme de drapeaux. Si le panneau proposait les pentes en
+   * cases a cocher, on pourrait peindre « solide et montant a droite », et
+   * l'enregistrement en perdrait la moitie, en silence, jusqu'a la
+   * reouverture.
+   *
+   * On verifie donc la propriete elle-meme : toute matiere que le panneau peut
+   * produire survit a l'aller-retour.
+   */
+  {
+    const { MATIERES, FORMES_PENTE_NOMMEES, PENTE, BLESSANTE, SOLIDE,
+            matiereEnCaractere, caractereEnMatiere } =
+      await import('../src/tuiles/tilemap.ts')
+    const { readFileSync } = await import('node:fs')
+
+    // Ce que le panneau peut produire : toute combinaison des cinq cases a
+    // cocher, avec au plus une forme de pente — et « blessante » seule
+    // survivant au choix d'une pente.
+    const possibles = new Set()
+    const libres = MATIERES.reduce((n, m) => n | m.drapeau, 0)
+    for (let v = 0; v <= libres; v++) possibles.add(v)
+    for (const f of FORMES_PENTE_NOMMEES) {
+      possibles.add(f.drapeaux)
+      possibles.add(f.drapeaux | BLESSANTE)
+    }
+    const perdues = [...possibles].filter((v) => caractereEnMatiere(matiereEnCaractere(v)) !== v)
+    check('toute matière que le panneau peut composer survit à l’enregistrement',
+      perdues.length === 0,
+      perdues.length ? `${perdues.length} perdues, ex. ${perdues[0]}` : `${possibles.size} combinaisons`)
+
+    // Et le revers : le panneau ne DOIT PAS pouvoir en composer d'autres. On
+    // lit sa source — une pente qui reviendrait dans la liste des cases a
+    // cocher ferait tomber cette ligne.
+    check('et les pentes ne sont pas des cases à cocher',
+      MATIERES.every((m) => (m.drapeau & PENTE) === 0)
+      && FORMES_PENTE_NOMMEES.length === 6
+      && FORMES_PENTE_NOMMEES.every((f) => (f.drapeaux & ~PENTE) === 0),
+      `${MATIERES.length} cases à cocher, ${FORMES_PENTE_NOMMEES.length} formes exclusives`)
+
+    const source = readFileSync(new URL('../src/editeur/palette-panneau.ts', import.meta.url), 'utf8')
+    check('choisir une pente efface ce qui la contredirait',
+      source.includes('courante & ~PENTE') && source.includes('(courante & BLESSANTE) | f.drapeaux'),
+      'sinon « solide et montant à droite » se peint, et se perd à l’enregistrement')
+
+    // Le cas qui a dormi : une pente montant a GAUCHE valait soixante-quatre,
+    // sortait « z » en base trente-six bornee, et se relisait en mur.
+    const gauche = FORMES_PENTE_NOMMEES[1].drapeaux
+    check('une pente montant à GAUCHE se relit comme une pente montant à gauche',
+      caractereEnMatiere(matiereEnCaractere(gauche)) === gauche
+      && (caractereEnMatiere(matiereEnCaractere(gauche)) & SOLIDE) === 0,
+      `« ${matiereEnCaractere(gauche)} » — elle sortait « z » et se relisait en mur`)
+  }
+
   // Les matieres traversent l'aller-retour, y compris celles qui ne sont pas
   // du solide. C'est ce qui permet a une pointe de rester une pointe.
   {

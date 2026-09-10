@@ -98,7 +98,7 @@ export class Edition {
   private photo: {
     cases: Int32Array[]
     presence: (Uint8Array | null)[]
-    solides: Uint8Array
+    solides: Uint16Array
   } | null = null
   private jeu: Jeu
   private carte: Carte

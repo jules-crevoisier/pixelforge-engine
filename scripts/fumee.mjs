@@ -133,6 +133,44 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   const drapeaux = await p.$$eval('#paletteGrille button', b => b.map(x => x.textContent))
   ok('la palette de matières montre les drapeaux',
     drapeaux.includes('Blessante') && drapeaux.includes('Plateforme'), drapeaux.join(', '))
+  ok('et les six formes de pente, demi-pentes comprises',
+    ['Pente ↗', 'Pente ↖', 'Demi ↗ bas', 'Demi ↗ haut', 'Demi ↖ bas', 'Demi ↖ haut']
+      .every((n) => drapeaux.includes(n)),
+    drapeaux.filter((n) => n.startsWith('Pente') || n.startsWith('Demi')).join(', '))
+
+  /*
+   * Les pentes S'EXCLUENT, et cela ne se verifie qu'en cliquant.
+   *
+   * On coche « Solide », puis « Demi ↗ bas ». Si le panneau les combinait, la
+   * matiere vaudrait 161 — que le fichier ne sait pas ecrire, et qui se
+   * perdrait au premier enregistrement. On veut 160 : la pente seule.
+   */
+  const matiereCourante = () => p.evaluate(() => window.pfe.edition.etat.matiere)
+  const cliquerMatiere = async (nom) => {
+    await p.click(`xpath=//*[@id="paletteGrille"]/button[normalize-space(text())="${nom}"]`)
+    await p.waitForTimeout(60)
+  }
+  // « Solide » est coche au depart : on ne clique que s'il ne l'est pas, sinon
+  // le clic le DECOCHE et la mesure suivante ne prouve plus rien.
+  if (((await matiereCourante()) & 1) === 0) await cliquerMatiere('Solide')
+  const apresSolide = await matiereCourante()
+  await cliquerMatiere('Demi ↗ bas')
+  const apresPente = await matiereCourante()
+  ok('choisir une pente efface « solide », qui la contredirait',
+    (apresSolide & 1) === 1 && apresPente === 160,
+    `solide ${apresSolide}, puis pente ${apresPente} — 161 serait perdu à l’enregistrement`)
+  await cliquerMatiere('Demi ↖ haut')
+  const apresAutre = await matiereCourante()
+  ok('et deux formes de pente ne se cumulent jamais',
+    apresAutre === 448,
+    `${apresAutre} — 608 voudrait dire « monte à droite ET à gauche »`)
+  await cliquerMatiere('Blessante')
+  ok('mais « blessante » se coche par-dessus : une rampe hérissée existe',
+    (await matiereCourante()) === 452, `${await matiereCourante()}`)
+  await cliquerMatiere('Demi ↖ haut')
+  ok('et recliquer la forme choisie la retire',
+    (await matiereCourante()) === 4, `${await matiereCourante()} — il reste « blessante »`)
+
   await p.click('[data-outil="terrain"]')
 
   await p.click('#jouer')

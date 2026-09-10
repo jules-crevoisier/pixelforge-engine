@@ -37,6 +37,7 @@ const { ISO, caseVersMonde } = await import('../src/noyau/projection.ts')
 const { espece } = await import('../src/runtime/entites.ts')
 const { son } = await import('../src/runtime/son.ts')
 const { musique, voie, frequenceDe, dureeDe } = await import('../src/runtime/musique.ts')
+const M = await import('../src/tuiles/tilemap.ts')
 
 /* Un projet minuscule mais complet : un mur, une collision, un noeud. */
 const carte = new Carte(5, 3, 16)
@@ -122,10 +123,42 @@ const TEXTES = {
 const NOTES = ['la4', 'la3', 'do4', 'do#4', 'si4', 'la1', 'la-1', '.', '-', 'zz4', 'la']
 const FREQUENCES = NOTES.map((n) => frequenceDe(n))
 
+/*
+ * La table de reference des MATIERES.
+ *
+ * On demande a chaque portage, pour chaque caractere que le format peut
+ * ecrire : est-ce solide, et ou est le sol dans chaque colonne de pixels ?
+ * C'est la ou deux portages divergent sans qu'on le voie — un mur herisse de
+ * pointes qui devient traversable, un pixel d'ecart sur une cote. Le moteur
+ * repond ici ; les autres devront repondre pareil.
+ */
+const TUILE_MATIERE = 16
+const MATIERES_ESSAI = []
+for (let v = 0; v <= (M.SOLIDE | M.PLATEFORME | M.BLESSANTE | M.ECHELLE | M.LIQUIDE); v++) {
+  MATIERES_ESSAI.push(v)
+}
+for (const f of [M.PENTE_DROITE, M.PENTE_GAUCHE,
+  M.PENTE_DROITE | M.PENTE_DEMI, M.PENTE_DROITE | M.PENTE_DEMI | M.PENTE_HAUTE,
+  M.PENTE_GAUCHE | M.PENTE_DEMI, M.PENTE_GAUCHE | M.PENTE_DEMI | M.PENTE_HAUTE]) {
+  MATIERES_ESSAI.push(f)
+  MATIERES_ESSAI.push(f | M.BLESSANTE)
+}
+const CARACTERES_MATIERE = MATIERES_ESSAI.map(M.matiereEnCaractere)
+const SOLIDITE = MATIERES_ESSAI.map((v) => (v & M.SOLIDE) !== 0)
+const HAUTEURS = MATIERES_ESSAI.flatMap((v) =>
+  [...Array(TUILE_MATIERE)].map((q, x) => M.hauteurSol(v, x, TUILE_MATIERE)))
+
+/* Une carte d'une seule rangee, ou chaque case porte l'une de ces matieres :
+ * c'est par elle que les portages liront la table. */
+const carteMatieres = new Carte(MATIERES_ESSAI.length, 1, TUILE_MATIERE)
+carteMatieres.ajouterCalque('sol')
+MATIERES_ESSAI.forEach((v, i) => { carteMatieres.solides[i] = v })
+
 const projet = serialiserProjet(
   'demo', { largeur: 320, hauteur: 180 },
   new Palette('donjon', ['#14101a', '#7a7466'].map(depuisHex)),
-  [{ nom: 'salle', carte }], [{ nom: 'principale', racine }],
+  [{ nom: 'salle', carte }, { nom: 'matieres', carte: carteMatieres }],
+  [{ nom: 'principale', racine }],
   CLIPS,
   [PLANCHE],
   // Une projection isometrique : c'est celle ou les portages divergent, et
@@ -174,7 +207,7 @@ if (dispo('python3')) {
   writeFileSync(join(dir, 'essai.py'), `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(dir)})
-from projet_charge import Projet, Espece, VIDE, frequence_de, duree_de_musique
+from projet_charge import Projet, Espece, VIDE, frequence_de, duree_de_musique, hauteur_sol
 
 p = Projet.charger(${JSON.stringify(join(dir, 'projet.json'))})
 c = p.cartes[0]
@@ -218,6 +251,11 @@ sortie = {
     "texteInvente": p.texte("clef.qui.n.existe.pas", "fr"),
     "texteValeurs": p.texte("hud.vies", "fr", n=3),
     "trous": p.trous_de_langue("en", "fr"),
+    "solidite": [p.cartes[1].est_solide(i, 0) for i in range(p.cartes[1].largeur)],
+    "matieres": [p.cartes[1].matiere(i, 0) for i in range(p.cartes[1].largeur)],
+    "hauteurs": [hauteur_sol(p.cartes[1].matiere(i, 0), x, ${TUILE_MATIERE})
+                 for i in range(p.cartes[1].largeur) for x in range(${TUILE_MATIERE})],
+    "dehors": [p.cartes[1].est_solide(-1, 0), p.cartes[1].est_solide(0, -1)],
 }
 print(json.dumps(sortie))
 `)
@@ -283,6 +321,19 @@ print(json.dumps(sortie))
       && v.texteManquant === 'menu.quitter' && v.texteInvente === 'clef.qui.n.existe.pas'
       && v.texteValeurs === 'Vies : 3' && v.trous.join(',') === 'menu.quitter',
       `« ${v.texteEn} », « ${v.texteManquant} », « ${v.texteValeurs} » · trou : ${v.trous.join(', ')}`)
+    const fauxSolides = MATIERES_ESSAI.filter((q, i) => v.solidite[i] !== SOLIDITE[i])
+    check('Python dit solide exactement ce que le moteur dit solide',
+      v.matieres.join(',') === MATIERES_ESSAI.join(',') && fauxSolides.length === 0
+      && v.dehors[0] === true && v.dehors[1] === true,
+      fauxSolides.length
+        ? `${fauxSolides.length} fausses, ex. « ${M.matiereEnCaractere(fauxSolides[0])} » = ${fauxSolides[0]}`
+        : `${MATIERES_ESSAI.length} matieres, dehors compris — un mur herisse de pointes vaut 5, pas 1`)
+    const fauxSols = HAUTEURS.filter((h, i) => v.hauteurs[i] !== h)
+    check('Python place le sol des pentes a la MEME hauteur, colonne par colonne',
+      fauxSols.length === 0,
+      fauxSols.length
+        ? `${fauxSols.length} colonnes decalees sur ${HAUTEURS.length}`
+        : `${HAUTEURS.length} colonnes, demi-pentes comprises`)
     const ecarts = TABLE.filter((e, i) => v.images[i] !== e.image)
     check('Python rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -370,6 +421,15 @@ fn main() {
         .collect();
     println!("{}", places.join(","));
 
+    let caracteres: Vec<char> = vec![${CARACTERES_MATIERE.map((c) => `'${c}'`).join(', ')}];
+    let matieres: Vec<i32> = caracteres.iter().map(|c| matiere_du_caractere(*c)).collect();
+    println!("{}", matieres.iter().map(|m| m.to_string()).collect::<Vec<_>>().join(","));
+    let hauteurs: Vec<String> = matieres
+        .iter()
+        .flat_map(|m| (0..${TUILE_MATIERE}).map(move |x| hauteur_sol(*m, x, ${TUILE_MATIERE}).to_string()))
+        .collect();
+    println!("{}", hauteurs.join(","));
+
     let notes: Vec<&str> = vec![${NOTES.map((n) => JSON.stringify(n)).join(', ')}];
     let frequences: Vec<String> = notes
         .iter()
@@ -401,7 +461,16 @@ fn main() {
       ecartsPixels.length
         ? `${ecartsPixels.length} faux sur ${PIXELS.length}, ex. dessin ${ecartsPixels[0].i} en ${ecartsPixels[0].x},${ecartsPixels[0].y}`
         : `${PIXELS.length} pixels, vide compris`)
-    const frequences = (lignes[3] || '').split(',').map(Number)
+    const matieresRs = (lignes[3] || '').split(',').map(Number)
+    check('Rust decode chaque caractere de matiere comme le moteur',
+      matieresRs.join(',') === MATIERES_ESSAI.join(','),
+      `${MATIERES_ESSAI.length} matieres — dont les six formes de pente et leur version blessante`)
+    const hauteursRs = (lignes[4] || '').split(',').map(Number)
+    const fauxSolsRs = HAUTEURS.filter((h, i) => hauteursRs[i] !== h)
+    check('Rust place le sol des pentes a la MEME hauteur, colonne par colonne',
+      hauteursRs.length === HAUTEURS.length && fauxSolsRs.length === 0,
+      fauxSolsRs.length ? `${fauxSolsRs.length} colonnes decalees` : `${HAUTEURS.length} colonnes`)
+    const frequences = (lignes[5] || '').split(',').map(Number)
     const ecartsNotesRs = NOTES.filter((n, i) => Math.abs(frequences[i] - FREQUENCES[i]) > 1e-9)
     check('Rust convertit chaque note en la MEME frequence que le moteur',
       frequences.length === NOTES.length && ecartsNotesRs.length === 0,
@@ -464,6 +533,11 @@ console.log(JSON.stringify({
   texteInvente: m.texteDe(p, 'clef.qui.n.existe.pas', 'fr'),
   texteValeurs: m.texteDe(p, 'hud.vies', 'fr', { n: 3 }),
   trous: m.trousDeLangue(p, 'en', 'fr'),
+  solidite: ${JSON.stringify([...MATIERES_ESSAI.keys()])}.map((i) => m.estSolide(p.cartes[1], i, 0)),
+  matieres: ${JSON.stringify([...MATIERES_ESSAI.keys()])}.map((i) => m.matiereDeCase(p.cartes[1], i, 0)),
+  hauteurs: ${JSON.stringify([...MATIERES_ESSAI.keys()])}.flatMap(
+    (i) => [...Array(${TUILE_MATIERE})].map((q, x) => m.hauteurSol(m.matiereDeCase(p.cartes[1], i, 0), x, ${TUILE_MATIERE}))),
+  dehors: [m.estSolide(p.cartes[1], -1, 0), m.estSolide(p.cartes[1], 0, -1)],
 }))
 `)
   const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
@@ -502,6 +576,16 @@ console.log(JSON.stringify({
       && v.texteManquant === 'menu.quitter' && v.texteInvente === 'clef.qui.n.existe.pas'
       && v.texteValeurs === 'Vies : 3' && v.trous.join(',') === 'menu.quitter',
       `« ${v.texteEn} », « ${v.texteManquant} », « ${v.texteValeurs} » · trou : ${v.trous.join(', ')}`)
+    const fauxSolidesTs = MATIERES_ESSAI.filter((q, i) => v.solidite[i] !== SOLIDITE[i])
+    check('TypeScript dit solide exactement ce que le moteur dit solide',
+      v.matieres.join(',') === MATIERES_ESSAI.join(',') && fauxSolidesTs.length === 0
+      && v.dehors[0] === true && v.dehors[1] === true,
+      fauxSolidesTs.length ? `${fauxSolidesTs.length} fausses`
+        : `${MATIERES_ESSAI.length} matieres, dehors compris`)
+    const fauxSolsTs = HAUTEURS.filter((h, i) => v.hauteurs[i] !== h)
+    check('TypeScript place le sol des pentes a la MEME hauteur, colonne par colonne',
+      fauxSolsTs.length === 0,
+      fauxSolsTs.length ? `${fauxSolsTs.length} colonnes decalees` : `${HAUTEURS.length} colonnes`)
     const ecarts = TABLE.filter((t, i) => v.images[i] !== t.image)
     check('TypeScript rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -520,20 +604,27 @@ for (const [cible, marqueurs] of [
     'class Espece', 'public string comportement',
     'class Musique', 'public static float FrequenceDe(string note)', 'public Son timbre;',
     'public string Texte(string clef, string langue)', 'return clef;',
-    'Dictionary<string, List<string>> touches']],
+    'Dictionary<string, List<string>> touches',
+    'static class Matieres', 'public const int PENTE_DEMI = 128',
+    'public static int HauteurSol(int matiere, int x, int tuile)',
+    'return (Matiere(cx, cy) & Matieres.SOLIDE) != 0;']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
     'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
     'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde',
     'func espece(', 'static func comportement_de', 'func espece_du_noeud',
     'func musique(', 'static func frequence_de', 'func texte(clef: String, langue: String)',
-    'return table.get(clef, clef)', 'var touches: Dictionary']],
+    'return table.get(clef, clef)', 'var touches: Dictionary',
+    'static func matiere_de_case', 'static func hauteur_sol', 'const PENTE_DEMI := 128',
+    'return (matiere_de_case(carte, cx, cy) & SOLIDE) != 0']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
     'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
     'function Projet.pixel_de_planche', 'function Projet:planche(',
     'function Projet.case_vers_monde', 'function Projet:espece(',
     'function Projet.comportement_de', 'function Projet:musique(',
     'function Projet.frequence_de', 'function Projet:texte(clef, langue)',
-    'self.touches = donnees.touches']],
+    'self.touches = donnees.touches',
+    'function Projet.matiere_de_case', 'function Projet.hauteur_sol',
+    'Projet.PENTE_DEMI = 128', 'function Projet.a_matiere']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

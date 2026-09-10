@@ -55,11 +55,34 @@ export interface GrilleSolide {
   plateformeMobileSous?(r: Rect): boolean
 }
 
-/** Les drapeaux, redeclares ici pour que la collision ne dependeplus des tuiles. */
+/** Les drapeaux, redeclares ici pour que la collision ne depende plus des tuiles. */
 export const M_SOLIDE = 1
 export const M_PLATEFORME = 2
 export const M_PENTE_DROITE = 32
 export const M_PENTE_GAUCHE = 64
+export const M_PENTE_DEMI = 128
+export const M_PENTE_HAUTE = 256
+
+/**
+ * La hauteur du sol dans une case de pente, comptee depuis le HAUT.
+ *
+ * Elle est ici et non importee de `tuiles/tilemap.ts` pour la meme raison que
+ * les drapeaux ci-dessus : la collision ne doit rien devoir a l'editeur. Mais
+ * c'est LA MEME regle, et un banc verifie qu'elles ne divergent pas — pour
+ * chaque forme et chaque colonne. Deux copies qui divergent, c'est un
+ * personnage enfonce d'un pixel dans la cote sans qu'on sache laquelle a tort.
+ */
+export function hauteurPente(m: number, x: number, tuile: number): number {
+  const versDroite = (m & M_PENTE_DROITE) !== 0
+  // L'avancee LE LONG de la montee : on lit la case a l'envers quand elle
+  // monte vers la gauche, ce qui evite d'ecrire deux fois la meme formule.
+  const u = versDroite ? x : tuile - 1 - x
+  const demi = (m & M_PENTE_DEMI) !== 0
+  // La moitie haute d'une demi-pente part a mi-case : c'est ce qui raccorde
+  // les deux cases sans marche.
+  const depart = demi && (m & M_PENTE_HAUTE) !== 0 ? (tuile >> 1) - 1 : tuile - 1
+  return depart - (demi ? u >> 1 : u)
+}
 
 /**
  * Le sommet du sol sous ce rectangle, en pixels du monde. Null : pas de sol.
@@ -116,10 +139,7 @@ export function sommetPente(g: GrilleSolide, r: Rect): number | null {
     const xLocal = (m & M_PENTE_DROITE) !== 0
       ? droit - cx * g.tuile
       : gauche - cx * g.tuile
-    const h = (m & M_PENTE_DROITE) !== 0
-      ? g.tuile - 1 - xLocal
-      : xLocal
-    const y = cy * g.tuile + h
+    const y = cy * g.tuile + hauteurPente(m, xLocal, g.tuile)
     // On ne remonte jamais AU-DESSUS du corps : une pente dont le sommet est
     // plus haut que les pieds appartient a la case suivante, pas a celle-ci.
     if (y < bas - g.tuile) continue

@@ -524,6 +524,51 @@ export class Plateformeur {
       this.acc.bloquerY()
       break
     }
+
+    this.collerAuSol(g, corps)
+  }
+
+  /**
+   * Le collage au sol : on ne decolle pas pour une marche d'un pixel.
+   *
+   * ## Le defaut qu'il corrige
+   *
+   * Une pente ne descend jamais plus bas que `tuile - 1` : au pied d'une cote,
+   * il reste donc UN pixel entre le dernier pixel de la rampe et le dessus de
+   * la case plate qui suit. Un pixel. Le corps le franchit en tombant, ce qui
+   * le met en l'air trois ou quatre images — le temps que la gravite reprenne.
+   *
+   * Trois images en l'air ne se voient pas. Ce qu'elles font, si : elles
+   * declenchent le coyote, changent l'animation en « chute », coupent les
+   * poussieres de course, et rendent possible un saut aerien juste apres une
+   * cote. Le personnage descend une colline et l'on croit qu'il sautille.
+   *
+   * ## Pourquoi la limite est `montee`
+   *
+   * C'est deja la hauteur qu'on grimpe sans sauter. Descendre ce qu'on
+   * remonte est la seule limite qui ne demande pas un deuxieme reglage — et
+   * deux reglages pour une meme notion finissent toujours par se contredire.
+   *
+   * ## Pourquoi ca ne colle pas au bord d'une falaise
+   *
+   * On ne colle qu'a ce qu'on TROUVE : sous un vrai vide, la sonde ne
+   * rencontre rien dans les trois pixels et le corps tombe normalement. Le
+   * collage ne retient jamais personne au-dessus du vide.
+   */
+  private collerAuSol(g: GrilleSolide, corps: Corps2D): void {
+    // Seulement si l'on etait au sol et qu'on ne monte pas : coller pendant
+    // un saut arracherait le personnage du ciel.
+    if (!this.auSol || this.vy < 0) return
+    const b = corps.boite
+    const sonde = (d: number): Rect => rect(corps.x + b.x, corps.y + b.y + d, b.l, b.h)
+    // Deja au contact : rien a faire. C'est le cas de loin le plus frequent,
+    // et il sort avant toute autre mesure.
+    if (toucheSolide(g, sonde(1))) return
+    const pente = sommetPente(g, sonde(0))
+    if (pente !== null && corps.y + b.y + b.h >= pente - 1) return
+    for (let d = 2; d <= this.r.montee + 1; d++) {
+      if (toucheSolide(g, sonde(d))) { corps.y += d - 1; return }
+    }
   }
 
   private corrigerCoin(g: GrilleSolide, corps: Corps2D): boolean {

@@ -572,14 +572,14 @@ avec un terrain.
 npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
-npm run banc:plateforme #  51 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 220 vérifications : mondes, animations, combat, étages, scripts, projets, historique
-npm run banc:langages   #  81 vérifications : chargeurs, accord entre langages, paquets
+npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
+npm run banc:mondes     # 224 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:langages   #  87 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #   9 mesures de cadence — mesurées, pas promises
-npm run fumee           #  72 vérifications de l'éditeur, dans un vrai navigateur
-npm run agent           # la grille : 57 critères, et ce qu'il reste à faire
+npm run fumee           #  77 vérifications de l'éditeur, dans un vrai navigateur
+npm run agent           # la grille : 61 critères, et ce qu'il reste à faire
 npm run build
 ```
 
@@ -850,6 +850,55 @@ sont sur sa frontière haute, donc la rangée du dernier pixel du corps est cell
 **au-dessus** de la pente — et la pente devient invisible. On en regarde
 maintenant deux.
 
+**Les demi-pentes.** Deux cases pour monter d'une : un pixel toutes les deux
+colonnes. Ce n'est pas un arrondi — un demi est exact, et deux cases voisines se
+raccordent toujours au pixel près. Un tiers, un quart seraient le même calcul
+avec un autre diviseur ; on s'arrête à deux parce que trois cases pour monter
+d'une case de seize pixels donne une côte qu'on ne distingue plus d'un sol plat,
+et parce que chaque raideur de plus est une tuile de plus à dessiner.
+
+Les six formes — deux directions à quarante-cinq degrés, quatre demi-cases —
+**s'excluent** : une case n'a qu'une surface. L'éditeur ne les propose donc pas
+en cases à cocher, contrairement aux cinq matières. Composer « solide et montant
+à droite » aurait été possible, et le fichier en aurait perdu la moitié à
+l'enregistrement — la perte qu'on ne remarque qu'en rouvrant le projet.
+
+**Ce que l'écriture d'une case a coûté.** Une case de collision tient en un
+caractère : une rangée reste une ligne, et un diff montre la case qui a changé.
+C'était de la base trente-six, bornée à trente-cinq « pour que rien ne casse en
+silence ». Elle cassait en silence : une pente montant à **gauche** vaut
+soixante-quatre, sortait `z`, et se relisait en mur. Toute colline tournée vers
+la gauche se rouvrait fausse, et rien ne le disait.
+
+Deux choses avaient rendu ça possible. Le format écrivait les matières
+lui-même au lieu d'appeler la fonction qui sait les écrire — deux endroits pour
+une valeur, donc un jour où ils divergent. Et la grille tenait dans un tableau
+d'**octets**, alors que les matières comptent maintenant neuf drapeaux : « moitié
+haute » vaut deux cent cinquante-six et y repassait à zéro.
+
+L'alphabet passe à soixante-deux caractères, la grille à seize bits, et les
+valeurs 0 à 31 ne bougent pas — un fichier écrit avant se relit sans une ligne
+de migration. Un contrôle parcourt maintenant les quarante-quatre matières que
+le format peut porter et vérifie l'aller-retour de chacune, plus qu'aucune ne
+s'écrit comme une autre.
+
+**Et les six portages lisent la même chose.** Ils comparaient le caractère à
+`'1'`. Un mur hérissé de pointes vaut cinq : il était traversable dans le jeu
+porté, et solide nulle part ailleurs. Ils décodent maintenant les drapeaux, et
+un banc leur demande, pour chaque matière et **chaque colonne de pixels**, où se
+trouve le sol — sept cent quatre réponses, qui doivent toutes tomber juste.
+
+**On ne décolle pas pour une marche d'un pixel.** Une pente ne descend jamais
+plus bas que `tuile - 1` : au pied d'une côte il reste un pixel avant la case
+plate. Le corps le franchissait en tombant, ce qui le mettait en l'air trois ou
+quatre images. Trois images ne se voient pas ; ce qu'elles font, si — elles
+déclenchent le coyote, passent l'animation en « chute », coupent les poussières
+de course, et rendent possible un saut aérien juste après une côte. Le
+personnage descend une colline et l'on croit qu'il sautille. Le contrôleur colle
+donc au sol jusqu'à la hauteur qu'il sait monter, et pas un pixel de plus : au
+bord d'une falaise, la sonde ne rencontre rien et le corps tombe normalement.
+Une vérification garde chacun des deux côtés.
+
 **Le hit-stop.** Un coup qui touche sans que rien ne s'arrête se lit comme un
 coup qui *traverse*. Deux ou trois images de gel, et le même coup **porte** :
 l'œil a le temps de voir la rencontre. C'est la technique la moins chère et la
@@ -993,9 +1042,9 @@ pire défaut d'une mesure.
     Faire un jeu sans lire le moteur               8/8
     Le multijoueur, et ce qu'il exige d'abord      6/6
     Ce qu'on affirme sans l'avoir mesuré           4/4
-    Ce qu'un jeu de plateforme doit avoir          5/5
+    Ce qu'un jeu de plateforme doit avoir          9/9
     Ce qu'un jeu a en plus de son gameplay        13/13
-                                          660 vérifications
+                                          692 vérifications
 
 Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
 libellés jamais en clair, accord des six portages sur les notes et les textes —
@@ -1003,9 +1052,15 @@ sont partis rouges. L'un d'eux l'est resté après coup : le `.wav` était écri
 branché sur les deux paquets, et **rien ne vérifiait que l'archive le
 contenait**. Trois vérifications de plus, et le trou s'est fermé.
 
-Elle est de nouveau entièrement verte, donc elle ne mesure plus rien. Ce qui
-reste et qu'elle dira dès qu'on l'élargira : des pentes à d'autres angles que
-quarante-cinq degrés.
+Le tour suivant a demandé les demi-pentes. Elles ont coûté trois défauts qui
+dormaient depuis longtemps et qu'aucun banc ne regardait : une pente montant à
+gauche que l'enregistrement transformait en mur, neuf drapeaux dans un tableau
+d'octets, et six chargeurs qui comparaient une matière au caractère `'1'`. Aucun
+des trois n'aurait été trouvé en écrivant les demi-pentes ; ils l'ont été en
+écrivant les vérifications qui vont avec.
+
+Elle est de nouveau entièrement verte, donc elle ne mesure plus rien. C'est le
+moment de l'élargir, pas de s'en féliciter.
 
 Le relevé complet est dans [`docs/evaluation.md`](docs/evaluation.md).
 

@@ -345,11 +345,98 @@ export function deplierCases(c: Carte, calque: Calque): Int32Array {
   return out
 }
 
+/**
+ * Les matieres, en drapeaux.
+ *
+ * SOLIDE, PLATEFORME, BLESSANTE, ECHELLE et LIQUIDE se combinent librement.
+ * Les pentes sont a part : une pente n'est jamais solide — marquee solide,
+ * elle bloque comme un mur et l'on se cogne dans le bas de la cote au lieu de
+ * la monter.
+ */
+export const SOLIDE = 1
+export const PLATEFORME = 2
+export const BLESSANTE = 4
+export const ECHELLE = 8
+export const LIQUIDE = 16
+export const PENTE_DROITE = 32
+export const PENTE_GAUCHE = 64
+/** Deux cases pour monter d'une, au lieu d'une seule. */
+export const PENTE_DEMI = 128
+/** Parmi les deux cases d'une demi-pente, celle du haut. */
+export const PENTE_HAUTE = 256
+
+/**
+ * L'alphabet d'une case de collision : un caractere, une matiere.
+ *
+ * Les trente-deux premieres valeurs sont les cinq matieres combinees, ecrites
+ * comme en base trente-six. A partir de trente-deux, le caractere designe une
+ * FORME de pente, avec ou sans « blessante » — une rampe herissee de pointes
+ * existe, les autres combinaisons n'ont pas de sens sur une pente.
+ */
+const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const FORMES_PENTE = [
+  PENTE_DROITE,
+  PENTE_GAUCHE,
+  PENTE_DROITE | PENTE_DEMI,
+  PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+  PENTE_GAUCHE | PENTE_DEMI,
+  PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+]
+const BASE_PENTE = 32
+
+/** Les drapeaux d'un caractere de la grille. Dehors : SOLIDE. */
+export function matiereDeCase(c: Carte, cx: number, cy: number): number {
+  if (cx < 0 || cy < 0 || cx >= c.largeur || cy >= c.hauteur) return SOLIDE
+  const ligne = c.solides[cy]
+  if (!ligne || cx >= ligne.length) return SOLIDE
+  const v = ALPHABET.indexOf(ligne[cx]!)
+  if (v < 0) return 0
+  if (v < BASE_PENTE) return v
+  const rang = v - BASE_PENTE
+  const forme = FORMES_PENTE[rang % FORMES_PENTE.length]
+  if (forme === undefined) return 0
+  return forme | (rang >= FORMES_PENTE.length ? BLESSANTE : 0)
+}
+
+/**
+ * Vrai si la case bloque le passage.
+ *
+ * On teste le DRAPEAU, pas le caractere. Comparer a « 1 » — ce que faisait ce
+ * chargeur — rendait faux pour un mur herisse de pointes, qui vaut cinq :
+ * le mur devenait traversable dans le jeu porte, et nulle part ailleurs.
+ */
+export function estSolide(c: Carte, cx: number, cy: number): boolean {
+  return (matiereDeCase(c, cx, cy) & SOLIDE) !== 0
+}
+
+/**
+ * La hauteur du sol dans une case, pour une colonne de pixels.
+ *
+ * Comptee depuis le HAUT de la case : zero veut dire « le sol est au sommet
+ * de la case », la taille d'une tuile veut dire « il n'y a pas de sol ici ».
+ * C'est la fonction qu'un moteur d'accueil doit avoir juste pour que les
+ * pentes se marchent, et celle ou deux portages divergent d'un pixel sans que
+ * personne ne sache lequel a tort.
+ */
+export function hauteurSol(matiere: number, x: number, tuile: number): number {
+  const versDroite = (matiere & PENTE_DROITE) !== 0
+  if (!versDroite && (matiere & PENTE_GAUCHE) === 0) {
+    return (matiere & SOLIDE) !== 0 ? 0 : tuile
+  }
+  // L'avancee LE LONG de la montee : on lit la case a l'envers quand elle
+  // monte vers la gauche, ce qui evite d'ecrire deux fois la meme formule.
+  const u = versDroite ? x : tuile - 1 - x
+  const demi = (matiere & PENTE_DEMI) !== 0
+  const depart = demi && (matiere & PENTE_HAUTE) !== 0 ? (tuile >> 1) - 1 : tuile - 1
+  return depart - (demi ? u >> 1 : u)
+}
+
+/** Un plan de la collision, un octet de drapeaux par case. */
 export function deplierSolides(c: Carte): Uint8Array {
   const out = new Uint8Array(c.largeur * c.hauteur)
-  c.solides.forEach((ligne, y) => {
-    for (let x = 0; x < ligne.length; x++) out[y * c.largeur + x] = ligne[x] === '1' ? 1 : 0
-  })
+  for (let y = 0; y < c.hauteur; y++) {
+    for (let x = 0; x < c.largeur; x++) out[y * c.largeur + x] = matiereDeCase(c, x, y)
+  }
   return out
 }
 
@@ -544,10 +631,89 @@ namespace PixelForge
             return sortie;
         }
 
+        /// <summary>
+        /// Les drapeaux d'une case de collision. Dehors : SOLIDE.
+        ///
+        /// Un caractere, une matiere. Les trente-deux premieres valeurs sont
+        /// les cinq matieres combinees ; a partir de trente-deux, le
+        /// caractere designe une FORME de pente.
+        /// </summary>
+        public int Matiere(int cx, int cy)
+        {
+            if (cx < 0 || cy < 0 || cx >= largeur || cy >= hauteur) return Matieres.SOLIDE;
+            if (solides == null || cy >= solides.Count) return Matieres.SOLIDE;
+            var ligne = solides[cy];
+            if (cx >= ligne.Length) return Matieres.SOLIDE;
+            return Matieres.DuCaractere(ligne[cx]);
+        }
+
+        /// <summary>
+        /// Vrai si la case bloque le passage.
+        ///
+        /// On teste le DRAPEAU, pas le caractere. Comparer a « 1 » rendait
+        /// faux pour un mur herisse de pointes, qui vaut cinq : le mur
+        /// devenait traversable dans le jeu porte, et nulle part ailleurs.
+        /// </summary>
         public bool Solide(int cx, int cy)
         {
-            if (cx < 0 || cy < 0 || cx >= largeur || cy >= hauteur) return true;
-            return solides[cy][cx] == '1';
+            return (Matiere(cx, cy) & Matieres.SOLIDE) != 0;
+        }
+    }
+
+    /// <summary>Les matieres d'une case, et la lecture des pentes.</summary>
+    public static class Matieres
+    {
+        public const int SOLIDE = 1;
+        public const int PLATEFORME = 2;
+        public const int BLESSANTE = 4;
+        public const int ECHELLE = 8;
+        public const int LIQUIDE = 16;
+        public const int PENTE_DROITE = 32;
+        public const int PENTE_GAUCHE = 64;
+        /// <summary>Deux cases pour monter d'une, au lieu d'une seule.</summary>
+        public const int PENTE_DEMI = 128;
+        /// <summary>Parmi les deux cases d'une demi-pente, celle du haut.</summary>
+        public const int PENTE_HAUTE = 256;
+
+        const string ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const int BASE_PENTE = 32;
+        static readonly int[] FORMES_PENTE = {
+            PENTE_DROITE,
+            PENTE_GAUCHE,
+            PENTE_DROITE | PENTE_DEMI,
+            PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+            PENTE_GAUCHE | PENTE_DEMI,
+            PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+        };
+
+        public static int DuCaractere(char c)
+        {
+            int v = ALPHABET.IndexOf(c);
+            if (v < 0) return 0;
+            if (v < BASE_PENTE) return v;
+            int rang = v - BASE_PENTE;
+            int forme = FORMES_PENTE[rang % FORMES_PENTE.Length];
+            return forme | (rang >= FORMES_PENTE.Length ? BLESSANTE : 0);
+        }
+
+        /// <summary>
+        /// La hauteur du sol dans une case, pour une colonne de pixels.
+        /// Comptee depuis le HAUT de la case.
+        /// </summary>
+        public static int HauteurSol(int matiere, int x, int tuile)
+        {
+            bool versDroite = (matiere & PENTE_DROITE) != 0;
+            if (!versDroite && (matiere & PENTE_GAUCHE) == 0)
+            {
+                return (matiere & SOLIDE) != 0 ? 0 : tuile;
+            }
+            // L'avancee LE LONG de la montee : on lit la case a l'envers quand
+            // elle monte vers la gauche, ce qui evite la meme formule ecrite
+            // deux fois — donc corrigee une seule.
+            int u = versDroite ? x : tuile - 1 - x;
+            bool demi = (matiere & PENTE_DEMI) != 0;
+            int depart = demi && (matiere & PENTE_HAUTE) != 0 ? (tuile >> 1) - 1 : tuile - 1;
+            return depart - (demi ? u >> 1 : u);
         }
     }
 
@@ -1142,16 +1308,71 @@ static func deplier_cases(carte: Dictionary, calque: Dictionary) -> PackedInt32A
 			sortie[y * largeur + x] = int(parts[x])
 	return sortie
 
-static func est_solide(carte: Dictionary, cx: int, cy: int) -> bool:
+const SOLIDE := 1
+const PLATEFORME := 2
+const BLESSANTE := 4
+const ECHELLE := 8
+const LIQUIDE := 16
+const PENTE_DROITE := 32
+const PENTE_GAUCHE := 64
+## Deux cases pour monter d'une, au lieu d'une seule.
+const PENTE_DEMI := 128
+## Parmi les deux cases d'une demi-pente, celle du haut.
+const PENTE_HAUTE := 256
+
+const ALPHABET_MATIERE := "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const BASE_PENTE := 32
+const FORMES_PENTE := [
+	PENTE_DROITE,
+	PENTE_GAUCHE,
+	PENTE_DROITE | PENTE_DEMI,
+	PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+	PENTE_GAUCHE | PENTE_DEMI,
+	PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+]
+
+## Les drapeaux d'une case de collision. Dehors : SOLIDE.
+static func matiere_de_case(carte: Dictionary, cx: int, cy: int) -> int:
 	var largeur: int = carte.get("largeur", 0)
 	var hauteur: int = carte.get("hauteur", 0)
 	if cx < 0 or cy < 0 or cx >= largeur or cy >= hauteur:
-		return true
+		return SOLIDE
 	var lignes: Array = carte.get("solides", [])
 	if cy >= lignes.size():
-		return true
+		return SOLIDE
 	var ligne: String = lignes[cy]
-	return cx < ligne.length() and ligne[cx] == "1"
+	if cx >= ligne.length():
+		return SOLIDE
+	var v := ALPHABET_MATIERE.find(ligne[cx])
+	if v < 0:
+		return 0
+	if v < BASE_PENTE:
+		return v
+	var rang := v - BASE_PENTE
+	var forme: int = FORMES_PENTE[rang % FORMES_PENTE.size()]
+	return forme | (BLESSANTE if rang >= FORMES_PENTE.size() else 0)
+
+## Vrai si la case bloque le passage.
+##
+## On teste le DRAPEAU, pas le caractere. Comparer a « 1 » rendait faux pour un
+## mur herisse de pointes, qui vaut cinq : le mur devenait traversable dans le
+## jeu porte, et nulle part ailleurs.
+static func est_solide(carte: Dictionary, cx: int, cy: int) -> bool:
+	return (matiere_de_case(carte, cx, cy) & SOLIDE) != 0
+
+## La hauteur du sol dans une case, pour une colonne de pixels. Comptee depuis
+## le HAUT : zero veut dire « au sommet de la case », la taille d'une tuile
+## veut dire « pas de sol ici ».
+static func hauteur_sol(matiere: int, x: int, tuile: int) -> int:
+	var vers_droite := (matiere & PENTE_DROITE) != 0
+	if not vers_droite and (matiere & PENTE_GAUCHE) == 0:
+		return 0 if (matiere & SOLIDE) != 0 else tuile
+	# L'avancee LE LONG de la montee : on lit la case a l'envers quand elle
+	# monte vers la gauche, ce qui evite d'ecrire deux fois la meme formule.
+	var u := x if vers_droite else tuile - 1 - x
+	var demi := (matiere & PENTE_DEMI) != 0
+	var depart := (tuile >> 1) - 1 if demi and (matiere & PENTE_HAUTE) != 0 else tuile - 1
+	return depart - ((u >> 1) if demi else u)
 
 ## L'ordre de lecture d'un clip.
 ## L'aller-retour ne repete PAS ses extremites : 0 1 2 3 2 1, six pas et non
@@ -1256,16 +1477,82 @@ impl Carte {
         sortie
     }
 
-    pub fn est_solide(&self, cx: i32, cy: i32) -> bool {
+    /// Les drapeaux d'une case de collision. Dehors : SOLIDE.
+    pub fn matiere(&self, cx: i32, cy: i32) -> i32 {
         if cx < 0 || cy < 0 || cx >= self.largeur || cy >= self.hauteur {
-            return true;
+            return SOLIDE;
         }
-        self.solides
+        match self
+            .solides
             .get(cy as usize)
-            .and_then(|l| l.as_bytes().get(cx as usize))
-            .map(|b| *b == b'1')
-            .unwrap_or(true)
+            .and_then(|l| l.chars().nth(cx as usize))
+        {
+            Some(c) => matiere_du_caractere(c),
+            None => SOLIDE,
+        }
     }
+
+    /// Vrai si la case bloque le passage.
+    ///
+    /// On teste le DRAPEAU, pas le caractere. Comparer au chiffre un rendait
+    /// faux pour un mur herisse de pointes, qui vaut cinq : le mur devenait
+    /// traversable dans le jeu porte, et nulle part ailleurs.
+    pub fn est_solide(&self, cx: i32, cy: i32) -> bool {
+        self.matiere(cx, cy) & SOLIDE != 0
+    }
+}
+
+pub const SOLIDE: i32 = 1;
+pub const PLATEFORME: i32 = 2;
+pub const BLESSANTE: i32 = 4;
+pub const ECHELLE: i32 = 8;
+pub const LIQUIDE: i32 = 16;
+pub const PENTE_DROITE: i32 = 32;
+pub const PENTE_GAUCHE: i32 = 64;
+/// Deux cases pour monter d'une, au lieu d'une seule.
+pub const PENTE_DEMI: i32 = 128;
+/// Parmi les deux cases d'une demi-pente, celle du haut.
+pub const PENTE_HAUTE: i32 = 256;
+
+const ALPHABET_MATIERE: &str = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const BASE_PENTE: usize = 32;
+const FORMES_PENTE: [i32; 6] = [
+    PENTE_DROITE,
+    PENTE_GAUCHE,
+    PENTE_DROITE | PENTE_DEMI,
+    PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+    PENTE_GAUCHE | PENTE_DEMI,
+    PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+];
+
+/// Un caractere de la grille de collision vers ses drapeaux.
+pub fn matiere_du_caractere(c: char) -> i32 {
+    let v = match ALPHABET_MATIERE.chars().position(|a| a == c) {
+        Some(v) => v,
+        None => return 0,
+    };
+    if v < BASE_PENTE {
+        return v as i32;
+    }
+    let rang = v - BASE_PENTE;
+    let forme = FORMES_PENTE[rang % FORMES_PENTE.len()];
+    forme | if rang >= FORMES_PENTE.len() { BLESSANTE } else { 0 }
+}
+
+/// La hauteur du sol dans une case, pour une colonne de pixels. Comptee depuis
+/// le HAUT : zero veut dire « au sommet de la case », la taille d'une tuile
+/// veut dire « pas de sol ici ».
+pub fn hauteur_sol(matiere: i32, x: i32, tuile: i32) -> i32 {
+    let vers_droite = matiere & PENTE_DROITE != 0;
+    if !vers_droite && matiere & PENTE_GAUCHE == 0 {
+        return if matiere & SOLIDE != 0 { 0 } else { tuile };
+    }
+    // L'avancee LE LONG de la montee : on lit la case a l'envers quand elle
+    // monte vers la gauche, ce qui evite d'ecrire deux fois la meme formule.
+    let u = if vers_droite { x } else { tuile - 1 - x };
+    let demi = matiere & PENTE_DEMI != 0;
+    let depart = if demi && matiere & PENTE_HAUTE != 0 { (tuile >> 1) - 1 } else { tuile - 1 };
+    depart - if demi { u >> 1 } else { u }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1748,13 +2035,87 @@ function Projet.deplier_cases(carte, calque)
   return sortie
 end
 
-function Projet.est_solide(carte, cx, cy)
+Projet.SOLIDE = 1
+Projet.PLATEFORME = 2
+Projet.BLESSANTE = 4
+Projet.ECHELLE = 8
+Projet.LIQUIDE = 16
+Projet.PENTE_DROITE = 32
+Projet.PENTE_GAUCHE = 64
+-- Deux cases pour monter d'une, au lieu d'une seule.
+Projet.PENTE_DEMI = 128
+-- Parmi les deux cases d'une demi-pente, celle du haut.
+Projet.PENTE_HAUTE = 256
+
+Projet.ALPHABET_MATIERE = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+Projet.BASE_PENTE = 32
+Projet.FORMES_PENTE = {
+  Projet.PENTE_DROITE,
+  Projet.PENTE_GAUCHE,
+  Projet.PENTE_DROITE + Projet.PENTE_DEMI,
+  Projet.PENTE_DROITE + Projet.PENTE_DEMI + Projet.PENTE_HAUTE,
+  Projet.PENTE_GAUCHE + Projet.PENTE_DEMI,
+  Projet.PENTE_GAUCHE + Projet.PENTE_DEMI + Projet.PENTE_HAUTE,
+}
+
+-- Un caractere de la grille de collision vers ses drapeaux.
+--
+-- On ADDITIONNE au lieu d'un « ou » binaire, et l'on divise au lieu d'un
+-- masque : Lua 5.1 et LuaJIT n'ont pas d'operateurs binaires. Les drapeaux
+-- d'une meme matiere sont deux a deux disjoints, la somme est donc exacte.
+function Projet.matiere_du_caractere(c)
+  local v = Projet.ALPHABET_MATIERE:find(c, 1, true)
+  if not v then return 0 end
+  v = v - 1
+  if v < Projet.BASE_PENTE then return v end
+  local rang = v - Projet.BASE_PENTE
+  local n = #Projet.FORMES_PENTE
+  local forme = Projet.FORMES_PENTE[(rang % n) + 1]
+  if rang >= n then return forme + Projet.BLESSANTE end
+  return forme
+end
+
+-- Les drapeaux d'une case de collision. Dehors : SOLIDE.
+function Projet.matiere_de_case(carte, cx, cy)
   if cx < 0 or cy < 0 or cx >= carte.largeur or cy >= carte.hauteur then
-    return true
+    return Projet.SOLIDE
   end
   local ligne = (carte.solides or {})[cy + 1]
-  if not ligne then return true end
-  return ligne:sub(cx + 1, cx + 1) == "1"
+  if not ligne or cx >= #ligne then return Projet.SOLIDE end
+  return Projet.matiere_du_caractere(ligne:sub(cx + 1, cx + 1))
+end
+
+-- Vrai si la case bloque le passage.
+--
+-- On teste le DRAPEAU, pas le caractere. Comparer au chiffre un rendait faux
+-- pour un mur herisse de pointes, qui vaut cinq : le mur devenait traversable
+-- dans le jeu porte, et nulle part ailleurs.
+function Projet.est_solide(carte, cx, cy)
+  return Projet.matiere_de_case(carte, cx, cy) % 2 == 1
+end
+
+-- Vrai si ce drapeau-ci est pose dans cette matiere.
+function Projet.a_matiere(matiere, drapeau)
+  return math.floor(matiere / drapeau) % 2 == 1
+end
+
+-- La hauteur du sol dans une case, pour une colonne de pixels. Comptee depuis
+-- le HAUT : zero veut dire « au sommet de la case », la taille d'une tuile
+-- veut dire « pas de sol ici ».
+function Projet.hauteur_sol(matiere, x, tuile)
+  local vers_droite = Projet.a_matiere(matiere, Projet.PENTE_DROITE)
+  local vers_gauche = Projet.a_matiere(matiere, Projet.PENTE_GAUCHE)
+  if not vers_droite and not vers_gauche then
+    if matiere % 2 == 1 then return 0 end
+    return tuile
+  end
+  -- L'avancee LE LONG de la montee : on lit la case a l'envers quand elle
+  -- monte vers la gauche, ce qui evite d'ecrire deux fois la meme formule.
+  local u = vers_droite and x or (tuile - 1 - x)
+  local demi = Projet.a_matiere(matiere, Projet.PENTE_DEMI)
+  local haute = Projet.a_matiere(matiere, Projet.PENTE_HAUTE)
+  local depart = (demi and haute) and (math.floor(tuile / 2) - 1) or (tuile - 1)
+  return depart - (demi and math.floor(u / 2) or u)
 end
 
 -- Le clip portant ce nom, ou nil.
@@ -1938,6 +2299,61 @@ from typing import Any
 # Une case vide. Zero est une vraie tuile : ne pas les confondre.
 VIDE = -1
 
+#: Les matieres d'une case. Les cinq premieres se combinent librement ; une
+#: pente n'est jamais solide — marquee solide, elle bloque comme un mur et
+#: l'on se cogne dans le bas de la cote au lieu de la monter.
+SOLIDE = 1
+PLATEFORME = 2
+BLESSANTE = 4
+ECHELLE = 8
+LIQUIDE = 16
+PENTE_DROITE = 32
+PENTE_GAUCHE = 64
+#: Deux cases pour monter d'une, au lieu d'une seule.
+PENTE_DEMI = 128
+#: Parmi les deux cases d'une demi-pente, celle du haut.
+PENTE_HAUTE = 256
+
+_ALPHABET_MATIERE = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_BASE_PENTE = 32
+_FORMES_PENTE = [
+    PENTE_DROITE,
+    PENTE_GAUCHE,
+    PENTE_DROITE | PENTE_DEMI,
+    PENTE_DROITE | PENTE_DEMI | PENTE_HAUTE,
+    PENTE_GAUCHE | PENTE_DEMI,
+    PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
+]
+
+
+def matiere_du_caractere(c: str) -> int:
+    """Un caractere de la grille de collision vers ses drapeaux."""
+    v = _ALPHABET_MATIERE.find(c)
+    if v < 0:
+        return 0
+    if v < _BASE_PENTE:
+        return v
+    rang = v - _BASE_PENTE
+    forme = _FORMES_PENTE[rang % len(_FORMES_PENTE)]
+    return forme | (BLESSANTE if rang >= len(_FORMES_PENTE) else 0)
+
+
+def hauteur_sol(matiere: int, x: int, tuile: int) -> int:
+    """La hauteur du sol dans une case, pour une colonne de pixels.
+
+    Comptee depuis le HAUT : zero veut dire « au sommet de la case », la
+    taille d'une tuile veut dire « pas de sol ici ».
+    """
+    vers_droite = bool(matiere & PENTE_DROITE)
+    if not vers_droite and not matiere & PENTE_GAUCHE:
+        return 0 if matiere & SOLIDE else tuile
+    # L'avancee LE LONG de la montee : on lit la case a l'envers quand elle
+    # monte vers la gauche, ce qui evite d'ecrire deux fois la meme formule.
+    u = x if vers_droite else tuile - 1 - x
+    demi = bool(matiere & PENTE_DEMI)
+    depart = (tuile >> 1) - 1 if demi and matiere & PENTE_HAUTE else tuile - 1
+    return depart - (u >> 1 if demi else u)
+
 
 @dataclass
 class Terrain:
@@ -1976,13 +2392,25 @@ class Carte:
                     sortie[y * self.largeur + x] = int(v)
         return sortie
 
-    def est_solide(self, cx: int, cy: int) -> bool:
+    def matiere(self, cx: int, cy: int) -> int:
+        """Les drapeaux d'une case de collision. Dehors : SOLIDE."""
         if cx < 0 or cy < 0 or cx >= self.largeur or cy >= self.hauteur:
-            return True
+            return SOLIDE
         if cy >= len(self.solides):
-            return True
+            return SOLIDE
         ligne = self.solides[cy]
-        return cx < len(ligne) and ligne[cx] == "1"
+        if cx >= len(ligne):
+            return SOLIDE
+        return matiere_du_caractere(ligne[cx])
+
+    def est_solide(self, cx: int, cy: int) -> bool:
+        """Vrai si la case bloque le passage.
+
+        On teste le DRAPEAU, pas le caractere. Comparer au chiffre un rendait
+        faux pour un mur herisse de pointes, qui vaut cinq : le mur devenait
+        traversable dans le jeu porte, et nulle part ailleurs.
+        """
+        return bool(self.matiere(cx, cy) & SOLIDE)
 
 
 @dataclass
