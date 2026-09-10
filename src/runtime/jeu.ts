@@ -17,6 +17,7 @@ import { Salles, type Salle } from '../niveau/salles.ts'
 import type { Sonneur } from './son.ts'
 import type { Musicien } from './musique.ts'
 import type { Declencheurs } from './declencheurs.ts'
+import type { Eclairage } from './lumiere.ts'
 import { retirerDe } from './entites.ts'
 
 /**
@@ -306,6 +307,11 @@ export class Jeu {
    * niveau changerait avant qu'on ait appuye sur quoi que ce soit.
    */
   interfaceOuverte: (() => boolean) | null = null
+  /**
+   * L'eclairage, fidele a la palette. Nul, ou inutile : la passe ne se paie
+   * pas — un monde sans nuit rend exactement ce qu'il rendait avant.
+   */
+  eclairage: Eclairage | null = null
   private boucle: Boucle
   private cibleCamera: string | null = null
 
@@ -502,6 +508,16 @@ export class Jeu {
     const t = this.decalageSecousse()
     const vue = { x: this.camera.x + t.x, y: this.camera.y + t.y }
     rendreScene(this.ecran, this.racine, vue, this.cartes, this.sprites, this.projection)
+    // La lumiere APRES la scene et AVANT l'interface : les coeurs de vie et
+    // les boites de texte ne s'eteignent pas quand la nuit tombe. Et
+    // seulement PENDANT le jeu : on ne peint pas dans le noir — l'editeur a
+    // l'arret reste en plein jour, la nuit se joue.
+    if (this.eclairage && !this.eclairage.inutile && this.tourne) {
+      const { largeur, hauteur } = this.ecran.vue
+      const image = this.ecran.ctx.getImageData(0, 0, largeur, hauteur)
+      this.eclairage.appliquer(image.data, largeur, hauteur, vue.x, vue.y)
+      this.ecran.ctx.putImageData(image, 0, 0)
+    }
     if (this.apresDessin) this.apresDessin(this.ecran.ctx, this.ecran)
     this.ecran.presenter()
   }

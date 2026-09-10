@@ -127,6 +127,8 @@ export interface Monde {
   carteActive?: string
   /** Le deroule du jeu : titre et ordre des cartes. Voir le format v12. */
   deroule?: { titre: string; ordre: string[] }
+  /** La lumiere du monde. Absente : plein jour. Voir le format v13. */
+  lumiere?: { ambiante: number }
   /**
    * Le peuplement, quand le monde en a un.
    *

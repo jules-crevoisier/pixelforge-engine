@@ -299,7 +299,13 @@ boutonDossier.addEventListener('click', async () => {
 function projetCourant() {
   return serialiserProjet(
     monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id,
-    jeu.ecran.vue, palette,
+    // La vue du MONDE, jamais celle de l'ecran : pendant l'edition, l'ecran
+    // porte le cadre d'edition — la vue du jeu multipliee par le zoom. La
+    // serialiser gonflait la vue du projet a CHAQUE geste du panneau fait en
+    // zoom arriere : dix-sept gestes a 1,5 et le projet demandait un tampon
+    // de trois cent mille pixels de large. C'est la fumee qui l'a trouve, en
+    // mesurant un ecran noir la ou la nuit aurait du tomber.
+    monde.vue, palette,
     // TOUTES les cartes et TOUTES les scenes quand le monde les porte : avant
     // cela, enregistrer un projet de trois niveaux n'en gardait qu'un — en
     // silence. La paire active est la MEME reference que dans la liste, donc
@@ -320,6 +326,7 @@ function projetCourant() {
     monde.salles ?? [],
     monde.declencheurs ?? [],
     monde.deroule ?? { titre: '', ordre: [] },
+    monde.lumiere ?? { ambiante: 1 },
   )
 }
 

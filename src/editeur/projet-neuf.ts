@@ -179,6 +179,8 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     // Ni de deroule : un projet neuf est un seul niveau sans ecran-titre.
     // L'ordre vide veut dire « l'ordre des cartes », et c'est le bon defaut.
     deroule: { titre: '', ordre: [] },
+    // Plein jour : la nuit est une decision de projet, pas un defaut.
+    lumiere: { ambiante: 1 },
     // Une table par langue, vide au depart : ce qui compte est que le CHEMIN
     // existe des le premier jour. Ajouter la traduction apres coup oblige a
     // reprendre chaque texte ecrit en dur entre-temps.

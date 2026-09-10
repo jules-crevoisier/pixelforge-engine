@@ -773,6 +773,83 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     apresArret.carteActive === 'carte' && apresArret.titreOuvert === true,
     'pas au niveau où l’on s’était arrêté')
 
+  /*
+   * LA NUIT, par le panneau : on baisse l'ambiante, on joue, et l'ecran
+   * s'assombrit VRAIMENT. Le banc prouve la fidelite a la palette ; lui ne
+   * peut pas prouver que le reglage du panneau atteint l'ecran — c'est un
+   * branchement, et un branchement se voit ou ne se voit pas.
+   */
+  // La luminance des CENT pixels les plus clairs : le fond d'une carte est
+  // sombre et domine l'ecran, une moyenne globale noierait la nuit dedans —
+  // 18,4 le jour, 15,7 la nuit, indiscernables. Les pixels les plus clairs,
+  // eux, sont le decor peint : eclatants le jour, assombris la nuit, et la
+  // mesure ne depend pas du cadrage.
+  const luminanceTampon = () => p.evaluate(() => {
+    const t = window.pfe.jeu.ecran.tampon
+    const ctx = window.pfe.jeu.ecran.ctx
+    const tous = []
+    // Rangee par rangee, comme la mesure de parallaxe : une seule grande
+    // ImageData echoue par manque de memoire dans le navigateur du banc.
+    for (let y = 0; y < t.height; y += 3) {
+      const d = ctx.getImageData(0, y, t.width, 1).data
+      for (let i = 0; i < d.length; i += 4) {
+        tous.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])
+      }
+    }
+    tous.sort((a, b) => b - a)
+    const cent = tous.slice(0, 100)
+    return cent.reduce((a, b) => a + b, 0) / cent.length
+  })
+  // Le declencheur « niveau suivant » se rearme a l'arret : sans le retirer,
+  // la mesure se ferait sur le niveau deux — vide, donc noir, donc aveugle.
+  await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await surBlocNomme('Déclencheurs', (bloc) => {
+    const ligne = [...bloc.querySelectorAll('.ligne')].at(-1)
+    ;[...ligne.querySelectorAll('button')].find((b) => b.textContent === '✕').click()
+  })
+  await p.waitForTimeout(250)
+  await p.click('#fermerProjet')
+  await p.click('#jouer')
+  await p.waitForTimeout(250)
+  await p.keyboard.press('Space')
+  await p.waitForTimeout(300)
+  const jour = await luminanceTampon()
+  await p.click('#arreter')
+  await p.waitForTimeout(200)
+  await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await surBlocNomme('Lumière', (bloc) => {
+    const e = bloc.querySelector('input')
+    e.value = '0.3'
+    e.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(250)
+  await p.click('#fermerProjet')
+  await p.click('#jouer')
+  await p.waitForTimeout(250)
+  await p.keyboard.press('Space')
+  await p.waitForTimeout(300)
+  const nuit = await luminanceTampon()
+  ok('baisser l’ambiante au panneau assombrit vraiment l’écran de jeu',
+    nuit < jour * 0.8,
+    `luminance ${jour.toFixed(1)} en plein jour, ${nuit.toFixed(1)} à 0,3 d’ambiante — mesurée sur le tampon 320×180`)
+  const editionClaire = await (async () => {
+    await p.click('#arreter')
+    await p.waitForTimeout(300)
+    return luminanceTampon()
+  })()
+  ok('mais l’éditeur à l’arrêt reste en plein jour — on ne peint pas dans le noir',
+    editionClaire > nuit * 1.2,
+    `luminance ${editionClaire.toFixed(1)} à l’arrêt`)
+  // Le bogue que cette mesure a permis de trouver : chaque geste du panneau
+  // fait en zoom arriere gonflait la vue du projet par le facteur du cadre.
+  // Apres tous les gestes de ce scenario, elle doit valoir exactement 320.
+  const vueFinale = await p.evaluate(() => window.pfe.monde.vue.largeur)
+  ok('dix gestes de panneau plus tard, la vue du projet n’a pas bougé',
+    vueFinale === 320,
+    `${vueFinale} px — la sérialisation prenait la vue de l’ÉCRAN, cadre d’édition compris`)
+
   // L'aide s'ouvre et se ferme.
   await p.click('#basculeAide')
   await p.waitForTimeout(200)

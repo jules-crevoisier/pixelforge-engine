@@ -232,6 +232,14 @@ export interface Espece {
    * banc ne l'avait dit, parce qu'aucun banc ne regarde.
    */
   pesante: boolean
+  /**
+   * Rayon de la lumiere qu'elle emet, en pixels. Zero : elle n'eclaire pas.
+   *
+   * Une torche est une entite comme une autre : ce qui la distingue est une
+   * valeur dans sa description — la meme raison que pour `soigne` et
+   * `reprise`. La lumiere s'eteint a deux rayons, voir `runtime/lumiere.ts`.
+   */
+  lueur: number
 }
 
 export function espece(id: string, p: Partial<Espece> = {}): Espece {
@@ -262,6 +270,7 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
     degatsPietinement: p.degatsPietinement ?? 0,
     rebondPietinement: p.rebondPietinement ?? 0,
     pesante: p.pesante ?? false,
+    lueur: p.lueur ?? 0,
   }
 }
 

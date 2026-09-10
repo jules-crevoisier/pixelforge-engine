@@ -3980,6 +3980,108 @@ console.log('\n--- les cartes multiples, et le deroule ---')
   }
 }
 
+/*
+ * LA LUMIERE : la nuit d'un projet, avec les couleurs de son artiste.
+ *
+ * Le banc de charge mesure le prix ; ici on eprouve les REGLES — la chute,
+ * le tramage deterministe, la fidelite a la palette, et la frontiere du
+ * fichier. Chaque regle a son revers : une lampe eclaire ET s'arrete, le
+ * plein jour ne fait rien, un fichier d'avant se relit.
+ */
+console.log('\n--- la lumiere, fidele a la palette ---')
+{
+  const { lumiereEn, TableLumiere, Eclairage } = await import('../src/runtime/lumiere.ts')
+
+  {
+    const sources = [{ x: 100, y: 100, rayon: 40 }]
+    check('a moins d\'un rayon, la lumiere est pleine',
+      lumiereEn(120, 100, sources, 0) === 1 && lumiereEn(100, 139, sources, 0) === 1)
+    check('a deux rayons, elle est eteinte — il reste l\'ambiante',
+      lumiereEn(100, 181, sources, 0.2) === 0.2,
+      'une lampe qui porterait a l\'infini ne serait pas une lampe')
+    const mi = lumiereEn(160, 100, sources, 0)
+    check('entre les deux, elle decroit', mi > 0 && mi < 1, `${mi.toFixed(2)} a mi-chemin`)
+    check('deux lampes ne s\'additionnent pas : la plus forte gagne',
+      lumiereEn(100, 100, [{ x: 60, y: 100, rayon: 30 }, { x: 140, y: 100, rayon: 30 }], 0) ===
+      Math.max(lumiereEn(100, 100, [{ x: 60, y: 100, rayon: 30 }], 0),
+        lumiereEn(100, 100, [{ x: 140, y: 100, rayon: 30 }], 0)),
+      'additionner ferait deposer deux torches pour surexposer la piece')
+  }
+
+  {
+    const couleurs = ['#14101a', '#4a3b57', '#b8a988', '#e8dcc0']
+    const table = new TableLumiere(couleurs, 4)
+    const rgb = couleurs.map((c) => parseInt(c.slice(1), 16))
+    const admis = new Set(rgb)
+    let horsPalette = 0
+    for (const c of rgb) {
+      for (let n = 0; n < 4; n++) if (!admis.has(table.assombrir(c, n))) horsPalette++
+    }
+    check('chaque case de la table est une couleur de la palette', horsPalette === 0,
+      'la nuit d\'un projet est faite des couleurs que son artiste a choisies')
+    check('au niveau le plus clair, chaque couleur reste elle-meme',
+      rgb.every((c) => table.assombrir(c, 3) === c))
+    check('une couleur inconnue traverse sans etre inventee',
+      table.assombrir(0x123456, 0) === 0x123456,
+      'inventer une couleur proche fabriquerait du hors-palette en douce')
+  }
+
+  {
+    // Le tramage est DETERMINISTE : deux passes identiques, memes pixels.
+    const couleurs = ['#101018', '#8090a0']
+    const faire = () => {
+      const e = new Eclairage(couleurs)
+      e.ambiante = 0.4
+      e.sources = () => [{ x: 20, y: 12, rayon: 8 }]
+      const px = new Uint8ClampedArray(48 * 24 * 4)
+      for (let i = 0; i < 48 * 24; i++) {
+        px[i * 4] = 0x80; px[i * 4 + 1] = 0x90; px[i * 4 + 2] = 0xa0; px[i * 4 + 3] = 255
+      }
+      e.appliquer(px, 48, 24, 0, 0)
+      return px.join(',')
+    }
+    check('deux rendus de la meme nuit sont identiques au pixel',
+      faire() === faire(),
+      'un tramage au hasard fourmillerait, et deux machines divergeraient a l\'ecran')
+  }
+
+  {
+    // La frontiere du fichier, et l'espece-torche.
+    const { serialiserProjet, versTexte, VERSION_FORMAT } = await import('../src/export/format.ts')
+    const { espece } = await import('../src/runtime/entites.ts')
+    const { Palette, depuisHex } = await import('../src/noyau/palette.ts')
+    const torche = espece('torche', { lueur: 48, camp: 'decor' })
+    const pj = serialiserProjet('n', { largeur: 320, hauteur: 180 },
+      new Palette('p', ['#111111'].map(depuisHex)), [], [], [], [], undefined,
+      [torche], [], [], {}, [], {}, [], [], { titre: '', ordre: [] }, { ambiante: 0.3 })
+    const relu = JSON.parse(versTexte(pj))
+    check('l\'ambiante et la lueur traversent l\'enregistrement',
+      relu.version === VERSION_FORMAT && relu.lumiere.ambiante === 0.3
+      && relu.especes[0].lueur === 48, `version ${relu.version}`)
+    const borne = serialiserProjet('n', { largeur: 320, hauteur: 180 },
+      new Palette('p', []), [], [], [], [], undefined, [], [], [], {}, [], {}, [], [],
+      { titre: '', ordre: [] }, { ambiante: 7 })
+    check('et l\'ambiante est bornee a l\'ecriture',
+      borne.lumiere.ambiante === 1,
+      'chaque chargeur ne doit pas avoir a la borner')
+    check('une espece sans lueur n\'eclaire pas',
+      espece('gelee').lueur === 0, 'le defaut est l\'obscurite, pas la lampe gratuite')
+  }
+
+  {
+    // Un monde relu branche sa nuit — et le plein jour ne branche RIEN.
+    const { projetNeuf, poserEspeceProjet } = await import('../src/editeur/projet-neuf.ts')
+    const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+    const nuit = { ...projetNeuf(), lumiere: { ambiante: 0.3 } }
+    check('un projet porte sa lumiere jusqu\'au monde relu',
+      mondeDepuisProjet(nuit, 'x').lumiere.ambiante === 0.3)
+    check('et un projet d\'avant la version 13 se relit en plein jour',
+      mondeDepuisProjet({ ...projetNeuf(), lumiere: undefined }, 'x').lumiere.ambiante === 1,
+      'ce que faisaient tous les projets jusqu\'ici')
+    void poserEspeceProjet
+  }
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

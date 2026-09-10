@@ -483,6 +483,40 @@ en bout — un jeu à deux niveaux, écran-titre compris, construit par les seul
 boutons de l'éditeur. Et « Rejouer » recommence le **jeu** : retour au niveau
 un et au titre, pas au niveau où l'on s'était arrêté.
 
+### La lumière, fidèle à la palette
+
+Assombrir en multipliant les canaux — ce que fait tout moteur généraliste —
+fabrique des couleurs qui ne sont dans la palette de personne : un damier de
+trois teintes devient un dégradé de milliers, et le jeu cesse d'être du pixel
+art à la première torche. Ici, chaque pixel éclairé est **remplacé par une
+couleur de la palette du projet** : celle qui ressemble le plus à sa version
+assombrie. La nuit d'un projet est faite des couleurs que son artiste a
+choisies — et si la palette n'a pas de tons sombres, la nuit le dit en restant
+claire, au lieu d'inventer des tons à sa place.
+
+La lumière est quantifiée en quelques niveaux, et la frontière entre deux
+niveaux est tramée en damier 2×2 ordonné — déterministe : deux machines qui
+rendent la même scène rendent les mêmes pixels. Le réglage tient en deux
+données du fichier (v13) : l'**ambiante** du projet, et le rayon de **lueur**
+des espèces — une torche est une entité dont la description porte un rayon,
+comme une balise porte « reprise ». Les sources se recensent dans la scène
+courante : une torche du niveau un n'éclaire pas le niveau deux, et une torche
+ramassée s'éteint sans qu'on ait rien à débrancher.
+
+Le prix est **mesuré, pas promis** : la passe complète — 320×180, trois
+sources, ambiante 0,25 — coûte environ un cinquième de milliseconde par image
+sur la machine du banc de charge, dans le tiers de budget qu'on s'accorde. Et
+le plein jour ne paie *rien* : quand l'ambiante vaut un, on ne touche pas aux
+pixels. La nuit se joue, l'éditeur à l'arrêt reste en plein jour — on ne peint
+pas dans le noir.
+
+La mesure de la nuit dans le navigateur a trouvé un bogue qui n'avait rien à
+voir avec elle : la sérialisation prenait la vue de l'*écran* — cadre
+d'édition compris — au lieu de celle du monde, et chaque geste du panneau fait
+en zoom arrière gonflait la vue du projet de cinquante pour cent. Dix-sept
+gestes plus tard, le projet demandait un tampon de trois cent mille pixels de
+large. Une vérification garde maintenant ce bogue fermé.
+
 ## Ce que ça veut dire, concrètement
 
 - **Tout est en pixels entiers.** Positions, caméra, échelle. Ce qui a besoin de
@@ -666,12 +700,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 361 vérifications : mondes, animations, combat, étages, scripts, déclencheurs, cartes multiples
+npm run banc:mondes     # 374 vérifications : mondes, animations, combat, étages, scripts, déclencheurs, lumière
 npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 103 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           # 106 vérifications de l'éditeur, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire

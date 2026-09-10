@@ -192,7 +192,7 @@ export class PanneauProjet {
     this.onglets()
     if (this.onglet === 'carte') {
       this.blocCartes(p); this.blocCarte(p); this.blocCalques(p); this.blocSalles(p)
-      this.blocDeclencheurs(p); this.blocDeroule(p); this.blocNeuf()
+      this.blocDeclencheurs(p); this.blocDeroule(p); this.blocLumiere(p); this.blocNeuf()
     }
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
@@ -325,6 +325,37 @@ export class PanneauProjet {
     note.textContent = 'Un titre ouvre le jeu sur un écran-titre ; Espace le passe. '
       + 'Les niveaux s’enchaînent dans l’ordre des cartes — c.niveauSuivant() dans un déclencheur passe au suivant, '
       + 'c.aller(\'nom\') va où l’on veut.'
+    d.appendChild(note)
+  }
+
+  /**
+   * La lumiere du monde.
+   *
+   * Un seul reglage, l'ambiante : la nuit est une decision de PROJET. Les
+   * sources, elles, sont des especes — une torche est une entite dont la
+   * description porte un rayon de lueur, et elle se pose avec l'outil Entite
+   * comme tout le reste.
+   */
+  private blocLumiere(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Lumière')
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const ambiante = champ(g, 'Ambiante (0 à 1)', p.lumiere?.ambiante ?? 1, 'number')
+    ambiante.step = '0.05'
+    ambiante.min = '0'
+    ambiante.max = '1'
+    ambiante.addEventListener('change', () => {
+      const v = Math.max(0, Math.min(1, Number(ambiante.value)))
+      this.appliquer({ ...this.frais(), lumiere: { ambiante: Number.isFinite(v) ? v : 1 } },
+        v >= 1 ? 'Plein jour — l’éclairage ne coûte rien'
+          : `Ambiante ${v} — les espèces à lueur percent la nuit`)
+    })
+    d.appendChild(g)
+    const note = document.createElement('p')
+    note.className = 'dos-vide'
+    note.textContent = 'La nuit n’emploie QUE les couleurs de la palette : chaque pixel assombri '
+      + 'est remplacé par la couleur de la palette la plus proche. Une palette sans tons sombres '
+      + 'reste claire — c’est elle qui décide. Le champ « Lueur » d’une espèce en fait une source.'
     d.appendChild(note)
   }
 
@@ -740,6 +771,8 @@ export class PanneauProjet {
       [{ valeur: 'non', nom: 'non' }, { valeur: 'oui', nom: 'oui' }],
       source?.pesante ? 'oui' : 'non')
     const pietinable = champ(g, 'Piétinement (dégâts)', source?.degatsPietinement ?? 0, 'number')
+    const lueur = champ(g, 'Lueur (px)', source?.lueur ?? 0, 'number')
+    lueur.title = 'Rayon de la lumière qu’elle émet quand la nuit tombe. Zéro : elle n’éclaire pas.'
     d.appendChild(g)
 
     const actions = document.createElement('div')
@@ -772,6 +805,7 @@ export class PanneauProjet {
           pesante: pesante.value === 'oui',
           degatsPietinement: Math.max(0, Math.round(Number(pietinable.value) || 0)),
           rebondPietinement: Number(pietinable.value) > 0 ? 30 : 0,
+          lueur: Math.max(0, Math.round(Number(lueur.value) || 0)),
         }
         this.especeEditee = identifiant
         this.appliquer(poserEspeceProjet(this.frais(), identifiant, champs),

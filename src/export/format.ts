@@ -39,6 +39,12 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **13** — la lumiere. L'ambiante du projet, et le rayon de lueur des
+ * especes : une torche est une entite dont la description porte un rayon,
+ * comme une balise porte « reprise ». L'eclairage est fidele a la palette —
+ * voir runtime/lumiere.ts — et un fichier d'avant se relit : ambiante a un,
+ * plein jour, aucune passe ne se paie.
+ *
  * **12** — le deroule, et les cartes qui cessent d'etre decoratives. Le
  * format savait porter PLUSIEURS cartes depuis le premier jour ; l'editeur
  * n'en montrait qu'une, l'enregistrement ne gardait qu'elle, et rien ne
@@ -131,7 +137,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 12
+export const VERSION_FORMAT = 13
 
 export interface ProjetSerialise {
   version: number
@@ -218,6 +224,12 @@ export interface ProjetSerialise {
    * une donnee du fichier, pas une suite de scripts.
    */
   deroule: { titre: string; ordre: string[] }
+  /**
+   * La lumiere du monde. Ambiante a un : plein jour, l'eclairage ne coute
+   * rien. En dessous, la nuit tombe et les especes a `lueur` percent des
+   * cercles de lumiere — avec les couleurs de la palette, jamais d'autres.
+   */
+  lumiere: { ambiante: number }
 }
 
 export interface DeclencheurSerialise {
@@ -445,6 +457,7 @@ export function serialiserProjet(
   salles: Salle[] = [],
   declencheurs: DeclencheurSerialise[] = [],
   deroule: { titre: string; ordre: string[] } = { titre: '', ordre: [] },
+  lumiere: { ambiante: number } = { ambiante: 1 },
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -480,6 +493,9 @@ export function serialiserProjet(
       qui: d.qui ?? '', unefois: !!d.unefois, script: d.script,
     })),
     deroule: { titre: deroule.titre ?? '', ordre: [...(deroule.ordre ?? [])] },
+    // L'ambiante est BORNEE a l'ecriture : une valeur negative ou au-dela de
+    // un n'a pas de sens, et chaque chargeur ne doit pas avoir a la borner.
+    lumiere: { ambiante: Math.max(0, Math.min(1, lumiere.ambiante ?? 1)) },
   }
 }
 

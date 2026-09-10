@@ -13,6 +13,7 @@ import { Musicien, rendreMusique } from '../runtime/musique.ts'
 import { Dialogue } from '../runtime/dialogue.ts'
 import { Salles } from '../niveau/salles.ts'
 import { Declencheurs, type Declencheur } from '../runtime/declencheurs.ts'
+import { Eclairage } from '../runtime/lumiere.ts'
 import { brancherAudio } from '../demo/sons-demo.ts'
 import { brancherMusique } from '../demo/musiques-demo.ts'
 import { dessinerDialogue, ecrireCentre } from '../runtime/rendu-texte.ts'
@@ -185,6 +186,7 @@ export function mondeDepuisProjet(
     scenes,
     carteActive: nomActif,
     deroule: p.deroule ?? { titre: '', ordre: [] },
+    lumiere: p.lumiere ?? { ambiante: 1 },
     peuplement,
     planches: p.planches,
     tuilePinceau: 0,
@@ -248,6 +250,36 @@ export function mondeDepuisProjet(
         return true
       }
       jeu.interfaceOuverte = () => titreOuvert || dialogue.ouvert
+      /*
+       * LA LUMIERE : la nuit du projet, avec les couleurs du projet.
+       *
+       * Les sources se recensent chaque image dans la scene COURANTE : une
+       * torche du niveau un n'eclaire pas le niveau deux, et une torche
+       * ramassee — retiree de la scene — s'eteint sans qu'on ait rien a
+       * debrancher. Le cout de ce recensement est proportionnel a la scene,
+       * pas au monde ; celui de la passe est mesure au banc de charge.
+       */
+      const ambiante = p.lumiere?.ambiante ?? 1
+      if (ambiante < 1) {
+        const eclairage = new Eclairage(p.palette.couleurs)
+        eclairage.ambiante = ambiante
+        eclairage.sources = () => {
+          const sources: { x: number; y: number; rayon: number }[] = []
+          const visiter = (n: Noeud): void => {
+            const id = (n as unknown as { espece?: string }).espece
+            if (id && n.visible) {
+              const e = peuplement.especeDe(id)
+              // Le centre est a mi-hauteur de la boite, pas aux pieds : une
+              // lanterne posee au sol eclairerait plus bas que le sol.
+              if (e && e.lueur > 0) sources.push({ x: n.x, y: n.y + e.boite.y / 2, rayon: e.lueur })
+            }
+            for (const q of n.enfants) visiter(q)
+          }
+          visiter(jeu.racine)
+          return sources
+        }
+        jeu.eclairage = eclairage
+      }
       jeu.prochaineCarte = () => {
         const ordre = ordreDuJeu()
         const i = ordre.indexOf(fluxActif)

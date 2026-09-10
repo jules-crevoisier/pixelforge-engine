@@ -318,6 +318,72 @@ console.log('\n--- la navigation : contourner ce qui bloque ---')
     + `${(plein.ms * 300 / 16.7).toFixed(1)} images pour un seul pas`)
 }
 
+console.log('\n--- la lumiere : ce que la nuit coute vraiment ---')
+{
+  const { Eclairage, TableLumiere } = await import('../src/runtime/lumiere.ts')
+  /*
+   * Un tampon comme celui du jeu : 320x180, rempli de couleurs de la palette.
+   * La passe d'eclairage est le seul endroit du moteur qui touche CHAQUE
+   * pixel de l'ecran a chaque image : c'est ici qu'une promesse non mesuree
+   * couterait le plus cher.
+   */
+  const couleurs = ['#14101a', '#2b2233', '#4a3b57', '#7a7466', '#b8a988', '#e8dcc0']
+  const largeur = 320
+  const hauteur = 180
+  const pixels = new Uint8ClampedArray(largeur * hauteur * 4)
+  const rgb = couleurs.map((c) => parseInt(c.slice(1), 16))
+  for (let i = 0; i < largeur * hauteur; i++) {
+    const c = rgb[i % rgb.length]
+    pixels[i * 4] = (c >> 16) & 255
+    pixels[i * 4 + 1] = (c >> 8) & 255
+    pixels[i * 4 + 2] = c & 255
+    pixels[i * 4 + 3] = 255
+  }
+  const e = new Eclairage(couleurs)
+  e.ambiante = 0.25
+  e.sources = () => [
+    { x: 80, y: 60, rayon: 40 }, { x: 200, y: 120, rayon: 60 }, { x: 300, y: 30, rayon: 24 },
+  ]
+  const copie = new Uint8ClampedArray(pixels)
+  const nuit = mesurer('lumiere', () => {
+    pixels.set(copie)
+    e.appliquer(pixels, largeur, hauteur, 0, 0)
+  }, 120, 30)
+  console.log(`        320×180, trois sources, ambiante 0,25 · ${nuit.ms.toFixed(3)} ms par image`)
+  check('la nuit entiere tient dans le tiers du budget d\'une image',
+    nuit.ms < BUDGET_MS * PART_SIMULATION,
+    `${nuit.ms.toFixed(3)} ms — c'est un cout d'IMAGE, il s'ajoute au dessin, pas a la simulation`)
+
+  // Le revers : un monde sans nuit ne paie RIEN. C'est la promesse qui
+  // autorise a livrer la lumiere sans faire payer ceux qui ne s'en servent pas.
+  e.ambiante = 1
+  const jour = mesurer('plein-jour', () => { e.appliquer(pixels, largeur, hauteur, 0, 0) }, 400, 50)
+  check('et le plein jour ne paie rien du tout',
+    jour.ms < 0.01, `${(jour.ms * 1000).toFixed(2)} µs par image`)
+
+  // La fidelite a la palette n'est pas une opinion : chaque pixel assombri
+  // DOIT etre une couleur de la palette. On verifie sur le vrai tampon.
+  e.ambiante = 0.25
+  pixels.set(copie)
+  e.appliquer(pixels, largeur, hauteur, 0, 0)
+  const admis = new Set(rgb)
+  let hors = 0
+  for (let i = 0; i < largeur * hauteur; i++) {
+    const c = (pixels[i * 4] << 16) | (pixels[i * 4 + 1] << 8) | pixels[i * 4 + 2]
+    if (!admis.has(c)) hors++
+  }
+  check('chaque pixel de la nuit reste une couleur de la palette',
+    hors === 0, hors ? `${hors} pixels hors palette` : `${largeur * hauteur} pixels verifies`)
+
+  // Et la table elle-meme : le niveau le plus sombre choisit une couleur plus
+  // sombre OU EGALE, jamais plus claire — sinon la nuit eclaircirait.
+  const table = new TableLumiere(couleurs, 4)
+  const luminance = (c) => 0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255)
+  const montent = rgb.filter((c) => luminance(table.assombrir(c, 0)) > luminance(c) + 1e-9)
+  check('assombrir n\'eclaircit jamais', montent.length === 0,
+    `${rgb.length} couleurs, niveau le plus sombre`)
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)

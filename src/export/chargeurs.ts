@@ -224,6 +224,8 @@ export interface Espece {
   rebondPietinement: number
   /** Elle tombe. Sans effet dans un monde vu de dessus. */
   pesante: boolean
+  /** Rayon de la lumiere qu'elle emet, en pixels. Zero : elle n'eclaire pas. */
+  lueur: number
 }
 
 export interface Son {
@@ -336,6 +338,8 @@ export interface Projet {
    * consulte : l'enchainement des niveaux est dans le fichier, pas du code.
    */
   deroule: { titre: string; ordre: string[] }
+  /** La lumiere du monde. Ambiante a un : plein jour. */
+  lumiere: { ambiante: number }
 }
 
 export interface Declencheur {
@@ -794,6 +798,13 @@ namespace PixelForge
         public int h;
     }
 
+    /// <summary>La lumiere du monde.</summary>
+    [Serializable]
+    public class Lumiere
+    {
+        public float ambiante = 1f;
+    }
+
     /// <summary>Le deroule du jeu : son titre, et l'ordre de ses cartes.</summary>
     [Serializable]
     public class Deroule
@@ -1103,6 +1114,8 @@ namespace PixelForge
         public int rebondPietinement;
         /// <summary>Elle tombe. Sans effet dans un monde vu de dessus.</summary>
         public bool pesante;
+        /// <summary>Rayon de la lumiere emise, en pixels. Zero : n'eclaire pas.</summary>
+        public float lueur;
     }
 
     /// <summary>L'aller-retour d'un corps porteur, en pixels et millisecondes.</summary>
@@ -1299,6 +1312,8 @@ namespace PixelForge
         public List<Declencheur> declencheurs;
         /// <summary>Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.</summary>
         public Deroule deroule;
+        /// <summary>La lumiere du monde. Ambiante a un : plein jour.</summary>
+        public Lumiere lumiere;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -1450,6 +1465,8 @@ var salles: Array = []
 var declencheurs: Array = []
 ## Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
 var deroule: Dictionary = {}
+## La lumiere du monde. Ambiante a un : plein jour.
+var lumiere: Dictionary = { "ambiante": 1.0 }
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -1479,6 +1496,7 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.salles = brut.get("salles", [])
 	p.declencheurs = brut.get("declencheurs", [])
 	p.deroule = brut.get("deroule", {})
+	p.lumiere = brut.get("lumiere", { "ambiante": 1.0 })
 	return p
 
 ## Les bornes d'une salle en pixels du monde.
@@ -2174,6 +2192,9 @@ pub struct Espece {
     /// Elle tombe. Sans effet dans un monde vu de dessus.
     #[serde(default)]
     pub pesante: bool,
+    /// Rayon de la lumiere emise, en pixels. Zero : n'eclaire pas.
+    #[serde(default)]
+    pub lueur: f64,
 }
 
 /// L'aller-retour d'un corps porteur, en pixels et millisecondes.
@@ -2325,7 +2346,23 @@ pub struct Projet {
     /// Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
     #[serde(default)]
     pub deroule: Deroule,
+    /// La lumiere du monde. Ambiante a un : plein jour.
+    #[serde(default)]
+    pub lumiere: Lumiere,
 }
+
+/// La lumiere du monde.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Lumiere {
+    #[serde(default = "ambiante_pleine")]
+    pub ambiante: f64,
+}
+
+impl Default for Lumiere {
+    fn default() -> Self { Lumiere { ambiante: 1.0 } }
+}
+
+fn ambiante_pleine() -> f64 { 1.0 }
 
 /// Le deroule du jeu : son titre, et l'ordre de ses cartes.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -2535,6 +2572,8 @@ function Projet.depuis(donnees)
   self.declencheurs = donnees.declencheurs or {}
   -- Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
   self.deroule = donnees.deroule or { titre = "", ordre = {} }
+  -- La lumiere du monde. Ambiante a un : plein jour.
+  self.lumiere = donnees.lumiere or { ambiante = 1.0 }
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -3180,6 +3219,8 @@ class Espece:
     degatsPietinement: int = 0
     rebondPietinement: int = 0
     pesante: bool = False
+    #: Rayon de la lumiere emise, en pixels. Zero : n'eclaire pas.
+    lueur: float = 0
 
     def etat(self, nom: str) -> dict[str, Any] | None:
         """L'etat portant ce nom, ou None."""
@@ -3215,6 +3256,8 @@ class Projet:
     declencheurs: list[dict[str, Any]] = field(default_factory=list)
     #: Le deroule : titre et ordre des cartes. Ordre vide : l'ordre des cartes.
     deroule: dict[str, Any] = field(default_factory=dict)
+    #: La lumiere du monde. Ambiante a un : plein jour.
+    lumiere: dict[str, Any] = field(default_factory=lambda: {"ambiante": 1.0})
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -3343,6 +3386,7 @@ class Projet:
             textes=d.get("textes", {}), salles=d.get("salles", []),
             declencheurs=d.get("declencheurs", []),
             deroule=d.get("deroule", {}),
+            lumiere=d.get("lumiere", {"ambiante": 1.0}),
         )
 #: « la4 » rend 440. Un silence ou une note inconnue rend zero.
 _DEMI_TONS = {
