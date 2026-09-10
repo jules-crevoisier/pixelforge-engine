@@ -41,6 +41,8 @@ import type { Noeud } from '../scene/noeud.ts'
 export interface Declencheur {
   nom: string
   quand: 'salle' | 'zone'
+  /** La carte sur laquelle il vit. Vide : toutes. Voir le format v14. */
+  carte: string
   /** Pour « salle » : le nom du tableau dont l'entree tire le script. */
   salle: string
   /** Pour « zone » : le rectangle a franchir, en CASES de la carte. */
@@ -73,6 +75,11 @@ export class Declencheurs {
   tuile: number
   /** Compte des tirs, pour les bancs et pour un reglage. */
   tirs = 0
+  /**
+   * Le nom de la carte courante. C'est le monde qui le branche : les
+   * declencheurs ne savent pas ou l'on joue, ils demandent.
+   */
+  carteCourante: (() => string) | null = null
 
   constructor(liste: Declencheur[] = [], tuile = 16) {
     this.liste = liste
@@ -92,8 +99,12 @@ export class Declencheurs {
   avancer(c: ContexteJeu, salle: string, sujetParDefaut: string): void {
     const entreeSalle = salle !== this.salleVue
     this.salleVue = salle
+    const carteIci = this.carteCourante?.() ?? ''
     for (const d of this.liste) {
       if (d.unefois && this.tires.has(d.nom)) continue
+      // Un declencheur qui nomme une carte ne tire que sur elle : une zone
+      // est en cases, et deux cartes ont les memes cases.
+      if (d.carte && d.carte !== carteIci) continue
       if (d.quand === 'salle') {
         // On tire au CHANGEMENT et non a l'appartenance : « je suis dans la
         // salle du boss » est vrai pendant toute la rencontre, « j'y entre »

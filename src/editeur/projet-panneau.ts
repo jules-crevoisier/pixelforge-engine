@@ -534,7 +534,27 @@ export class PanneauProjet {
         this.appliquer(retirerDeclencheurProjet(this.frais(), q.nom),
           `Déclencheur « ${q.nom} » retiré`)
       })
-      carte.append(nom, quand, unefois, oter)
+      // Sur quelle carte il vit. Une zone est en cases, et deux cartes ont
+      // les memes cases : sans ce choix, la sortie du niveau un tirerait
+      // aussi au niveau deux.
+      const surCarte = document.createElement('select')
+      const toutes = document.createElement('option')
+      toutes.value = ''
+      toutes.textContent = 'toutes les cartes'
+      surCarte.appendChild(toutes)
+      for (const cc of p.cartes) {
+        const o = document.createElement('option')
+        o.value = cc.nom
+        o.textContent = cc.nom
+        if (q.carte === cc.nom) o.selected = true
+        surCarte.appendChild(o)
+      }
+      surCarte.title = 'La carte sur laquelle ce déclencheur vit. « Toutes » : partout.'
+      surCarte.addEventListener('change', () => {
+        this.appliquer(reglerDeclencheurProjet(this.frais(), q.nom, { carte: surCarte.value }),
+          `Déclencheur « ${q.nom} » : ${surCarte.value || 'toutes les cartes'}`)
+      })
+      carte.append(nom, quand, surCarte, unefois, oter)
 
       if (q.quand === 'salle') {
         const salle = document.createElement('select')

@@ -503,6 +503,7 @@ export function ajouterDeclencheurProjet(p: ProjetSerialise): ProjetSerialise {
     declencheurs: [...liste, {
       nom: `declencheur${n}`,
       quand: 'zone',
+      carte: '',
       salle: '',
       zone: { x: 0, y: 0, l: 2, h: 2 },
       qui: '',

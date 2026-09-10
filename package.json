@@ -17,7 +17,8 @@
     "banc:habillage": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-habillage.mjs",
     "banc:charge": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-charge.mjs",
     "fumee": "node scripts/fumee.mjs",
-    "agent": "node scripts/agent.mjs"
+    "agent": "node scripts/agent.mjs",
+    "exemple": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/fabrique-exemple.mjs"
   },
   "devDependencies": {
     "playwright": "^1.47.0",

@@ -188,9 +188,9 @@ MATIERES_ESSAI.forEach((v, i) => { carteMatieres.solides[i] = v })
  */
 const SALLES_ESSAI = [{ nom: 'entree', x: 0, y: 0, largeur: 4, hauteur: 3, reprise: null }]
 const DECLENCHEURS_ESSAI = [
-  { nom: 'accueil', quand: 'salle', salle: 'entree', zone: { x: 0, y: 0, l: 0, h: 0 },
+  { nom: 'accueil', quand: 'salle', carte: '', salle: 'entree', zone: { x: 0, y: 0, l: 0, h: 0 },
     qui: '', unefois: true, script: "c.dire('accueil')" },
-  { nom: 'piege', quand: 'zone', salle: '', zone: { x: 2, y: 1, l: 2, h: 1 },
+  { nom: 'piege', quand: 'zone', carte: 'salle', salle: '', zone: { x: 2, y: 1, l: 2, h: 1 },
     qui: 'heros', unefois: false, script: "c.jouer('saut')" },
 ]
 
@@ -307,7 +307,7 @@ sortie = {
                   for cam in ${JSON.stringify(CAMERAS)}],
     "decalagesSol": [list(p.cartes[1].calques[0].decalage(cam, cam))
                      for cam in ${JSON.stringify(CAMERAS)}],
-    "declencheurs": [f"{d['nom']}:{d['quand']}:{d['qui']}" for d in p.declencheurs],
+    "declencheurs": [f"{d['nom']}:{d['quand']}:{d['carte']}:{d['qui']}" for d in p.declencheurs],
     "declUnefois": [d["unefois"] for d in p.declencheurs],
     "declScript": p.declencheurs[0]["script"],
     "declSalle": [d["nom"] for d in p.declencheurs_de_salle("entree")],
@@ -376,7 +376,7 @@ print(json.dumps(sortie))
         ? `${ecartsNotes.length} fausses, ex. « ${ecartsNotes[0]} » : ${v.frequences[NOTES.indexOf(ecartsNotes[0])]} au lieu de ${FREQUENCES[NOTES.indexOf(ecartsNotes[0])]}`
         : `${NOTES.length} notes, silence et note inventee compris`)
     check('Python retrouve les declencheurs, leur « quand » et leur source',
-      v.declencheurs.join(' ') === 'accueil:salle: piege:zone:heros'
+      v.declencheurs.join(' ') === 'accueil:salle:: piege:zone:salle:heros'
       && JSON.stringify(v.declUnefois) === '[true,false]'
       && v.declScript === "c.dire('accueil')",
       v.declencheurs.join(' · '))
@@ -631,7 +631,7 @@ console.log(JSON.stringify({
   repetition: [[-1, 0], [0, 0], [5, 0], [-6, 2]].map(
     (q) => m.caseDeCalque(p.cartes[1].calques[1], p.cartes[1], q[0], q[1])),
   horsCalque: m.caseDeCalque(p.cartes[1].calques[0], p.cartes[1], -1, 0),
-  declencheurs: p.declencheurs.map((d) => d.nom + ':' + d.quand + ':' + d.qui),
+  declencheurs: p.declencheurs.map((d) => d.nom + ':' + d.quand + ':' + d.carte + ':' + d.qui),
   declUnefois: p.declencheurs.map((d) => d.unefois),
   declScript: p.declencheurs[0].script,
   declSalle: m.declencheursDeSalle(p, 'entree').map((d) => d.nom),
@@ -705,7 +705,7 @@ console.log(JSON.stringify({
       v.titre === 'Essai' && v.suivantes.join('|') === 'salle||',
       `« ${v.titre} » · matieres -> ${v.suivantes[0] || 'rien'}`)
     check('TypeScript retrouve les declencheurs et repond pareil au meme point',
-      v.declencheurs.join(' ') === 'accueil:salle: piege:zone:heros'
+      v.declencheurs.join(' ') === 'accueil:salle:: piege:zone:salle:heros'
       && JSON.stringify(v.declUnefois) === '[true,false]'
       && v.declScript === "c.dire('accueil')"
       && v.declSalle.join(',') === 'accueil'

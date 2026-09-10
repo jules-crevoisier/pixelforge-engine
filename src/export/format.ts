@@ -39,6 +39,13 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **14** — la carte d'un declencheur. C'est le jeu-temoin qui a trouve le
+ * trou : dans un projet a trois niveaux, une zone posee en cases ne disait
+ * pas SUR QUELLE CARTE elle vit, et la sortie du niveau un tirait aussi au
+ * niveau deux, aux memes coordonnees. Un declencheur porte donc le nom de sa
+ * carte ; vide, il vaut partout — ce que faisaient tous les declencheurs
+ * d'avant, et un fichier version 11 a 13 se relit donc tel quel.
+ *
  * **13** — la lumiere. L'ambiante du projet, et le rayon de lueur des
  * especes : une torche est une entite dont la description porte un rayon,
  * comme une balise porte « reprise ». L'eclairage est fidele a la palette —
@@ -137,7 +144,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 13
+export const VERSION_FORMAT = 14
 
 export interface ProjetSerialise {
   version: number
@@ -236,6 +243,13 @@ export interface DeclencheurSerialise {
   nom: string
   /** « salle » : l'entree d'un tableau. « zone » : le contact d'un rectangle. */
   quand: 'salle' | 'zone'
+  /**
+   * La carte sur laquelle il vit. Vide : toutes.
+   *
+   * Une zone est en CASES, et deux cartes ont les memes cases : sans ce
+   * champ, la sortie du niveau un tire aussi au niveau deux.
+   */
+  carte: string
   /** Pour « salle » : le nom du tableau. Sinon vide. */
   salle: string
   /** Pour « zone » : le rectangle, en cases. Sinon a zero. */
@@ -488,7 +502,7 @@ export function serialiserProjet(
     // Chaque champ, toujours : un declencheur « salle » porte quand meme sa
     // zone a zero, pour qu'un chargeur n'ait jamais a traiter un champ absent.
     declencheurs: declencheurs.map((d) => ({
-      nom: d.nom, quand: d.quand, salle: d.salle ?? '',
+      nom: d.nom, quand: d.quand, carte: d.carte ?? '', salle: d.salle ?? '',
       zone: d.zone ? { ...d.zone } : { x: 0, y: 0, l: 0, h: 0 },
       qui: d.qui ?? '', unefois: !!d.unefois, script: d.script,
     })),

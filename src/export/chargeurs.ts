@@ -346,6 +346,8 @@ export interface Declencheur {
   nom: string
   /** « salle » : l'entree d'un tableau. « zone » : le contact d'un rectangle. */
   quand: 'salle' | 'zone'
+  /** La carte sur laquelle il vit. Vide : toutes. */
+  carte: string
   salle: string
   /** En cases. A zero quand le « quand » ne s'en sert pas. */
   zone: { x: number; y: number; l: number; h: number }
@@ -823,6 +825,8 @@ namespace PixelForge
         public string nom;
         /// <summary>« salle » : l'entree d'un tableau. « zone » : un rectangle.</summary>
         public string quand;
+        /// <summary>La carte sur laquelle il vit. Vide : toutes.</summary>
+        public string carte;
         public string salle;
         /// <summary>En cases. A zero quand le « quand » ne s'en sert pas.</summary>
         public Zone zone;
@@ -2379,6 +2383,9 @@ pub struct Declencheur {
     pub nom: String,
     /// « salle » : l'entree d'un tableau. « zone » : le contact d'un rectangle.
     pub quand: String,
+    /// La carte sur laquelle il vit. Vide : toutes.
+    #[serde(default)]
+    pub carte: String,
     #[serde(default)]
     pub salle: String,
     /// En cases. A zero quand le « quand » ne s'en sert pas.

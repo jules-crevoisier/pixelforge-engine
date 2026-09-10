@@ -3770,6 +3770,33 @@ console.log('\n--- les declencheurs : quand ceci arrive, joue ce script ---')
   }
 
   {
+    // La carte d'un declencheur : le trou que le jeu-temoin a trouve. Une
+    // zone est en cases, et deux cartes ont les memes cases — la sortie du
+    // niveau un ne doit pas tirer au niveau deux.
+    const { heros, tirs, ctx, script } = bac()
+    const d = new Declencheurs([
+      { nom: 'sortie-un', quand: 'zone', carte: 'niveau1', salle: '',
+        zone: { x: 0, y: 0, l: 2, h: 2 }, qui: '', unefois: false, script: script('un') },
+      { nom: 'partout', quand: 'zone', carte: '', salle: '',
+        zone: { x: 0, y: 0, l: 2, h: 2 }, qui: '', unefois: false, script: script('partout') },
+    ], 16)
+    let ou = 'niveau2'
+    d.carteCourante = () => ou
+    heros.x = 8
+    d.avancer(ctx, '', 'heros')
+    check('un declencheur qui nomme une carte ne tire pas ailleurs',
+      tirs.length === 1 && tirs[0].startsWith('partout'),
+      'sur le niveau deux, seule la zone « toutes cartes » tire')
+    ou = 'niveau1'
+    heros.x = 40
+    d.avancer(ctx, '', 'heros')
+    heros.x = 8
+    d.avancer(ctx, '', 'heros')
+    check('et il tire chez lui', tirs.filter((t) => t.startsWith('un')).length === 1,
+      'la meme zone, la bonne carte')
+  }
+
+  {
     const { tirs, ctx, script } = bac()
     const d = new Declencheurs([{
       nom: 'fantome', quand: 'zone', salle: '', zone: { x: 0, y: 0, l: 4, h: 4 },
@@ -4080,6 +4107,111 @@ console.log('\n--- la lumiere, fidele a la palette ---')
       'ce que faisaient tous les projets jusqu\'ici')
     void poserEspeceProjet
   }
+}
+
+/*
+ * LE JEU-TEMOIN : « Le Gouffre », un jeu complet en donnees pures.
+ *
+ * Trois niveaux, un titre, des dialogues, une musique, la nuit et ses
+ * lanternes, une fin — sans une ligne de code moteur. Ce banc demande trois
+ * choses : que l'artefact et son generateur disent la meme chose, que le
+ * fichier soit un projet valide qui se relit, et surtout que chaque niveau
+ * SE TRAVERSE avec le vrai controleur — un jeu-temoin infranchissable ne
+ * temoignerait de rien.
+ */
+console.log('\n--- le jeu-temoin : « Le Gouffre » ---')
+{
+  const { projetGouffre, TUILE: T } = await import('../src/demo/exemple-gouffre.ts')
+  const { versTexte, relireCarte, VERSION_FORMAT } = await import('../src/export/format.ts')
+  const { Carte } = await import('../src/tuiles/tilemap.ts')
+  const { Plateformeur } = await import('../src/runtime/plateforme.ts')
+  const { compiler } = await import('../src/script/atelier.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { readFileSync } = await import('node:fs')
+
+  const p = projetGouffre()
+  check('le generateur est deterministe',
+    versTexte(p) === versTexte(projetGouffre()),
+    'deux fabrications, le meme fichier — sinon le banc jouerait un autre jeu que le depot')
+  const artefact = readFileSync(new URL('../public/exemples/le-gouffre.json', import.meta.url), 'utf8')
+  check('l\'artefact du depot est exactement ce que le generateur fabrique',
+    artefact === versTexte(p),
+    'deux sources de verite finiraient par se contredire — npm run exemple les raccorde')
+
+  check('c\'est un projet de la version courante, a trois niveaux ordonnes',
+    p.version === VERSION_FORMAT && p.cartes.length === 3 && p.scenes.length === 3
+    && p.deroule.titre === 'Le Gouffre'
+    && p.deroule.ordre.join(',') === 'clairiere,caverne,gouffre'
+    && p.cartes.every((c) => p.scenes.some((sc) => sc.nom === c.nom)),
+    `version ${p.version} · ${p.deroule.ordre.join(' -> ')}`)
+
+  check('la nuit est posee, et les lanternes la percent',
+    p.lumiere.ambiante === 0.5
+    && p.especes.find((e) => e.id === 'lanterne')?.lueur === 64
+    && p.especes.find((e) => e.id === 'heros-cote')?.lueur === 44,
+    'ambiante 0,5 · lanterne 64 px · le heros porte sa propre lueur')
+
+  const fautifs = p.declencheurs.filter((d) => !compiler(d.script).ok)
+  check('chaque declencheur du jeu compile, et chacun nomme sa carte',
+    fautifs.length === 0 && p.declencheurs.every((d) => d.carte !== ''),
+    fautifs.length ? fautifs.map((d) => d.nom).join(', ')
+      : `${p.declencheurs.length} declencheurs — c'est ce jeu qui a impose le champ « carte » du format 14`)
+
+  check('les dialogues et les musiques du jeu sont dans le fichier',
+    p.dialogues.length === 3 && p.musiques.length === 2
+    && p.musiques.find((m) => m.nom === 'victoire')?.boucle === false,
+    'une victoire qui boucle n\'est plus une victoire')
+
+  /*
+   * CHAQUE NIVEAU SE TRAVERSE, avec le vrai controleur et la politique la
+   * plus grossiere qui soit : tenir droite, sauter des qu'on peut. Si un
+   * passage demande un enchainement precis, il ne se passe pas.
+   */
+  const BOITE = { x: -4, y: -14, l: 8, h: 14 }
+  const bloques = []
+  for (const c of p.cartes) {
+    const carte = relireCarte(c, (l, h, t) => new Carte(l, h, t))
+    const ctrl = new Plateformeur()
+    const corps = { x: 2 * T + 8, y: 14 * T, boite: { ...BOITE } }
+    let atteint = false
+    for (let i = 0; i < 2400 && !atteint; i++) {
+      ctrl.avancer(carte, corps, 1 / 60, 1, ctrl.diagnostic().auSol, true)
+      if (corps.x >= 57 * T) atteint = true
+    }
+    if (!atteint) bloques.push(`${c.nom} (x=${(corps.x / T).toFixed(1)})`)
+  }
+  check('les trois niveaux se traversent en tenant droite et en sautillant',
+    bloques.length === 0,
+    bloques.length ? `bloque : ${bloques.join(', ')}` : 'du depart a la sortie, au vrai controleur')
+
+  /*
+   * Et chaque creature posee a les pieds sur du sol : une lanterne qui
+   * flotte ou un coeur enterre sont les fautes de placement qu'on ne voit
+   * qu'en jouant — precisement ce qu'un banc de niveau doit voir avant.
+   */
+  const volantes = new Set(['chauve-souris'])
+  const flottent = []
+  for (const sc of p.scenes) {
+    const c = p.cartes.find((q) => q.nom === sc.nom)
+    const carte = relireCarte(c, (l, h, t) => new Carte(l, h, t))
+    const visiter = (n) => {
+      if (n.espece && n.espece !== 'heros-cote' && !volantes.has(n.espece)) {
+        const cx = Math.floor(n.x / T)
+        const rangee = Math.round(n.y / T)
+        if (!carte.solide(cx, rangee)) flottent.push(`${n.nom}@${sc.nom}`)
+      }
+      for (const e of n.enfants) visiter(e)
+    }
+    visiter(sc.racine)
+  }
+  check('chaque creature du jeu a les pieds sur du sol', flottent.length === 0,
+    flottent.length ? `flottent : ${flottent.join(', ')}` : 'lanternes, balises, coeurs et gelees compris')
+
+  const m = mondeDepuisProjet(p, 'le-gouffre.json')
+  check('et le jeu entier se relit comme n\'importe quel projet',
+    m.cartes.length === 3 && m.sonde().ordre.join(',') === 'clairiere,caverne,gouffre'
+    && m.sonde().titreOuvert === true,
+    `« ${p.deroule.titre} » s'ouvre sur son ecran-titre`)
 }
 
 const echecs = bilan.filter((b) => !b.ok)

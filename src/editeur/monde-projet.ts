@@ -330,12 +330,15 @@ export function mondeDepuisProjet(
         const c = compiler(d.script)
         if (c.ok && c.script) {
           vifs.push({
-            nom: d.nom, quand: d.quand, salle: d.salle,
+            nom: d.nom, quand: d.quand, carte: d.carte ?? '', salle: d.salle,
             zone: { ...d.zone }, qui: d.qui, unefois: d.unefois, script: c.script,
           })
         } else fautes.push(`déclencheur ${d.nom} : ${c.erreur ?? 'refusé'}`)
       }
-      if (vifs.length) jeu.declencheurs = new Declencheurs(vifs, premiere.tuile)
+      if (vifs.length) {
+        jeu.declencheurs = new Declencheurs(vifs, premiere.tuile)
+        jeu.declencheurs.carteCourante = () => fluxActif
+      }
       notes = fautes.length ? ` · ${fautes.length} script(s) refusé(s)` : ''
       if (dirige) jeu.suivreNoeud(dirige.nom)
 

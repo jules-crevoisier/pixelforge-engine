@@ -850,6 +850,73 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     vueFinale === 320,
     `${vueFinale} px — la sérialisation prenait la vue de l’ÉCRAN, cadre d’édition compris`)
 
+  /*
+   * LE JEU-TEMOIN, PAR LA VRAIE PORTE : « Ouvrir… », l'ecran-titre, et le
+   * premier niveau au clavier.
+   *
+   * Le banc prouve que la geometrie se traverse au controleur ; lui ne peut
+   * pas prouver que le FICHIER s'ouvre, que le titre attend, que le dialogue
+   * s'ouvre et se lit, que la musique part et que la sortie emmene au niveau
+   * deux. C'est le jeu entier qui passe par les branchements — exactement ce
+   * qu'un joueur fera.
+   */
+  {
+    const { readFileSync } = await import('node:fs')
+    const texte = readFileSync(new URL('../public/exemples/le-gouffre.json', import.meta.url))
+    const [selecteur] = await Promise.all([
+      p.waitForEvent('filechooser'),
+      p.click('#ouvrir'),
+    ])
+    await selecteur.setFiles({
+      name: 'le-gouffre.json', mimeType: 'application/json', buffer: texte,
+    })
+    await p.waitForTimeout(600)
+    const ouverture = await p.evaluate(() => ({
+      nom: window.pfe.monde.nom,
+      ...window.pfe.monde.sonde(),
+    }))
+    ok('« Ouvrir… » relit le jeu-témoin, écran-titre en tête',
+      ouverture.nom.includes('le-gouffre') && ouverture.titreOuvert === true
+      && ouverture.carteActive === 'clairiere'
+      && ouverture.ordre.join(',') === 'clairiere,caverne,gouffre',
+      `« ${ouverture.nom} » · ${ouverture.ordre.join(' → ')}`)
+
+    await p.click('#jouer')
+    await p.waitForTimeout(300)
+    await p.keyboard.press('Space')
+    await p.waitForTimeout(250)
+    // Le premier niveau, au clavier : droite tenue, petits sauts. Les memes
+    // appuis lisent le dialogue d'accueil — valider et sauter partagent la
+    // touche, comme dans les mondes de demonstration.
+    await p.keyboard.down('ArrowRight')
+    let etatFlux = null
+    for (let i = 0; i < 70; i++) {
+      // Un saut TENU, pas une pichenette : la hauteur est variable, et un
+      // appui d'une image donne un sautillement qui ne monte pas une marche.
+      await p.keyboard.down('Space')
+      await p.waitForTimeout(170)
+      await p.keyboard.up('Space')
+      await p.waitForTimeout(200)
+      etatFlux = await p.evaluate(() => window.pfe.monde.sonde())
+      if (etatFlux.carteActive !== 'clairiere') break
+    }
+    await p.keyboard.up('ArrowRight')
+    const apres = await p.evaluate(() => ({
+      musique: window.pfe.jeu.musicien?.nom ?? '',
+      tirs: window.pfe.jeu.declencheurs?.tirs ?? 0,
+      x: Math.round(window.pfe.monde.heros?.x ?? -1),
+      ...window.pfe.monde.sonde(),
+    }))
+    ok('la clairière se joue et sa sortie emmène dans la caverne',
+      apres.carteActive === 'caverne',
+      `arrivé en « ${apres.carteActive} » (x=${apres.x}) — le niveau entier au clavier, dialogue compris`)
+    ok('la musique du jeu est partie d’un déclencheur, en données',
+      apres.musique === 'descente' && apres.tirs >= 2,
+      `« ${apres.musique} » joue · ${apres.tirs} déclencheur(s) tirés`)
+    await p.click('#arreter')
+    await p.waitForTimeout(250)
+  }
+
   // L'aide s'ouvre et se ferme.
   await p.click('#basculeAide')
   await p.waitForTimeout(200)

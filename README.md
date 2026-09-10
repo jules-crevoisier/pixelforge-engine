@@ -517,6 +517,55 @@ en zoom arrière gonflait la vue du projet de cinquante pour cent. Dix-sept
 gestes plus tard, le projet demandait un tampon de trois cent mille pixels de
 large. Une vérification garde maintenant ce bogue fermé.
 
+## Le jeu-témoin : « Le Gouffre »
+
+Un moteur se juge sur les jeux qu'on en tire, pas sur ses bancs. Le dépôt
+contient donc un jeu complet — trois niveaux, un écran-titre, des dialogues,
+une musique, la nuit et ses lanternes, une fin — écrit **sans une ligne de
+code moteur** : tout passe par les mêmes fonctions pures que les boutons de
+l'éditeur, et le résultat est `public/exemples/le-gouffre.json`, un fichier
+de projet ordinaire que « Ouvrir… » relit. `npm run exemple` le refabrique ;
+le banc vérifie que l'artefact et son générateur disent exactement la même
+chose.
+
+Le banc exige surtout que le jeu **se joue** : chaque niveau est traversé au
+vrai contrôleur — tenir droite, sauter dès qu'on peut ; un passage qui
+demande un enchaînement précis ne passe pas — et chaque créature posée a les
+pieds sur du sol. La fumée fait le reste dans un vrai navigateur : ouvrir le
+fichier, passer le titre, lire le dialogue, jouer la clairière au clavier
+jusqu'à la caverne, et vérifier que la musique est partie d'un déclencheur.
+
+### Ce que le jeu-témoin a trouvé — le carnet
+
+C'est la raison d'être d'un témoin : chaque manque rencontré en l'écrivant
+est devenu soit une correction, soit une ligne de ce carnet.
+
+**Corrigé sur-le-champ :**
+
+- **La carte d'un déclencheur** (format v14). Une zone est en cases, et deux
+  cartes ont les mêmes cases : la sortie de la clairière tirait aussi dans la
+  caverne. Un déclencheur nomme maintenant sa carte ; vide, il vaut partout.
+
+**Au carnet, dans l'ordre où ça mord :**
+
+1. **La mort d'un projet relu n'a pas de reprise.** Les mondes de
+   démonstration ont leur logique de mort et de réapparition ; un projet relu
+   n'a rien — le héros meurt, disparaît, et la partie reste ouverte sur du
+   vide. Les balises `reprise` sont déjà dans le format : il manque la règle
+   qui les fait servir hors des mondes écrits à la main. C'est le prochain
+   chantier du moteur.
+2. **L'ambiante est globale.** Une surface claire et une grotte noire ne
+   s'expriment pas dans le même projet : la lumière se règle par projet, pas
+   par carte. « Le Gouffre » s'en sort parce que tout y est souterrain.
+3. **Les salles sont globales aussi** — des cases sans carte, comme l'étaient
+   les déclencheurs avant la v14. Même remède à prévoir.
+4. **Les dialogues et les musiques ne s'éditent pas dans le panneau.** Ils
+   traversent le fichier et se jouent, mais s'écrivent à la main. Un bloc de
+   plus, sur le modèle des sons.
+5. **Rien ne termine un jeu.** `c.dire('fin')` ouvre un dialogue, puis la
+   partie continue derrière. Il manque un verbe de fin — retour au titre,
+   générique — qui soit une donnée comme le reste.
+
 ## Ce que ça veut dire, concrètement
 
 - **Tout est en pixels entiers.** Positions, caméra, échelle. Ce qui a besoin de
@@ -700,12 +749,12 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 374 vérifications : mondes, animations, combat, étages, scripts, déclencheurs, lumière
+npm run banc:mondes     # 385 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
 npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           # 106 vérifications de l'éditeur, dans un vrai navigateur
+npm run fumee           # 109 vérifications de l'éditeur et du jeu-témoin, dans un vrai navigateur
 npm run banc:image      #  30 vérifications de ce que l'image de production emporte
 npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
 npm run agent           # la grille : 73 critères, et ce qu'il reste à faire
