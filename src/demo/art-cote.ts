@@ -203,6 +203,63 @@ const PENTES = [
   PENTE_GAUCHE | PENTE_DEMI | PENTE_HAUTE,
 ].map(penteDepuisMatiere)
 
+/**
+ * Les stalactites du lointain : le fond qui defile a mi-vitesse.
+ *
+ * Elles sont tirees d'un HASARD FIGE et non ecrites a la main : quatre tuiles
+ * dessinees a la main se reconnaissent au bout de trois ecrans, et l'oeil
+ * repere la repetition avant de reperer la profondeur. Une graine fixe donne
+ * un dessin different par tuile et le meme a chaque lancement — ce qui est la
+ * seule chose qui compte pour un fond.
+ */
+function lointain(graine: number): string[] {
+  let etat = graine >>> 0
+  // Un generateur a un seul mot d'etat : suffisant pour du decor, et surtout
+  // reproductible dans tous les langages, ce qu'un Math.random ne serait pas.
+  const suivant = (): number => {
+    etat = (etat * 1664525 + 1013904223) >>> 0
+    return etat / 4294967296
+  }
+  // La tuile est OPAQUE : c'est elle le fond de la salle, et non un motif
+  // pose par-dessus un fond plat. Un lointain transparent se ferait recouvrir
+  // par le decor de premier plan, et l'on ne verrait jamais qu'il defile.
+  const g = Array.from({ length: TUILE }, () => Array.from({ length: TUILE }, () => 'f'))
+  /*
+   * Deux ou trois concretions par tuile, et non une par colonne.
+   *
+   * Une par colonne donnait un peigne : l'oeil y lisait une texture reguliere
+   * et non un relief. Ce qui fait un lointain, c'est le VIDE entre les
+   * formes — sans lui, il n'y a pas de silhouette, seulement du grain.
+   */
+  const combien = 2 + Math.floor(suivant() * 2)
+  for (let n = 0; n < combien; n++) {
+    const centre = Math.floor(suivant() * TUILE)
+    const longueur = 3 + Math.floor(suivant() * 9)
+    const parLeHaut = suivant() < 0.72
+    for (let i = 0; i < longueur; i++) {
+      // Elle s'affine en descendant : une pointe, pas un baton. La demi-largeur
+      // tombe a zero sur les deux tiers de la longueur.
+      const demi = Math.max(0, Math.round((1 - i / longueur) * 1.8))
+      const y = parLeHaut ? i : TUILE - 1 - i
+      for (let x = centre - demi; x <= centre + demi; x++) {
+        if (x < 0 || x >= TUILE) continue
+        /*
+         * Deux tons, tous deux PLUS SOMBRES que le premier plan.
+         *
+         * C'est ce qui fait reculer le fond. Dans une caverne il n'y a pas de
+         * ciel pour delaver le lointain, seulement moins de lumiere : le
+         * fond s'assombrit au lieu de palir. Un fond au meme ton que le sol
+         * se colle au personnage et la profondeur disparait.
+         */
+        g[y][x] = x === centre - demi ? 'r' : 'd'
+      }
+    }
+  }
+  return g.map((l) => l.join(''))
+}
+
+const LOINTAIN = [lointain(0x5eed), lointain(0xc0ffee), lointain(0x1234), lointain(0xbeef)]
+
 export const PLANCHE_CAVERNE: string[][] = [
   ...MASQUES_BLOB47.map(rocheDepuisMasque),
   FOND,
@@ -210,6 +267,7 @@ export const PLANCHE_CAVERNE: string[][] = [
   POINTES,
   PASSERELLE,
   ...PENTES,
+  ...LOINTAIN,
 ]
 
 export const TUILE_FOND = 47
@@ -223,3 +281,6 @@ export const TUILE_DEMI_D_BAS = 53
 export const TUILE_DEMI_D_HAUT = 54
 export const TUILE_DEMI_G_BAS = 55
 export const TUILE_DEMI_G_HAUT = 56
+/** Les quatre tuiles du lointain, pour le calque a parallaxe. */
+export const TUILE_LOINTAIN = 57
+export const LOINTAIN_NOMBRE = 4

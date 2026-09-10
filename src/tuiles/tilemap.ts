@@ -264,6 +264,29 @@ export interface Calque {
   terrain: { tuileDepart: number; jeu: JeuDeTuiles; dehorsEstPlein: boolean } | null
   /** Presence du terrain, quand il y en a un. */
   presence: Uint8Array | null
+  /**
+   * De combien ce calque suit la camera, par axe.
+   *
+   * Un pour le monde reel : le calque bouge avec tout le reste. Un demi pour
+   * un fond lointain : il defile deux fois moins vite, et la profondeur
+   * apparait. Zero pour un ciel, qui ne bouge pas du tout. Au-dessus de un,
+   * c'est un premier plan qui passe plus vite que le decor — des branchages,
+   * un grillage.
+   *
+   * Deux axes et non un seul : un fond de montagnes defile horizontalement et
+   * ne monte pas quand on saute. Un seul facteur obligerait a choisir entre
+   * les deux, et le mauvais choix se voit a chaque saut.
+   */
+  parallaxe: { x: number; y: number }
+  /**
+   * Le calque se REPETE-t-il indefiniment ?
+   *
+   * Sans cela, la parallaxe est inutilisable : un fond qui defile deux fois
+   * moins vite couvre deux fois moins de monde, et le vide apparait au bord
+   * de la carte des qu'on s'eloigne. Avec, une bande de ciel de dix cases
+   * habille un monde de mille.
+   */
+  repete: boolean
 }
 
 export class Carte {
@@ -310,6 +333,11 @@ export class Carte {
       devant: opts.devant ?? false,
       terrain: opts.terrain ?? null,
       presence: opts.terrain ? new Uint8Array(this.cases) : (opts.presence ?? null),
+      // Un calque ordinaire suit le monde exactement et ne se repete pas :
+      // c'est ce que tout le monde attend d'un calque qu'on vient de creer,
+      // et c'est ce que faisaient tous les calques avant la parallaxe.
+      parallaxe: { x: opts.parallaxe?.x ?? 1, y: opts.parallaxe?.y ?? 1 },
+      repete: opts.repete ?? false,
     }
     this.calques.push(c)
     return c

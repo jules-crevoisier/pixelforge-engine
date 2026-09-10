@@ -89,7 +89,7 @@ export function rendreScene(
     const traces: Trace[] = []
     for (const c of cartesADessiner) {
       const paire = cartes.get(c.source)
-      if (paire) releverCarte(traces, ecran, paire.carte, paire.atlas, projection, c.x - cx, c.y - cy, null)
+      if (paire) releverCarte(traces, ecran, paire.carte, paire.atlas, projection, c.x, c.y, cx, cy, null)
     }
     releverSprites(traces, aDessiner, sprites, projection, t, cx, cy)
     traces.sort((a, b) => (a.z - b.z) || (a.rang - b.rang))
@@ -103,7 +103,7 @@ export function rendreScene(
   const derriere: Trace[] = []
   for (const c of cartesADessiner) {
     const paire = cartes.get(c.source)
-    if (paire) releverCarte(derriere, ecran, paire.carte, paire.atlas, projection, c.x - cx, c.y - cy, false)
+    if (paire) releverCarte(derriere, ecran, paire.carte, paire.atlas, projection, c.x, c.y, cx, cy, false)
   }
   for (const tr of derriere) poser(ctx, tr)
 
@@ -115,7 +115,7 @@ export function rendreScene(
   const devant: Trace[] = []
   for (const c of cartesADessiner) {
     const paire = cartes.get(c.source)
-    if (paire) releverCarte(devant, ecran, paire.carte, paire.atlas, projection, c.x - cx, c.y - cy, true)
+    if (paire) releverCarte(devant, ecran, paire.carte, paire.atlas, projection, c.x, c.y, cx, cy, true)
   }
   for (const tr of devant) poser(ctx, tr)
 }
@@ -174,11 +174,29 @@ function releverSprites(
  * `devant` vaut null quand on releve TOUS les calques d'un coup — c'est le cas
  * isometrique, ou le tri decidera lui-meme de ce qui passe devant.
  */
+/**
+ * Le decalage d'un calque, pour un facteur de parallaxe.
+ *
+ * ## Pourquoi on ARRONDIT ici, et pas plus tard
+ *
+ * La camera est deja sur un pixel entier : c'est ce qui empeche toute l'image
+ * de scintiller. Un calque a 0,4 de parallaxe se retrouverait a 12,4 pixels,
+ * et le navigateur l'echantillonnerait entre deux pixels — un fond flou au
+ * milieu d'un jeu net, ce qui est le defaut le plus visible qu'un rendu pixel
+ * puisse avoir. On arrondit donc le decalage du calque lui-meme.
+ *
+ * L'arrondi est une fonction MONOTONE de la camera : quand elle avance d'un
+ * pixel, le calque avance de zero ou d'un, jamais de moins un. Sans cela il
+ * tremblerait d'avant en arriere.
+ */
+export const decalageParallaxe = (camera: number, facteur: number): number =>
+  Math.round(camera * facteur)
+
 function releverCarte(
   sortie: Trace[], ecran: Ecran, carte: Carte, atlas: Atlas,
-  p: Projection, ox: number, oy: number, devant: boolean | null,
+  p: Projection, noeudX: number, noeudY: number,
+  camX: number, camY: number, devant: boolean | null,
 ): void {
-  const b = casesVisibles(p, -ox, -oy, ecran.vue, carte)
   // Ce qui deborde au-dessus de la case : la hauteur d'un bloc isometrique,
   // ou zero pour une dalle plate.
   const debord = atlas.hauteur - p.hauteurTuile
@@ -186,9 +204,25 @@ function releverCarte(
   carte.calques.forEach((calque, iCalque) => {
     if (!calque.visible) return
     if (devant !== null && calque.devant !== devant) return
+    /*
+     * Le decalage se calcule PAR CALQUE, et la fenetre visible aussi.
+     *
+     * Un fond a mi-vitesse ne montre pas les memes cases que le sol : les
+     * calculer une fois pour tous ferait dessiner, pour le fond, les cases
+     * qui sont sous les pieds du heros — c'est-a-dire de larges bandes vides
+     * la ou il devait y avoir du ciel.
+     */
+    const ox = noeudX - decalageParallaxe(camX, calque.parallaxe.x)
+    const oy = noeudY - decalageParallaxe(camY, calque.parallaxe.y)
+    const b = casesVisibles(p, -ox, -oy, ecran.vue, carte, 2, !calque.repete)
     for (let cy = b.y0; cy <= b.y1; cy++) {
       for (let cx = b.x0; cx <= b.x1; cx++) {
-        const image = calque.cases[carte.index(cx, cy)]
+        // Un calque qui se repete lit la case MODULO sa taille : la case -3
+        // vaut la case largeur-3. Le reste de JavaScript etant negatif pour
+        // un negatif, on le ramene dans les positifs avant d'indexer.
+        const lx = calque.repete ? ((cx % carte.largeur) + carte.largeur) % carte.largeur : cx
+        const ly = calque.repete ? ((cy % carte.hauteur) + carte.hauteur) % carte.hauteur : cy
+        const image = calque.cases[carte.index(lx, ly)]
         if (image === VIDE) continue
         const m = caseVersMonde(p, cx, cy)
         sortie.push({

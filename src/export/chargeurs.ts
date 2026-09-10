@@ -66,6 +66,21 @@ function chargeurTypeScript(): string {
   cases: string[]
   terrain: { tuileDepart: number; jeu: string; dehorsEstPlein: boolean } | null
   presence: string[] | null
+  /**
+   * De combien ce calque suit la camera, par axe.
+   *
+   * Un pour le monde reel. Un demi pour un fond lointain : il defile deux
+   * fois moins vite, et la profondeur apparait. Zero pour un ciel fixe.
+   * Absent dans un fichier d'avant la version 9 : c'est alors un.
+   */
+  parallaxe?: { x: number; y: number }
+  /**
+   * Le calque se repete-t-il indefiniment ?
+   *
+   * Sans cela la parallaxe est inutilisable : a mi-vitesse un fond couvre
+   * deux fois moins de monde, et le vide apparait au bord de la carte.
+   */
+  repete?: boolean
 }
 
 export interface Carte {
@@ -502,6 +517,40 @@ export function especeDuNoeud(p: Projet, n: Noeud): Espece | null {
   return n.espece ? especeNommee(p, n.espece) : null
 }
 
+/**
+ * Le decalage a l'ecran d'un calque, pour une position de camera.
+ *
+ * C'est LA fonction qu'un moteur d'accueil doit avoir juste pour que la
+ * parallaxe ressemble a quelque chose. On ARRONDIT ici, et pas plus tard : un
+ * calque a 0,4 de parallaxe tomberait sur 12,4 pixels, le moteur
+ * l'echantillonnerait entre deux pixels, et l'on aurait un fond flou au
+ * milieu d'un jeu net — le pire defaut qu'un rendu pixel puisse avoir.
+ */
+export function decalageCalque(c: Calque, camX: number, camY: number): { x: number; y: number } {
+  const fx = c.parallaxe?.x ?? 1
+  const fy = c.parallaxe?.y ?? 1
+  return { x: Math.round(camX * fx), y: Math.round(camY * fy) }
+}
+
+/**
+ * La case a lire, pour un calque qui se repete ou non.
+ *
+ * Rend null en dehors d'un calque ordinaire ; ramene dans la carte pour un
+ * calque repete, ou la case -3 vaut la case largeur-3.
+ */
+export function caseDeCalque(
+  c: Calque, carte: Carte, cx: number, cy: number,
+): { x: number; y: number } | null {
+  if (!c.repete) {
+    if (cx < 0 || cy < 0 || cx >= carte.largeur || cy >= carte.hauteur) return null
+    return { x: cx, y: cy }
+  }
+  return {
+    x: ((cx % carte.largeur) + carte.largeur) % carte.largeur,
+    y: ((cy % carte.hauteur) + carte.hauteur) % carte.hauteur,
+  }
+}
+
 export function musiqueNommee(p: Projet, nom: string): Musique | null {
   return p.musiques.find((m) => m.nom === nom) ?? null
 }
@@ -595,6 +644,34 @@ namespace PixelForge
         public List<string> cases;
         public Terrain terrain;
         public List<string> presence;
+        /// <summary>
+        /// De combien ce calque suit la camera, par axe. Un : comme le monde.
+        /// Un demi : deux fois moins vite, donc plus loin. Zero : un ciel fixe.
+        /// </summary>
+        public Parallaxe parallaxe;
+        /// <summary>Le calque se repete-t-il indefiniment ? Voir parallaxe.</summary>
+        public bool repete;
+
+        /// <summary>
+        /// Le decalage a l'ecran de ce calque. On ARRONDIT ici : un calque a
+        /// 0,4 de parallaxe tomberait entre deux pixels, et l'on aurait un
+        /// fond flou au milieu d'un jeu net.
+        /// </summary>
+        public void Decalage(float camX, float camY, out int dx, out int dy)
+        {
+            float fx = parallaxe != null ? parallaxe.x : 1f;
+            float fy = parallaxe != null ? parallaxe.y : 1f;
+            dx = (int)Math.Round(camX * fx);
+            dy = (int)Math.Round(camY * fy);
+        }
+    }
+
+    /// <summary>Les deux facteurs de parallaxe d'un calque.</summary>
+    [Serializable]
+    public class Parallaxe
+    {
+        public float x = 1f;
+        public float y = 1f;
     }
 
     [Serializable]
@@ -1293,6 +1370,26 @@ static func pixel_de_planche(planche_: Dictionary, index: int, x: int, y: int) -
 	return planche_.get("cle", {}).get(ligne[x], "")
 
 ## Deplie un calque en PackedInt32Array, indexe par y * largeur + x.
+## Le decalage a l'ecran d'un calque, pour une position de camera.
+##
+## On ARRONDIT ici, et pas plus tard : un calque a 0,4 de parallaxe tomberait
+## sur 12,4 pixels, Godot l'echantillonnerait entre deux pixels, et l'on aurait
+## un fond flou au milieu d'un jeu net — le pire defaut d'un rendu pixel.
+static func decalage_calque(calque: Dictionary, cam_x: float, cam_y: float) -> Vector2i:
+	var p: Dictionary = calque.get("parallaxe", {})
+	return Vector2i(roundi(cam_x * p.get("x", 1.0)), roundi(cam_y * p.get("y", 1.0)))
+
+## La case a lire, pour un calque qui se repete ou non. Rend Vector2i(-1, -1)
+## en dehors d'un calque ordinaire.
+static func case_de_calque(calque: Dictionary, carte: Dictionary, cx: int, cy: int) -> Vector2i:
+	var largeur: int = carte.get("largeur", 0)
+	var hauteur: int = carte.get("hauteur", 0)
+	if not calque.get("repete", false):
+		if cx < 0 or cy < 0 or cx >= largeur or cy >= hauteur:
+			return Vector2i(-1, -1)
+		return Vector2i(cx, cy)
+	return Vector2i(posmod(cx, largeur), posmod(cy, hauteur))
+
 static func deplier_cases(carte: Dictionary, calque: Dictionary) -> PackedInt32Array:
 	var largeur: int = carte.get("largeur", 0)
 	var hauteur: int = carte.get("hauteur", 0)
@@ -1447,6 +1544,35 @@ pub struct Calque {
     pub cases: Vec<String>,
     pub terrain: Option<Terrain>,
     pub presence: Option<Vec<String>>,
+    /// De combien ce calque suit la camera, par axe. Un : comme le monde.
+    /// Un demi : deux fois moins vite, donc plus loin. Zero : un ciel fixe.
+    #[serde(default)]
+    pub parallaxe: Option<Parallaxe>,
+    /// Le calque se repete-t-il indefiniment ? Sans cela la parallaxe laisse
+    /// le vide apparaitre au bord de la carte.
+    #[serde(default)]
+    pub repete: bool,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Parallaxe {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Calque {
+    /// Le decalage a l'ecran de ce calque, arrondi au pixel.
+    ///
+    /// On arrondit ICI et pas plus tard : un calque a 0,4 de parallaxe
+    /// tomberait entre deux pixels, et l'on aurait un fond flou au milieu
+    /// d'un jeu net.
+    pub fn decalage(&self, cam_x: f64, cam_y: f64) -> (i32, i32) {
+        let (fx, fy) = match self.parallaxe {
+            Some(p) => (p.x, p.y),
+            None => (1.0, 1.0),
+        };
+        ((cam_x * fx).round() as i32, (cam_y * fy).round() as i32)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2020,6 +2146,28 @@ function Projet.depuis(donnees)
 end
 
 -- Deplie un calque en table plate, indexee de 1 a largeur * hauteur.
+-- Le decalage a l'ecran d'un calque, pour une position de camera.
+--
+-- On ARRONDIT ici, et pas plus tard : un calque a 0,4 de parallaxe tomberait
+-- sur 12,4 pixels, LOVE l'echantillonnerait entre deux pixels, et l'on aurait
+-- un fond flou au milieu d'un jeu net.
+function Projet.decalage_calque(calque, cam_x, cam_y)
+  local p = calque.parallaxe or {}
+  local fx = p.x or 1
+  local fy = p.y or 1
+  return math.floor(cam_x * fx + 0.5), math.floor(cam_y * fy + 0.5)
+end
+
+-- La case a lire, pour un calque qui se repete ou non. Rend nil en dehors
+-- d'un calque ordinaire.
+function Projet.case_de_calque(calque, carte, cx, cy)
+  if not calque.repete then
+    if cx < 0 or cy < 0 or cx >= carte.largeur or cy >= carte.hauteur then return nil end
+    return cx, cy
+  end
+  return cx % carte.largeur, cy % carte.hauteur
+end
+
 function Projet.deplier_cases(carte, calque)
   local sortie = {}
   for i = 1, carte.largeur * carte.hauteur do sortie[i] = Projet.VIDE end
@@ -2370,6 +2518,21 @@ class Calque:
     cases: list[str]
     terrain: Terrain | None = None
     presence: list[str] | None = None
+    #: De combien ce calque suit la camera, par axe. Un : comme le monde.
+    #: Un demi : deux fois moins vite, donc plus loin. Zero : un ciel fixe.
+    parallaxe: dict[str, float] | None = None
+    #: Le calque se repete-t-il indefiniment ? Voir parallaxe.
+    repete: bool = False
+
+    def decalage(self, cam_x: float, cam_y: float) -> tuple[int, int]:
+        """Le decalage a l'ecran de ce calque, arrondi au pixel.
+
+        On arrondit ICI et pas plus tard : un calque a 0,4 de parallaxe
+        tomberait entre deux pixels, et l'on aurait un fond flou au milieu
+        d'un jeu net.
+        """
+        p = self.parallaxe or {}
+        return (round(cam_x * p.get(\"x\", 1.0)), round(cam_y * p.get(\"y\", 1.0)))
 
 
 @dataclass
@@ -2652,6 +2815,8 @@ class Projet:
                         cases=l["cases"],
                         terrain=Terrain(**l["terrain"]) if l.get("terrain") else None,
                         presence=l.get("presence"),
+                        parallaxe=l.get("parallaxe"),
+                        repete=l.get("repete", False),
                     )
                     for l in c["calques"]
                 ],

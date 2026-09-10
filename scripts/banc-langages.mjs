@@ -39,6 +39,20 @@ const { son } = await import('../src/runtime/son.ts')
 const { musique, voie, frequenceDe, dureeDe } = await import('../src/runtime/musique.ts')
 const M = await import('../src/tuiles/tilemap.ts')
 
+/*
+ * La table de reference de la PARALLAXE.
+ *
+ * C'est un arrondi, et un arrondi est exactement le genre de chose ou six
+ * portages divergent : l'un tronque, l'autre arrondit a l'entier pair, un
+ * troisieme oublie les negatifs. Un pixel d'ecart et le fond ne colle plus au
+ * sol. On demande donc a chacun la meme table.
+ *
+ * Les valeurs sont choisies sur les pieges : un demi exact — la ou « arrondir
+ * au pair » differe de « arrondir au superieur » —, un negatif, et un zero.
+ */
+const CAMERAS = [0, 1, 7, 8, 9, 100, 101, 255, -1, -7, -100]
+const FACTEURS = [0, 0.25, 0.4, 0.5, 1, 1.5, 2]
+
 /* Un projet minuscule mais complet : un mur, une collision, un noeud. */
 const carte = new Carte(5, 3, 16)
 const mur = carte.ajouterCalque('mur', {
@@ -48,6 +62,7 @@ carte.peindreTerrain(mur, 1, 1, true)
 carte.peindreTerrain(mur, 2, 1, true)
 carte.solides[carte.index(1, 1)] = 1
 carte.solides[carte.index(2, 1)] = 1
+
 
 const racine = creerNoeud('noeud', 'salle')
 const heros = creerNoeud('sprite', 'heros')
@@ -152,6 +167,15 @@ const HAUTEURS = MATIERES_ESSAI.flatMap((v) =>
  * c'est par elle que les portages liront la table. */
 const carteMatieres = new Carte(MATIERES_ESSAI.length, 1, TUILE_MATIERE)
 carteMatieres.ajouterCalque('sol')
+/*
+ * Un fond lointain qui se repete : le cas que la version 9 ajoute.
+ *
+ * Il va sur CETTE carte-ci et non sur la premiere, qui sert aux exports Tiled
+ * et LDtk : ceux-la prennent le premier calque de tuiles, et un deuxieme
+ * calque les ferait mesurer le ciel en croyant mesurer le mur. Le banc
+ * accuserait l'export d'un defaut qui serait le sien.
+ */
+carteMatieres.ajouterCalque('ciel', { parallaxe: { x: 0.4, y: 0.25 }, repete: true })
 MATIERES_ESSAI.forEach((v, i) => { carteMatieres.solides[i] = v })
 
 const projet = serialiserProjet(
@@ -256,6 +280,12 @@ sortie = {
     "hauteurs": [hauteur_sol(p.cartes[1].matiere(i, 0), x, ${TUILE_MATIERE})
                  for i in range(p.cartes[1].largeur) for x in range(${TUILE_MATIERE})],
     "dehors": [p.cartes[1].est_solide(-1, 0), p.cartes[1].est_solide(0, -1)],
+    "calques": [q.nom for q in p.cartes[1].calques],
+    "ciel": [p.cartes[1].calques[1].parallaxe, p.cartes[1].calques[1].repete],
+    "decalages": [list(p.cartes[1].calques[1].decalage(cam, cam))
+                  for cam in ${JSON.stringify(CAMERAS)}],
+    "decalagesSol": [list(p.cartes[1].calques[0].decalage(cam, cam))
+                     for cam in ${JSON.stringify(CAMERAS)}],
 }
 print(json.dumps(sortie))
 `)
@@ -334,6 +364,16 @@ print(json.dumps(sortie))
       fauxSols.length
         ? `${fauxSols.length} colonnes decalees sur ${HAUTEURS.length}`
         : `${HAUTEURS.length} colonnes, demi-pentes comprises`)
+    const attenduCiel = CAMERAS.map((c) => [Math.round(c * 0.4), Math.round(c * 0.25)])
+    const attenduSol = CAMERAS.map((c) => [c, c])
+    check('Python retrouve la parallaxe et la repetition d\'un calque',
+      v.calques.join(',') === 'sol,ciel'
+      && v.ciel[0].x === 0.4 && v.ciel[0].y === 0.25 && v.ciel[1] === true,
+      `${v.calques.join(', ')} · ciel a ${v.ciel[0].x}/${v.ciel[0].y}, repete ${v.ciel[1]}`)
+    check('Python arrondit le decalage de parallaxe EXACTEMENT comme le moteur',
+      JSON.stringify(v.decalages) === JSON.stringify(attenduCiel)
+      && JSON.stringify(v.decalagesSol) === JSON.stringify(attenduSol),
+      `${CAMERAS.length} positions de camera, negatives et demies comprises`)
     const ecarts = TABLE.filter((e, i) => v.images[i] !== e.image)
     check('Python rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -538,6 +578,18 @@ console.log(JSON.stringify({
   hauteurs: ${JSON.stringify([...MATIERES_ESSAI.keys()])}.flatMap(
     (i) => [...Array(${TUILE_MATIERE})].map((q, x) => m.hauteurSol(m.matiereDeCase(p.cartes[1], i, 0), x, ${TUILE_MATIERE}))),
   dehors: [m.estSolide(p.cartes[1], -1, 0), m.estSolide(p.cartes[1], 0, -1)],
+  calques: p.cartes[1].calques.map((q) => q.nom),
+  ciel: [p.cartes[1].calques[1].parallaxe, p.cartes[1].calques[1].repete],
+  decalages: ${JSON.stringify(CAMERAS)}.map(
+    (c) => m.decalageCalque(p.cartes[1].calques[1], c, c)),
+  decalagesSol: ${JSON.stringify(CAMERAS)}.map(
+    (c) => m.decalageCalque(p.cartes[1].calques[0], c, c)),
+  // Un calque repete lit la case modulo sa taille ; un calque ordinaire rend
+  // null dehors. C'est ce qui fait qu'un fond de dix cases habille un monde
+  // de mille.
+  repetition: [[-1, 0], [0, 0], [5, 0], [-6, 2]].map(
+    (q) => m.caseDeCalque(p.cartes[1].calques[1], p.cartes[1], q[0], q[1])),
+  horsCalque: m.caseDeCalque(p.cartes[1].calques[0], p.cartes[1], -1, 0),
 }))
 `)
   const e = spawnSync('node', ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', essai],
@@ -586,6 +638,20 @@ console.log(JSON.stringify({
     check('TypeScript place le sol des pentes a la MEME hauteur, colonne par colonne',
       fauxSolsTs.length === 0,
       fauxSolsTs.length ? `${fauxSolsTs.length} colonnes decalees` : `${HAUTEURS.length} colonnes`)
+    check('TypeScript retrouve la parallaxe et arrondit comme le moteur',
+      v.calques.join(',') === 'sol,ciel' && v.ciel[1] === true
+      && JSON.stringify(v.decalages.map((d) => [d.x, d.y]))
+        === JSON.stringify(CAMERAS.map((c) => [Math.round(c * 0.4), Math.round(c * 0.25)]))
+      && JSON.stringify(v.decalagesSol.map((d) => [d.x, d.y]))
+        === JSON.stringify(CAMERAS.map((c) => [c, c])),
+      `${CAMERAS.length} positions de camera`)
+    check('et un calque repete ramene la case dans la carte, un autre non',
+      JSON.stringify(v.repetition) === JSON.stringify([
+        { x: MATIERES_ESSAI.length - 1, y: 0 }, { x: 0, y: 0 },
+        { x: 5, y: 0 }, { x: MATIERES_ESSAI.length - 6, y: 0 },
+      ]) && v.horsCalque === null,
+      `la case -1 vaut la case ${MATIERES_ESSAI.length - 1} sur une carte de `
+      + `${MATIERES_ESSAI.length} de large ; hors d'un calque ordinaire, rien`)
     const ecarts = TABLE.filter((t, i) => v.images[i] !== t.image)
     check('TypeScript rend EXACTEMENT la meme image que le moteur, instant par instant',
       ecarts.length === 0,
@@ -607,7 +673,9 @@ for (const [cible, marqueurs] of [
     'Dictionary<string, List<string>> touches',
     'static class Matieres', 'public const int PENTE_DEMI = 128',
     'public static int HauteurSol(int matiere, int x, int tuile)',
-    'return (Matiere(cx, cy) & Matieres.SOLIDE) != 0;']],
+    'return (Matiere(cx, cy) & Matieres.SOLIDE) != 0;',
+    'class Parallaxe', 'public void Decalage(float camX, float camY, out int dx, out int dy)',
+    'public bool repete;']],
   ['gdscript', ['class_name ProjetPixelForge', 'const VIDE := -1', 'static func charger', 'deplier_cases',
     'static func image_a', 'static func ordre_de_lecture', 'aller-retour',
     'static func pixel_de_planche', 'func planche(', 'static func case_vers_monde',
@@ -615,7 +683,8 @@ for (const [cible, marqueurs] of [
     'func musique(', 'static func frequence_de', 'func texte(clef: String, langue: String)',
     'return table.get(clef, clef)', 'var touches: Dictionary',
     'static func matiere_de_case', 'static func hauteur_sol', 'const PENTE_DEMI := 128',
-    'return (matiere_de_case(carte, cx, cy) & SOLIDE) != 0']],
+    'return (matiere_de_case(carte, cx, cy) & SOLIDE) != 0',
+    'static func decalage_calque', 'static func case_de_calque', 'posmod(cx, largeur)']],
   ['lua', ['Projet.VIDE = -1', 'function Projet.depuis', 'deplier_cases', 'est_solide',
     'function Projet.image_a', 'function Projet.ordre_de_lecture', 'aller-retour',
     'function Projet.pixel_de_planche', 'function Projet:planche(',
@@ -624,7 +693,8 @@ for (const [cible, marqueurs] of [
     'function Projet.frequence_de', 'function Projet:texte(clef, langue)',
     'self.touches = donnees.touches',
     'function Projet.matiere_de_case', 'function Projet.hauteur_sol',
-    'Projet.PENTE_DEMI = 128', 'function Projet.a_matiere']],
+    'Projet.PENTE_DEMI = 128', 'function Projet.a_matiere',
+    'function Projet.decalage_calque', 'function Projet.case_de_calque']],
 ]) {
   const src = chargeur(cible, projet)
   const manquants = marqueurs.filter((m) => !src.includes(m))

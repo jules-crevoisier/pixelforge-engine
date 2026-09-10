@@ -1,0 +1,67 @@
+# Deploiement Dokploy (application de type « Docker Compose »).
+#
+# Aucun port n'est publie sur l'hote : Traefik joint le conteneur par le
+# reseau interne `dokploy-network`, gere le domaine et le certificat. C'est
+# aussi ce qui evite tout conflit avec un service deja en ecoute sur l'hote.
+#
+# Dans Dokploy : onglet Domains -> Host = votre domaine, Service =
+# `pixelforge-engine`, Container Port = 8080. Les labels Traefik sont ajoutes
+# automatiquement.
+#
+# Pour lancer sur une machine sans Dokploy :
+#     docker compose -f docker-compose.local.yml up -d --build
+
+services:
+  pixelforge-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pixelforge-engine:latest
+    restart: unless-stopped
+
+    # Visible uniquement depuis le reseau Docker, jamais depuis l'hote.
+    expose:
+      - "8080"
+
+    networks:
+      - dokploy-network
+
+    # Le site est entierement statique : rien n'a besoin d'etre ecrit sur le
+    # disque. Seuls les fichiers temporaires de nginx vivent en memoire.
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:uid=101,gid=101,mode=0700
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "--tries=1", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Si votre installation n'ajoute pas les labels toute seule, decommenter
+    # et remplacer le domaine. `traefik.docker.network` est indispensable :
+    # sans lui Traefik peut choisir la mauvaise interface.
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.docker.network=dokploy-network
+    #   - traefik.http.routers.pixelforge-engine.rule=Host(`moteur.exemple.com`)
+    #   - traefik.http.routers.pixelforge-engine.entrypoints=websecure
+    #   - traefik.http.routers.pixelforge-engine.tls.certresolver=letsencrypt
+    #   - traefik.http.services.pixelforge-engine.loadbalancer.server.port=8080
+
+# Reseau cree par Dokploy a l'installation, partage avec Traefik.
+networks:
+  dokploy-network:
+    external: true

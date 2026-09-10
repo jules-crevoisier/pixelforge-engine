@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "banc:image": "node scripts/banc-image.mjs",
+    "banc:deploiement": "node scripts/banc-deploiement.mjs",
     "preview": "vite preview",
     "banc:plateforme": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-plateforme.mjs",
     "banc:langages": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/banc-langages.mjs",

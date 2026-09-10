@@ -1,0 +1,20 @@
+# Tout ce qui n'entre pas dans la construction de l'image.
+#
+# `scripts` en fait partie : les bancs tournent avant la construction, dans le
+# depot, pas dedans. Les y embarquer alourdirait l'image de ce qui ne sert
+# jamais en production.
+.git
+.gitignore
+node_modules
+dist
+docs
+scripts
+.vscode
+.idea
+*.log
+.DS_Store
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.local.yml
+README.md

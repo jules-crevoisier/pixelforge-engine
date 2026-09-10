@@ -282,7 +282,43 @@ export class PanneauProjet {
         this.appliquer(retirerCalqueProjet(this.frais(), q.nom), `Calque « ${q.nom} » retiré`)
       })
       oter.disabled = c.calques.length <= 1
-      ligne.append(oeil, nom, monter, descendre, oter)
+      /*
+       * La parallaxe : deux nombres et une case a cocher, sur la ligne du
+       * calque.
+       *
+       * Deux champs et non un : un fond de montagnes defile sur les cotes et
+       * ne monte pas quand on saute. Un facteur unique obligerait a choisir
+       * entre les deux, et le mauvais choix se voit a chaque saut.
+       */
+      const par = q.parallaxe ?? { x: 1, y: 1 }
+      const champ = (axe: 'x' | 'y'): HTMLInputElement => {
+        const e = document.createElement('input')
+        e.type = 'number'
+        e.step = '0.05'
+        e.min = '0'
+        e.max = '4'
+        e.value = String(par[axe])
+        e.style.width = '52px'
+        e.title = axe === 'x'
+          ? 'Défilement horizontal : 1 comme le monde, 0,5 deux fois moins vite, 0 fixe.'
+          : 'Défilement vertical. Un fond lointain monte moins que le sol quand on saute.'
+        e.addEventListener('change', () => {
+          const v = { ...par, [axe]: Number(e.value) }
+          this.appliquer(
+            modifierCalqueProjet(this.frais(), q.nom, { parallaxe: v }),
+            `Calque « ${q.nom} » : parallaxe ${v.x} / ${v.y}`,
+          )
+        })
+        return e
+      }
+      const boucle = bouton(q.repete ? '∞' : '—', q.repete
+        ? 'Ce calque se répète. Sans répétition, un fond plus lent laisse voir le vide au bord.'
+        : 'Répéter ce calque indéfiniment — indispensable dès que la parallaxe n’est pas 1.',
+      () => this.appliquer(
+        modifierCalqueProjet(this.frais(), q.nom, { repete: !q.repete }),
+        `Calque « ${q.nom} » ${q.repete ? 'ne se répète plus' : 'se répète'}`,
+      ))
+      ligne.append(oeil, nom, champ('x'), champ('y'), boucle, monter, descendre, oter)
       liste.appendChild(ligne)
     })
     d.appendChild(liste)

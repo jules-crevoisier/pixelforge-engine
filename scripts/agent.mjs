@@ -75,7 +75,8 @@ function lancer(nom, commande, arguments_) {
 
 const epreuves = []
 epreuves.push(lancer('build', 'npm', ['run', '-s', 'build']))
-for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau', 'banc:habillage', 'banc:charge']) {
+for (const b of ['banc', 'banc:plateforme', 'banc:mondes', 'banc:langages', 'banc:reseau',
+  'banc:habillage', 'banc:charge', 'banc:image', 'banc:deploiement']) {
   epreuves.push(lancer(b, 'npm', ['run', '-s', b]))
 }
 /**
@@ -110,6 +111,18 @@ const sources = []
 })(join(RACINE, 'src'))
 for (const f of readdirSync(join(RACINE, 'scripts'))) {
   if (f.endsWith('.mjs')) sources.push(join(RACINE, 'scripts', f))
+}
+/*
+ * Le deploiement fait partie du code.
+ *
+ * Il n'en faisait pas partie, et l'agent declarait donc « le code n'existe
+ * pas » pour des criteres dont le code etait ecrit — dans le Dockerfile et
+ * dans la configuration nginx. Un moteur qu'on ne peut pas mettre en ligne
+ * n'est pas fini ; ce qui le met en ligne se mesure comme le reste.
+ */
+for (const f of ['Dockerfile', 'docker-compose.yml', 'docker-compose.local.yml',
+  '.dockerignore', 'docker/default.conf', 'docker/security-headers.conf']) {
+  if (existsSync(join(RACINE, f))) sources.push(join(RACINE, f))
 }
 const texte = new Map(sources.map((f) => [relative(RACINE, f), readFileSync(f, 'utf8')]))
 /**
@@ -276,6 +289,23 @@ const OBJECTIFS = [
         indices: ['vrai moteur', 'vrai jeu'], preuves: 3 },
       { nom: 'Plusieurs personnages dirigeables, chacun ses touches',
         symboles: ['entreesDe'], indices: ['personnages', 'touches'], preuves: 2 },
+    ],
+  },
+  {
+    jeu: 'Le déployer sans que ça casse en production',
+    criteres: [
+      { nom: 'Une image qui ne contient que ce qu’elle sert',
+        symboles: ['FROM nginx', 'USER nginx', 'read_only'],
+        indices: ['image', 'dockerfile', 'lecture seule', 'port non privilegie'], preuves: 4 },
+      { nom: 'Toute page du dépôt entre dans l’image, sans qu’on la nomme',
+        symboles: ['COPY *.html'],
+        indices: ['page du depot', 'motif'], preuves: 2 },
+      { nom: 'L’application vit sous les en-têtes réels, pas seulement en local',
+        symboles: ['securitypolicyviolation', 'Content-Security-Policy'],
+        indices: ['politique', 'atelier de scripts peut compiler', 'en-tetes de production'], preuves: 4 },
+      { nom: 'Le fond défile moins vite que le sol, et on l’a mesuré',
+        symboles: ['decalageParallaxe', 'parallaxe', 'repete'],
+        indices: ['parallaxe', 'fond lointain', 'repete', 'profondeur'], preuves: 6 },
     ],
   },
   {

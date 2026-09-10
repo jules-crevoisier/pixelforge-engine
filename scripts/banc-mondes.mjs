@@ -2231,6 +2231,56 @@ console.log('\n--- un projet enregistre puis relu ---')
       `« ${matiereEnCaractere(gauche)} » — elle sortait « z » et se relisait en mur`)
   }
 
+  /*
+   * LA PARALLAXE TRAVERSE L'ENREGISTREMENT, ET SE BORNE.
+   *
+   * Elle ne sert a rien sans la repetition : a mi-vitesse un fond couvre deux
+   * fois moins de monde, et le vide apparait au bord de la carte des qu'on
+   * s'eloigne. Les deux vont ensemble ou ne vont pas.
+   */
+  {
+    const { modifierCalqueProjet } = await import('../src/editeur/projet-neuf.ts')
+    const { Carte } = await import('../src/tuiles/tilemap.ts')
+    const c = new Carte(8, 6, 16)
+    c.ajouterCalque('ciel', { parallaxe: { x: 0.4, y: 0.25 }, repete: true })
+    c.ajouterCalque('sol')
+    const p0 = serialiserProjet('p', { largeur: 320, hauteur: 180 },
+      new Palette('p', []), [{ nom: 'p', carte: c }], [])
+
+    check('un calque neuf suit le monde et ne se répète pas',
+      p0.cartes[0].calques[1].parallaxe.x === 1 && p0.cartes[0].calques[1].repete === false,
+      'c’est ce que faisaient tous les calques avant la version 9')
+    check('et la parallaxe d’un fond part dans le fichier',
+      p0.cartes[0].calques[0].parallaxe.x === 0.4
+      && p0.cartes[0].calques[0].parallaxe.y === 0.25
+      && p0.cartes[0].calques[0].repete === true,
+      `${p0.cartes[0].calques[0].parallaxe.x} / ${p0.cartes[0].calques[0].parallaxe.y}, répété`)
+
+    const relu = relireCarte(JSON.parse(versTexte(p0)).cartes[0], (l, h, t) => new Carte(l, h, t))
+    check('elle revient telle quelle à la relecture',
+      relu.calques[0].parallaxe.x === 0.4 && relu.calques[0].parallaxe.y === 0.25
+      && relu.calques[0].repete === true && relu.calques[1].parallaxe.x === 1,
+      'sans cela un projet relu se rouvrirait plat')
+
+    // Un fichier d'AVANT la version 9 n'a pas ces champs.
+    const ancien = JSON.parse(versTexte(p0))
+    for (const q of ancien.cartes[0].calques) { delete q.parallaxe; delete q.repete }
+    const vieux = relireCarte(ancien.cartes[0], (l, h, t) => new Carte(l, h, t))
+    check('un fichier d’avant la version 9 se relit sans une ligne de migration',
+      vieux.calques.every((q) => q.parallaxe.x === 1 && q.parallaxe.y === 1 && !q.repete),
+      'pas de parallaxe écrite : le calque suit le monde, comme il l’a toujours fait')
+
+    // Le panneau borne : une valeur negative ferait defiler a contresens.
+    const borne = (v) => modifierCalqueProjet(p0, 'ciel', { parallaxe: { x: v, y: v } })
+      .cartes[0].calques[0].parallaxe.x
+    check('le panneau borne la parallaxe entre zéro et quatre',
+      borne(-3) === 0 && borne(99) === 4 && borne(0.5) === 0.5,
+      'une valeur négative ferait défiler le fond à contresens ; au-delà de quatre on ne voit plus rien')
+    check('et ce qui n’est pas un nombre retombe sur « comme le monde »',
+      borne(NaN) === 1 && borne(Infinity) === 1,
+      'un champ vidé au clavier rend NaN : on ne devine pas, on reprend la valeur neutre')
+  }
+
   // Les matieres traversent l'aller-retour, y compris celles qui ne sont pas
   // du solide. C'est ce qui permet a une pointe de rester une pointe.
   {

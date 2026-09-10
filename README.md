@@ -573,15 +573,75 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            #  82 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
-npm run banc:mondes     # 251 vérifications : mondes, animations, combat, étages, scripts, projets, historique
-npm run banc:langages   #  87 vérifications : chargeurs, accord entre langages, paquets
+npm run banc:mondes     # 257 vérifications : mondes, animations, combat, étages, scripts, projets, historique
+npm run banc:langages   #  91 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises
-npm run fumee           #  77 vérifications de l'éditeur, dans un vrai navigateur
-npm run agent           # la grille : 63 critères, et ce qu'il reste à faire
+npm run fumee           #  80 vérifications de l'éditeur, dans un vrai navigateur
+npm run banc:image      #  26 vérifications de ce que l'image de production emporte
+npm run banc:deploiement#   9 vérifications : l'application sous les en-têtes réels
+npm run agent           # la grille : 67 critères, et ce qu'il reste à faire
 npm run build
 ```
+
+## Le déployer
+
+L'application est entièrement statique : un `index.html`, un script, une
+feuille de style. Il n'y a ni serveur, ni base de données, ni variable
+d'environnement à fournir.
+
+```sh
+# sur une machine quelconque
+docker compose -f docker-compose.local.yml up -d --build   # puis localhost:8080
+```
+
+**Sur Dokploy.** Créer une application de type *Docker Compose*, la pointer sur
+ce dépôt, laisser `docker-compose.yml` par défaut. Puis, onglet *Domains* :
+`Host` = votre domaine, `Service` = `pixelforge-engine`, `Container Port` =
+`8080`. Rien d'autre. Aucun port n'est publié sur l'hôte — Traefik joint le
+conteneur par le réseau interne `dokploy-network`, ce qui évite tout conflit
+avec un service déjà en écoute.
+
+L'image finale ne contient que nginx et les fichiers construits : ni Node, ni
+`node_modules`, ni sources. Elle tourne en utilisateur non privilégié sur le
+port 8080, en système de fichiers **lecture seule** — un site statique n'a rien
+à écrire — avec un `tmpfs` pour ce que nginx, lui, doit écrire : son pid et ses
+tampons.
+
+### Ce que deux bancs surveillent, et pourquoi
+
+Le déploiement est le seul endroit où certains défauts se voient, et c'est le
+pire endroit pour les voir.
+
+**`banc:image`** relit le Dockerfile et le compare au dépôt. Il existe à cause
+de l'éditeur de sprites, où dix déploiements de suite ont échoué sur
+`Could not resolve entry module "demo.html"` : le Dockerfile copiait
+`index.html` nommément, quelqu'un avait ajouté une page, et le message parlait
+de rollup — jamais du Dockerfile. Le banc exige donc un **motif** et non des
+noms, et refuse qu'un dossier de source pousse à côté de ceux qu'on copie. Sur
+sa première exécution, il a trouvé que `public/` — le dossier que Vite sert tel
+quel — n'entrait pas dans l'image.
+
+**`banc:deploiement`** reconstruit exactement ce que le Dockerfile copie, dans
+un dossier à part, le sert avec les en-têtes lus dans la configuration nginx, et
+fait tourner l'application dedans. Il existe parce que la première politique de
+sécurité était cohérente sur le papier et **tuait l'atelier de scripts** :
+celui-ci compile ce qu'on lui écrit avec `new Function`, que `script-src 'self'`
+interdit. En développement rien ne l'aurait montré — le serveur de Vite n'envoie
+aucune politique.
+
+`'unsafe-eval'` est donc accordé, et la raison est écrite à côté : la seule
+alternative serait d'écrire un interprète, c'est-à-dire beaucoup plus de code
+pour exactement le même pouvoir. Ce que la permission n'ouvre pas : ni script
+distant, ni script en ligne. Et le banc **déduit** le besoin du code — le jour
+où l'atelier cesserait d'employer `new Function`, il demanderait qu'on retire la
+permission.
+
+Ce banc a lui-même failli ne rien mesurer : `page.evaluate` s'exécute dans un
+monde isolé que la politique de la page ne régit pas, et un `new Function`
+appelé de là réussit même quand la page l'interdit. Le premier essai déclarait
+tout vert sous une politique qui bloquait tout.
 
 ## Le multijoueur : jouer sans attendre les autres
 
@@ -1104,13 +1164,20 @@ pire défaut d'une mesure.
     Ce qu'on affirme sans l'avoir mesuré           4/4
     Ce qu'un jeu de plateforme doit avoir          9/9
     Ce qu'un jeu a en plus de son gameplay        13/13
-                                          723 vérifications
+    Le déployer sans que ça casse en production    4/4
+                                          771 vérifications
 
 Les cinq critères ajoutés au dernier tour — musique, export `.wav`, traduction,
 libellés jamais en clair, accord des six portages sur les notes et les textes —
 sont partis rouges. L'un d'eux l'est resté après coup : le `.wav` était écrit,
 branché sur les deux paquets, et **rien ne vérifiait que l'archive le
 contenait**. Trois vérifications de plus, et le trou s'est fermé.
+
+La grille a ensuite gagné une rubrique qu'elle n'avait pas : **le déployer**.
+Elle n'a rien mesuré du tout au premier essai — l'agent ne lisait que `src/` et
+`scripts/`, si bien qu'il déclarait « le code n'existe pas » pour du code écrit
+dans le Dockerfile. Un moteur qu'on ne peut pas mettre en ligne n'est pas fini ;
+ce qui le met en ligne se mesure comme le reste.
 
 Le tour suivant a demandé les demi-pentes. Elles ont coûté trois défauts qui
 dormaient depuis longtemps et qu'aucun banc ne regardait : une pente montant à

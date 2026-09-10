@@ -1,0 +1,11 @@
+Ce dossier est celui que Vite sert TEL QUEL : une icone d'onglet, un
+`robots.txt`, une police. Ce qu'on y depose part dans `dist` sans passer par
+le bundler, sous le meme nom.
+
+Il est garde vide et SUIVI PAR GIT expres. Sans ce fichier, git ne
+conserverait pas le dossier, il n'existerait pas dans le clone que fait le
+deploiement, et la ligne `COPY public ./public` du Dockerfile ferait echouer
+la construction de l'image — une panne dont la cause serait un dossier vide.
+
+Le banc `npm run banc:image` verifie que tout dossier de source entre bien
+dans l'image. C'est lui qui a trouve que celui-ci n'y entrait pas.

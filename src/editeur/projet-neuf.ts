@@ -268,9 +268,16 @@ export function retirerCalqueProjet(p: ProjetSerialise, nom: string): ProjetSeri
 }
 
 /** Change le nom, la visibilite ou le rang d'un calque. */
+/** La parallaxe tient entre zero et quatre. Voir `modifierCalqueProjet`. */
+const borner = (v: number): number =>
+  (Number.isFinite(v) ? Math.max(0, Math.min(4, Math.round(v * 100) / 100)) : 1)
+
 export function modifierCalqueProjet(
   p: ProjetSerialise, nom: string,
-  changements: { nom?: string; visible?: boolean; devant?: boolean; decaler?: number },
+  changements: {
+    nom?: string; visible?: boolean; devant?: boolean; decaler?: number
+    parallaxe?: { x: number; y: number }; repete?: boolean
+  },
 ): ProjetSerialise {
   const c = p.cartes[0]
   if (!c) return p
@@ -280,6 +287,14 @@ export function modifierCalqueProjet(
       nom: changements.nom?.trim() || q.nom,
       visible: changements.visible ?? q.visible,
       devant: changements.devant ?? q.devant,
+      // On BORNE la parallaxe au lieu de la refuser : une valeur negative
+      // ferait defiler le fond a contresens, ce qui donne le mal de mer et
+      // ne sert a rien ; au-dela de quatre, le premier plan file si vite
+      // qu'on ne voit plus ce qu'il montre.
+      parallaxe: changements.parallaxe
+        ? { x: borner(changements.parallaxe.x), y: borner(changements.parallaxe.y) }
+        : (q.parallaxe ?? { x: 1, y: 1 }),
+      repete: changements.repete ?? q.repete ?? false,
     }
     : q))
   if (changements.decaler) {

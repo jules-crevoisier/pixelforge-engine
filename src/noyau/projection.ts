@@ -311,6 +311,15 @@ export function casesVisibles(
   vue: { largeur: number; hauteur: number },
   carte: { largeur: number; hauteur: number },
   marge = 2,
+  /**
+   * Faut-il rester dans les bords de la carte ?
+   *
+   * Vrai d'ordinaire : au-dela il n'y a rien a dessiner. Faux pour un calque
+   * qui SE REPETE, ou la case -3 existe et vaut la case largeur-3. Borner
+   * ferait alors s'arreter le fond au bord de la carte, ce qui est
+   * exactement ce que la repetition sert a eviter.
+   */
+  borner = true,
 ): { x0: number; y0: number; x1: number; y1: number } {
   const coins = [
     [camX, camY], [camX + vue.largeur, camY],
@@ -328,11 +337,16 @@ export function casesVisibles(
   // deborde vers le haut, donc une case hors cadre par le bas de l'ecran peut
   // encore montrer son sommet.
   const hautSupplement = p.hauteurTuile > 0 ? Math.ceil(p.hauteurBloc / p.hauteurTuile) : 0
+  const a = x0 - marge
+  const b = y0 - marge
+  const c = x1 + marge + hautSupplement
+  const d = y1 + marge + hautSupplement
+  if (!borner) return { x0: a, y0: b, x1: c, y1: d }
   return {
-    x0: Math.max(0, x0 - marge),
-    y0: Math.max(0, y0 - marge),
-    x1: Math.min(carte.largeur - 1, x1 + marge + hautSupplement),
-    y1: Math.min(carte.hauteur - 1, y1 + marge + hautSupplement),
+    x0: Math.max(0, a),
+    y0: Math.max(0, b),
+    x1: Math.min(carte.largeur - 1, c),
+    y1: Math.min(carte.hauteur - 1, d),
   }
 }
 

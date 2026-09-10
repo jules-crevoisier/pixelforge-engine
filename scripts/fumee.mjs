@@ -193,6 +193,7 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   await passerDialogue()
   ok('et il se referme', !(await dial()))
 
+
   // La pause : elle arrete le monde, et le menu boucle.
   await p.keyboard.press('Escape')
   await p.waitForTimeout(150)
@@ -401,7 +402,17 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
   ok('et ce qui était peint est toujours là', (await solides()) > 4,
     `${await solides()} cases solides après le redimensionnement`)
 
-  const nomCalque = (await blocDe('Calques'))[0]
+  /*
+   * Le champ est designe par son ROLE et non par son rang.
+   *
+   * Il l'a ete par son rang, et ajouter deux champs de parallaxe sur chaque
+   * ligne de calque a fait remplir « plafond » dans un nombre. Un banc qui
+   * compte les champs mesure la disposition du panneau, pas ce qu'il fait.
+   */
+  const nomCalque = (await p.$$(
+    'xpath=//div[@id="projetCorps"]//div[contains(@class,"bloc")][h3[text()="Calques"]]'
+    + '//input[@placeholder="nom du calque"]',
+  ))[0]
   await nomCalque.fill('plafond')
   await p.getByRole('button', { name: '+ Décor' }).click()
   await p.waitForTimeout(450)
@@ -565,6 +576,125 @@ await p.click('#enregistrer')
 await p.waitForTimeout(900)
 ok('Enregistrer telecharge le projet faute de dossier',
   telecharges.length === 4 && telecharges[3].endsWith('.json'), telecharges.join(', '))
+
+/*
+ * LA PARALLAXE, MESUREE ET NON REGARDEE.
+ *
+ * Le fond de la caverne defile a 40 % de la camera. Le verifier a l'oeil n'est
+ * pas une verification : la premiere version de ce fond etait entierement
+ * RECOUVERTE par un aplat opaque pose devant, elle ne bougeait donc jamais, et
+ * elle avait l'air parfaitement normale — un fond fixe ressemble a un fond.
+ *
+ * On mesure le glissement pour de bon : on releve une bande de pixels du fond,
+ * on deplace la camera, on releve la meme bande, et l'on cherche de combien il
+ * faut decaler l'une pour retrouver l'autre.
+ *
+ * Cette mesure est la DERNIERE du banc, et sur un monde recharge : elle
+ * teleporte le heros, ce qui lui fait traverser des balises et deplacer son
+ * point de reprise. Placee au milieu, elle faisait echouer une verification
+ * qui n'avait rien a voir — et c'est ce genre d'echec qu'on met une heure a
+ * attribuer.
+ */
+{
+  await p.selectOption('#monde', 'caverne')
+  await p.waitForTimeout(400)
+  await p.click('#jouer')
+  await p.waitForTimeout(300)
+  await passerDialogue()
+
+  const camera = () => p.evaluate(() => Math.round(window.pfe.jeu.camera.x))
+  const poser = (x) => p.evaluate((v) => {
+    window.pfe.monde.heros.x = v
+    window.pfe.jeu.camera.x = Math.max(0, v - 160)
+  }, x)
+
+  /*
+   * On lit le TAMPON DU JEU, pas le canevas affiche.
+   *
+   * Le canevas affiche est une copie reechelonnee du tampon, avec des bandes
+   * noires et un filtrage du navigateur : mesurer dedans donnait des
+   * glissements de 4,5 puis 28,5 pixels, tous faux, et tous plausibles. Le
+   * tampon fait exactement la taille de la vue — 320 sur 180 — et un pixel y
+   * est un pixel.
+   */
+  const rangees = () => p.evaluate(() => {
+    const c = window.pfe.jeu.ecran.tampon
+    const ctx = window.pfe.jeu.ecran.ctx
+    const out = []
+    for (let y = 0; y < c.height; y += 6) {
+      const d = ctx.getImageData(0, y, c.width, 1).data
+      const l = []
+      for (let x = 0; x < c.width; x++) l.push(d[x * 4] + d[x * 4 + 1] * 256 + d[x * 4 + 2] * 65536)
+      out.push({ y, l })
+    }
+    return out
+  })
+
+  await poser(20 * 16)
+  await p.waitForTimeout(350)
+  const avant = await rangees()
+  const camAvant = await camera()
+  await poser(26 * 16)
+  await p.waitForTimeout(350)
+  const apres = await rangees()
+  const deplacement = (await camera()) - camAvant
+
+  /** De combien la rangee `i` a glisse, en pixels de jeu. */
+  const glissement = (i) => {
+    const a = avant[i].l
+    const b = apres[i].l
+    let best = 0
+    let mieux = Infinity
+    for (let d = 0; d <= Math.floor(a.length * 0.6); d++) {
+      let e = 0
+      for (let x = d; x < a.length; x++) e += Math.abs(a[x] - b[x - d])
+      const moyen = e / (a.length - d)
+      if (moyen < mieux) { mieux = moyen; best = d }
+    }
+    return best
+  }
+  const glissements = avant.map((r, i) => ({ y: r.y, d: glissement(i) }))
+  const attenduFond = Math.round(deplacement * 0.4)
+
+  ok('la caméra a bougé, sinon la mesure ne veut rien dire', deplacement > 30, `${deplacement} px`)
+
+  /*
+   * Deux populations, et il FAUT les deux.
+   *
+   * Le haut de l'écran ne montre que le lointain : il doit glisser de 40 %.
+   * Le sol, lui, glisse de la caméra entière. Ne vérifier que le fond
+   * laisserait passer un fond immobile aussi bien qu'un fond juste ; ne
+   * vérifier que le sol ne dirait rien de la parallaxe. C'est l'ÉCART entre
+   * les deux qui prouve qu'il y a de la profondeur.
+   */
+  const fond = glissements.filter((g) => g.y < 100 && g.d > 0)
+  const sol = glissements.filter((g) => g.y >= 110 && g.y < 150 && g.d > 0)
+  /*
+   * On prend la MEDIANE et non le compte exact.
+   *
+   * Le haut de l'ecran n'est pas que du lointain : une passerelle, une
+   * corniche y passent, et ces rangees-la glissent avec le sol. Exiger que
+   * toutes les rangees s'accordent revenait a exiger que la salle soit vide,
+   * c'est-a-dire a mesurer le niveau plutot que la parallaxe. La mediane
+   * ignore ces quelques rangees sans rien cacher : si le fond ne bougeait
+   * pas, elle vaudrait zero.
+   */
+  const mediane = (l) => {
+    const t = l.map((g) => g.d).sort((a, b) => a - b)
+    return t.length ? t[Math.floor(t.length / 2)] : -1
+  }
+  const medFond = mediane(fond)
+  const medSol = mediane(sol)
+
+  ok('le fond lointain défile à 40 % de la caméra, mesuré au pixel',
+    fond.length >= 5 && Math.abs(medFond - attenduFond) <= 1,
+    `${medFond} px pour ${deplacement} px de caméra, attendu ${attenduFond} `
+    + `(${fond.length} rangées de fond)`)
+  ok('et le sol, lui, défile à 100 % : c’est l’écart qui fait la profondeur',
+    sol.length >= 2 && Math.abs(medSol - deplacement) <= 2 && medSol - medFond > 20,
+    `sol ${medSol} px contre fond ${medFond} px — un fond qui bougerait autant `
+    + `n’aurait aucune profondeur`)
+}
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length

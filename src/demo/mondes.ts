@@ -20,6 +20,7 @@ import {
   TUILE_POINTES, TUILE_PASSERELLE,
   TUILE_PENTE_D, TUILE_PENTE_G,
   TUILE_DEMI_D_BAS, TUILE_DEMI_D_HAUT, TUILE_DEMI_G_BAS, TUILE_DEMI_G_HAUT,
+  TUILE_LOINTAIN, LOINTAIN_NOMBRE,
 } from './art-cote.ts'
 import {
   CLE_ISO, PLANCHE_ISO, LARGEUR_ISO, HAUTEUR_ISO, HAUTEUR_DESSIN_ISO,
@@ -437,6 +438,24 @@ export function mondeCaverne(): Monde {
   const largeur = PLAN_CAVERNE[0].length
   const hauteur = PLAN_CAVERNE.length
   const carte = new Carte(largeur, hauteur, TUILE)
+  /*
+   * Le lointain, DEVANT tout le reste dans l'ordre des calques et derriere
+   * tout le reste a l'ecran — c'est le premier calque, donc le premier
+   * dessine.
+   *
+   * Il defile a 40 % horizontalement et a 25 % verticalement, et pas au meme
+   * rythme sur les deux axes : un fond de cavernes fuit sur les cotes quand on
+   * court, et bouge a peine quand on saute. Un facteur unique obligerait a
+   * choisir entre les deux, et le mauvais choix se voit a chaque saut.
+   *
+   * Il SE REPETE, sans quoi la parallaxe ne servirait a rien : a 40 %, il
+   * couvre deux fois et demie moins de monde que le sol, et le vide
+   * apparaitrait des qu'on s'eloigne du depart.
+   */
+  const lointain = carte.ajouterCalque('lointain', {
+    parallaxe: { x: 0.4, y: 0.25 },
+    repete: true,
+  })
   const fond = carte.ajouterCalque('fond', { presence: new Uint8Array(largeur * hauteur) })
   const roche = carte.ajouterCalque('roche', {
     terrain: { tuileDepart: 0, jeu: 'blob47', dehorsEstPlein: true },
@@ -451,8 +470,22 @@ export function mondeCaverne(): Monde {
     for (let x = 0; x < largeur; x++) {
       const c = PLAN_CAVERNE[y][x]
       const i = carte.index(x, y)
-      fond.cases[i] = c === 'L' ? TUILE_LANTERNE : TUILE_FOND
-      if (fond.presence) fond.presence[i] = 1
+      /*
+       * Le calque « fond » ne porte plus QUE la lanterne.
+       *
+       * Il pavait toute la salle d'une tuile opaque, ce qui recouvrait le
+       * lointain : la parallaxe existait, defilait, et ne se voyait nulle
+       * part. Le fond d'une salle, c'est ce qu'on voit au loin — pas un aplat
+       * pose devant.
+       */
+      if (c === 'L') {
+        fond.cases[i] = TUILE_LANTERNE
+        if (fond.presence) fond.presence[i] = 1
+      }
+      // Le lointain ne suit pas le plan : il pave, et sa tuile depend de la
+      // case. Un motif regulier se lirait comme un papier peint ; on melange
+      // donc les deux axes pour que la periode ne saute pas aux yeux.
+      lointain.cases[i] = TUILE_LOINTAIN + ((x * 3 + y * 5) % LOINTAIN_NOMBRE)
       if (c === '#') {
         if (roche.presence) roche.presence[i] = 1
         carte.solides[i] = SOLIDE

@@ -38,6 +38,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **9** — la parallaxe et la repetition des calques. Un fond qui defile
+ * moins vite que le sol donne la profondeur, et il ne sert a rien sans la
+ * repetition : a mi-vitesse, il couvre deux fois moins de monde, et le vide
+ * apparait au bord de la carte des qu'on s'eloigne. Les deux vont ensemble
+ * ou ne vont pas. Un fichier d'avant se relit : un calque sans parallaxe vaut
+ * un, et un calque sans repetition ne se repete pas — ce que faisaient tous
+ * les calques jusqu'ici.
+ *
  * **8** — les demi-pentes, et la reparation de l'ecriture des matieres. La
  * grille de collision s'ecrivait en base trente-six, avec une borne a
  * trente-cinq « pour que rien ne casse en silence » : une pente montant a
@@ -96,7 +104,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 8
+export const VERSION_FORMAT = 9
 
 export interface ProjetSerialise {
   version: number
@@ -237,6 +245,13 @@ export interface CarteSerialisee {
     cases: string[]
     terrain: { tuileDepart: number; jeu: string; dehorsEstPlein: boolean } | null
     presence: string[] | null
+    /**
+     * De combien ce calque suit la camera, par axe. Un : comme le monde.
+     * Un demi : deux fois moins vite, donc plus loin. Zero : un ciel fixe.
+     */
+    parallaxe?: { x: number; y: number }
+    /** Le calque se repete-t-il indefiniment ? Voir `parallaxe`. */
+    repete?: boolean
   }[]
   /**
    * Ce que chaque case fait, une ligne par rangee, un caractere par case.
@@ -331,6 +346,8 @@ export function serialiserCarte(nom: string, c: Carte): CarteSerialisee {
       cases: lignes(l.cases),
       terrain: l.terrain ? { ...l.terrain } : null,
       presence: l.presence ? lignes(l.presence, '') : null,
+      parallaxe: { x: l.parallaxe.x, y: l.parallaxe.y },
+      repete: l.repete,
     })),
     // Les matieres passent par LEUR ecriture, celle de `tuiles/tilemap.ts`, et
     // non par la base trente-six d'a cote. Les deux ont diverge : la seconde
@@ -413,6 +430,10 @@ export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number,
     const calque = c.ajouterCalque(l.nom, {
       visible: l.visible,
       devant: l.devant,
+      // Un fichier d'avant la version 9 n'a pas ces champs : le calque suit
+      // le monde et ne se repete pas, ce que faisaient tous les calques.
+      parallaxe: l.parallaxe ? { x: l.parallaxe.x, y: l.parallaxe.y } : { x: 1, y: 1 },
+      repete: l.repete ?? false,
       terrain: l.terrain
         ? { tuileDepart: l.terrain.tuileDepart, jeu: l.terrain.jeu as 'blob47' | 'bord16',
             dehorsEstPlein: l.terrain.dehorsEstPlein }
