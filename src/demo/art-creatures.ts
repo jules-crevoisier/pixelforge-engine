@@ -1,0 +1,211 @@
+/**
+ * Les creatures, les ramassages et le coup porte.
+ *
+ * ## Pourquoi ces dessins sont calcules
+ *
+ * Comme le cycle de marche : ce qu'on veut eprouver ici n'est pas le talent du
+ * dessinateur, c'est que le systeme de combat, les planches et les index se
+ * tiennent. Une gelee dessinee par une ellipse ecrasee prouve mieux qu'une
+ * gelee dessinee a la main — si l'index d'une image glisse d'une case,
+ * l'animation se disloque a l'ecran au lieu de passer inapercue derriere
+ * quatre dessins qui se ressemblent.
+ *
+ * Un vrai projet remplacera ces planches par des dessins d'artiste. Rien dans
+ * le moteur ne changera : une planche est une planche.
+ */
+import { TUILE } from './art.ts'
+
+export const CLE_CREATURES: Record<string, string> = {
+  o: '#12101c',
+  v: '#3f9b52',
+  V: '#68c46e',
+  w: '#2a6b3c',
+  b: '#4a3d6b',
+  B: '#6b5a92',
+  a: '#241f3a',
+  r: '#c0334a',
+  R: '#e8556a',
+  y: '#f0c860',
+  Y: '#fff0b0',
+  s: '#e8ecf4',
+  S: '#a8b4c8',
+}
+
+type Grille = string[][]
+const vide = (): Grille =>
+  Array.from({ length: TUILE }, () => Array.from({ length: TUILE }, () => '.'))
+const enDessin = (g: Grille): string[] => g.map((l) => l.join(''))
+
+/**
+ * Une ellipse pleine, cernee d'un liseré.
+ *
+ * Le liseré n'est pas un contour dessine par-dessus : c'est le bord de
+ * l'ellipse lui-meme. Poser un contour apres coup elargit la forme d'un pixel
+ * de chaque cote, et deux creatures de meme taille finissent par ne plus
+ * l'avoir.
+ */
+function ellipse(
+  g: Grille, cx: number, cy: number, rx: number, ry: number,
+  dedans: string, bord: string,
+): void {
+  for (let y = 0; y < TUILE; y++) {
+    for (let x = 0; x < TUILE; x++) {
+      const dx = (x + 0.5 - cx) / rx
+      const dy = (y + 0.5 - cy) / ry
+      const d = dx * dx + dy * dy
+      if (d > 1) continue
+      // Le bord : ce qui est dans l'ellipse mais dont un voisin n'y est pas.
+      const voisinDehors = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ax, ay]) => {
+        const ux = (x + ax + 0.5 - cx) / rx
+        const uy = (y + ay + 0.5 - cy) / ry
+        return ux * ux + uy * uy > 1
+      })
+      g[y][x] = voisinDehors ? bord : dedans
+    }
+  }
+}
+
+/**
+ * La gelee : quatre temps d'ecrasement.
+ *
+ * Le VOLUME est conserve — quand elle s'aplatit, elle s'elargit. C'est la
+ * regle de l'ecrasement-etirement, et c'est ce qui distingue une creature
+ * vivante d'une image qu'on redimensionne : sans elle, la gelee a l'air de
+ * s'eloigner de la camera au lieu de rebondir.
+ */
+function gelee(ecrasement: number): string[] {
+  const g = vide()
+  const base = 6.2
+  const ry = base * (1 - ecrasement)
+  const rx = (base * base) / ry
+  const cy = TUILE - 1 - ry
+  ellipse(g, TUILE / 2, cy, Math.min(rx, 7.4), ry, 'v', 'w')
+  // Un reflet en haut a gauche : la lumiere vient de la, comme partout ici.
+  for (let y = 0; y < TUILE; y++) {
+    for (let x = 0; x < TUILE; x++) {
+      if (g[y][x] !== 'v') continue
+      if (x >= 4 && x <= 6 && y >= Math.floor(cy - ry) + 1 && y <= Math.floor(cy - ry) + 2) g[y][x] = 'V'
+    }
+  }
+  // Les yeux, poses sur la ligne du milieu et non au sommet : une creature
+  // dont les yeux montent avec le crane a l'air surprise en permanence.
+  const yy = Math.round(cy)
+  for (const xx of [5, 10]) {
+    if (g[yy] && g[yy][xx] !== '.') g[yy][xx] = 'o'
+    if (g[yy - 1] && g[yy - 1][xx] !== '.') g[yy - 1][xx] = 'o'
+  }
+  return enDessin(g)
+}
+
+/**
+ * La chauve-souris : deux temps, ailes hautes et ailes basses.
+ *
+ * Dessinee a la main, celle-la. Une aile est une forme qu'aucune ellipse ne
+ * donne, et l'avoir engendree produisait une tache dont on ne lisait meme pas
+ * qu'elle volait. Calculer un dessin n'est utile que tant que le calcul dit
+ * quelque chose de la forme.
+ */
+const CHAUVE_HAUTE = [
+  '................',
+  '..b..........b..',
+  '.bBb........bBb.',
+  '.bBBb......bBBb.',
+  '..bBBb....bBBb..',
+  '...bBBb..bBBb...',
+  '....bBBbbBBb....',
+  '.....bBBBBb.....',
+  '.....bByyBb.....',
+  '.....bBBBBb.....',
+  '......bBBb......',
+  '.......bb.......',
+  '................',
+  '................',
+  '................',
+  '................',
+]
+
+const CHAUVE_BASSE = [
+  '................',
+  '................',
+  '................',
+  '.....bBBBBb.....',
+  '.....bByyBb.....',
+  '.....bBBBBb.....',
+  '....bBBbbBBb....',
+  '...bBBb..bBBb...',
+  '..bBBb....bBBb..',
+  '.bBBb......bBBb.',
+  '.bBb........bBb.',
+  '..b..........b..',
+  '................',
+  '................',
+  '................',
+  '................',
+]
+
+/** Un coeur : ce qu'on ramasse, et ce qu'on perd. */
+const COEUR = [
+  '................',
+  '................',
+  '................',
+  '....oo....oo....',
+  '...orro..orro...',
+  '..orRRro.orRro..',
+  '..orRRrrorrrro..',
+  '..orrrrrrrrrro..',
+  '...orrrrrrrro...',
+  '....orrrrrro....',
+  '.....orrrro.....',
+  '......orro......',
+  '.......oo.......',
+  '................',
+  '................',
+  '................',
+]
+
+/** Un coeur vide : la meme silhouette, sans rien dedans. */
+const COEUR_VIDE = COEUR.map((l) => l.replace(/[rR]/g, 'a'))
+
+/**
+ * La taillade : deux temps d'un arc.
+ *
+ * Elle n'est pas attachee au personnage — elle est posee dans le monde a
+ * l'endroit ou la frappe a lieu. C'est le meme choix que pour la boite de
+ * frappe, et pour la meme raison : un effet qui suit son auteur permet de
+ * reculer en plein geste et de frapper quand meme devant soi.
+ */
+function taillade(avancement: number): string[] {
+  const g = vide()
+  const r = 6 + avancement * 3
+  const clair = avancement < 0.5 ? 's' : 'S'
+  const sombre = avancement < 0.5 ? 'S' : 'a'
+  for (let a = -62; a <= 62; a += 2) {
+    const rad = (a * Math.PI) / 180
+    const x = Math.round(1 + Math.cos(rad) * r)
+    const y = Math.round(TUILE / 2 + Math.sin(rad) * r)
+    if (y < 0 || y >= TUILE) continue
+    // Deux pixels d'epaisseur : un arc d'un seul pixel se lit comme une rayure
+    // d'affichage a cette taille, pas comme un geste.
+    for (const [dx, c] of [[-1, sombre], [0, clair], [1, clair], [2, sombre]]) {
+      const xx = x + (dx as number)
+      if (xx < 0 || xx >= TUILE) continue
+      if (g[y][xx] === clair) continue
+      g[y][xx] = c as string
+    }
+  }
+  return enDessin(g)
+}
+
+export const PLANCHE_CREATURES: string[][] = [
+  gelee(0), gelee(0.22), gelee(0), gelee(-0.18),
+  CHAUVE_HAUTE, CHAUVE_BASSE,
+  COEUR, COEUR_VIDE,
+  taillade(0), taillade(1),
+]
+
+export const GELEE = [0, 1, 2, 3]
+export const CHAUVE_SOURIS = [4, 5]
+export const COEUR_PLEIN = 6
+export const COEUR_PERDU = 7
+export const TAILLADE = [8, 9]
+export const COLONNES_CREATURES = 5

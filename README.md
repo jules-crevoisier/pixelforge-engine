@@ -41,7 +41,8 @@ Ce que ça achète, mode par mode :
   sa case, et la réponse change à chaque pas.
 - **Salles engendrées** — un étage à la Isaac, tiré d'une graine : le boss au
   cul-de-sac le plus loin du départ, le trésor dans une autre impasse, et la
-  caméra verrouillée sur la salle — on ne voit la suivante qu'en y entrant.
+  caméra verrouillée sur la salle — on ne voit la suivante qu'en y entrant. Des
+  créatures, une épée, cinq cœurs, et de quoi mourir.
 
 ### L'étage engendré, en détail
 
@@ -63,6 +64,32 @@ Et la vérification qui compte n'est pas sur le plan : elle marche **case par
 case sur la vraie grille de tuiles**, depuis le départ, et exige d'atteindre le
 centre de chaque salle. 60 étages, 720 salles, aucune injoignable. Un plan peut
 être parfait et l'assemblage condamner une porte.
+
+### Le combat, et les deux règles qui le tiennent
+
+**Un coup ne touche qu'une fois par cible.** Une frappe dure : le geste occupe
+120 ms, soit six images. Si la boîte blessait à chaque image, un coup d'épée
+ferait six fois les dégâts, et la difficulté du jeu dépendrait du taux de
+rafraîchissement. Le banc oppose les deux versions : 1 impact contre 7.
+
+**Être touché rend invulnérable un instant.** Six dixièmes pour le joueur — de
+quoi voir ce qui l'a atteint et sortir du danger. Deux dixièmes pour un ennemi —
+de quoi ne pas mourir en une image, sans que l'épée ait l'air molle. Le même
+nombre pour les deux donne un jeu où l'un des deux camps se joue mal.
+
+Les deux règles se ressemblent et ne se remplacent pas : la première protège
+d'un même coup, la seconde de deux coups différents.
+
+La boîte de l'épée part du **corps** et s'étend vers l'avant. Une première
+version la posait, carrée, à dix-huit pixels devant : elle ratait tout ce qui
+était collé au personnage — c'est-à-dire exactement ce qui venait de le blesser.
+Quatre vérifications gardent ce cas : collée devant, à bout de portée, au-dessus,
+en dessous ; et une cinquième exige qu'elle ne touche pas dans le dos.
+
+Une créature au-delà de 340 pixels ne fait rien. Ce n'est pas une optimisation,
+c'est une règle de jeu : sans elle, les vingt-deux créatures de l'étage
+convergent dès la première seconde et le joueur les affronte toutes dans le
+couloir de départ.
 
 ## Ce que ça veut dire, concrètement
 
@@ -99,6 +126,8 @@ seconde.
 - entrées avec mémoire courte : un appui entre deux pas n'est pas perdu
 - édition : pinceau de terrain, gomme, collision, déplacement de la vue — et le
   pinceau vise le bon losange en isométrique, pas la case d'à côté
+- combat : vitalités, frappes à durée, poussée, images d'invulnérabilité
+- créatures avec intention — la gelée bondit par à-coups, la chauve-souris fonce
 - génération d'étages en salles, reproductible depuis une graine
 - caméra verrouillée sur la salle, avec glissement à vitesse constante
 - Tiled et LDtk, dans les deux sens
@@ -140,7 +169,7 @@ npm install
 npm run dev      # l'éditeur
 npm run banc            # 82 vérifications du moteur
 npm run banc:plateforme # 24 vérifications du contrôleur de plateforme
-npm run banc:mondes     # 71 vérifications des mondes, animations et étages
+npm run banc:mondes     # 91 vérifications des mondes, animations, combat et étages
 npm run banc:langages   # 43 vérifications des chargeurs et de leur accord
 npm run build
 ```

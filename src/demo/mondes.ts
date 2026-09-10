@@ -19,7 +19,9 @@ import {
   ISO_SOL, ISO_HERBE, ISO_EAU, ISO_MUR, ISO_CAISSE, ISO_SORTIE,
 } from './art-iso.ts'
 import { construireDonjon } from './donjon.ts'
-import { engendrerPlan, type SallePlan } from '../niveau/plan.ts'
+import { engendrerPlan, Hasard, type SallePlan } from '../niveau/plan.ts'
+import { Aventure } from './aventure.ts'
+import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from './art-creatures.ts'
 import { assemblerEtage } from '../niveau/assemblage.ts'
 import { TUILE_SOL, TUILE_SORTIE } from './art.ts'
 
@@ -62,6 +64,14 @@ export interface Monde {
   reinitialiser(): void
   /** Ce que la barre d'etat montre pendant la partie. */
   etat(): string
+  /**
+   * Ce que les bancs et la console peuvent inspecter.
+   *
+   * Un monde qu'on ne peut interroger que par sa barre d'etat s'observe comme
+   * un poisson dans un bocal : on voit qu'il tourne, on ne sait pas pourquoi.
+   * La sonde n'est jamais lue par le jeu lui-meme.
+   */
+  sonde?(): Record<string, unknown>
 }
 
 /**
@@ -549,11 +559,45 @@ export function mondeEtage(graine = 1): Monde {
   racine.enfants.push(heros)
 
   let visitees = new Set<SallePlan>([plan.depart])
+  const aventure = new Aventure(racine, heros, { pvHeros: 5 })
+
+  /**
+   * Peuple l'etage.
+   *
+   * Chaque salle sauf le depart recoit une a trois creatures, posees sur des
+   * cases libres et tirees de la meme graine que l'etage : le meme etage porte
+   * donc toujours les memes creatures aux memes endroits. Un niveau
+   * reproductible dont le contenu ne l'est pas ne se corrige pas mieux qu'un
+   * niveau qui ne l'est pas du tout.
+   */
+  const peupler = (): void => {
+    const h = new Hasard((graine ^ 0x9e37) >>> 0)
+    for (const s of plan.salles) {
+      if (s.role === 'depart') continue
+      const o = etage.coinDe(s)
+      const combien = s.role === 'boss' ? 4 : 1 + h.entier(2)
+      for (let n = 0; n < combien; n++) {
+        let pose = false
+        for (let essai = 0; essai < 20 && !pose; essai++) {
+          const cx = o.x + 2 + h.entier(etage.largeurSalle - 4)
+          const cy = o.y + 2 + h.entier(etage.hauteurSalle - 4)
+          if (etage.carte.solide(cx, cy)) continue
+          const espece = h.entier(3) === 0 ? 'chauve-souris' : 'gelee'
+          aventure.troupe.ajouter(espece, cx * TUILE + TUILE / 2, cy * TUILE + TUILE)
+          pose = true
+        }
+      }
+    }
+  }
+  peupler()
+
+  /** La derniere direction regardee : c'est elle qui place le coup. */
+  let regard = { x: 0, y: 1 }
 
   return {
     id: 'etage',
     nom: `Étage engendré — graine ${graine}`,
-    aide: 'Flèches ou ZQSD. La caméra est verrouillée sur la salle : on ne voit la suivante qu’en y entrant. Le boss est au cul-de-sac le plus loin du départ.',
+    aide: 'Flèches ou ZQSD pour marcher, Espace ou E pour frapper. La caméra est verrouillée sur la salle : on ne voit la suivante qu’en y entrant.',
     // La vue fait EXACTEMENT une salle : 20 x 11 cases de seize pixels. Une vue
     // plus grande montrerait le mur de la salle d'a cote, une plus petite
     // couperait la salle en deux.
@@ -572,26 +616,53 @@ export function mondeEtage(graine = 1): Monde {
         atlas: atlasDepuisLettres(PLANCHE_DONJON, CLE_DONJON, TUILE, 8),
       })
       jeu.sprites.set('heros', atlasDepuisLettres(PLANCHE_HEROS, CLE_HEROS, TUILE, COLONNES_HEROS))
-      jeu.scripts.set('heros', scriptDessus(projection, TUILE, VITESSE_DESSUS, lecteur))
+      jeu.sprites.set('creatures',
+        atlasDepuisLettres(PLANCHE_CREATURES, CLE_CREATURES, TUILE, COLONNES_CREATURES))
+      const marcher = scriptDessus(projection, TUILE, VITESSE_DESSUS, lecteur)
+      jeu.scripts.set('heros', (c, n) => {
+        const a = c.entrees.axe()
+        if (a.x || a.y) regard = { x: a.x, y: a.y }
+        if (!aventure.mort) marcher(c, n)
+        aventure.avancer(c, regard)
+      })
       jeu.suivreNoeud('heros')
       jeu.cameraParSalle = { largeur: etage.largeurSalle, hauteur: etage.hauteurSalle }
       jeu.scripts.set('etage', () => {
         const s = etage.salleEn(heros.x, heros.y)
         if (s) visitees.add(s)
       })
+      aventure.installerEcran(jeu)
     },
     reinitialiser() {
       heros.x = etage.depart.x
       heros.y = etage.depart.y
       heros.image = imageHeros(DIR_BAS, TEMPS_REPOS)
       heros.miroir = false
+      heros.visible = true
       lecteur.reinitialiser()
       visitees = new Set([plan.depart])
+      regard = { x: 0, y: 1 }
+      aventure.reinitialiser()
+      peupler()
     },
+    sonde: () => ({
+      pv: aventure.pv,
+      mort: aventure.mort,
+      frappes: aventure.combat.frappes.length,
+      frappesHeros: aventure.combat.frappes.filter((f) => f.camp === 'heros').length,
+      creatures: aventure.troupe.vivantes,
+      abattus: aventure.abattus,
+      regard,
+      heros: { x: heros.x, y: heros.y },
+      creaturesProches: aventure.troupe.positions()
+        .filter((q) => Math.hypot(q.x - heros.x, q.y - heros.y) < 60).length,
+    }),
     etat: () => {
       const s = etage.salleEn(heros.x, heros.y)
-      return `${NOM_ROLE[s?.role ?? 'commune']} · ${visitees.size}/${plan.salles.length} salles`
-        + ` · boss à ${plan.boss.distance} salles du départ`
+      return `${aventure.mort ? '☠ mort' : `${aventure.pv}/${aventure.max} ♥`}`
+        + ` · ${NOM_ROLE[s?.role ?? 'commune']} · ${visitees.size}/${plan.salles.length} salles`
+        + ` · ${aventure.troupe.vivantes} créatures, ${aventure.abattus} abattues`
+        + ` · boss à ${plan.boss.distance} salles`
     },
   }
 }

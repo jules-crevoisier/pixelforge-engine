@@ -200,8 +200,20 @@ export class Jeu {
     }
   }
 
+  /**
+   * Dessine par-dessus la scene, dans le tampon du jeu.
+   *
+   * L'interface d'un jeu pixel art n'est PAS du HTML pose au-dessus du
+   * canevas : elle est faite des memes pixels, a la meme echelle, avec la meme
+   * palette. Un coeur de vie dessine en HTML aurait une autre taille de pixel
+   * que le coeur qu'on ramasse au sol, et le jeu aurait l'air de deux jeux.
+   * D'ou ce crochet, qui ecrit dans le tampon avant l'agrandissement.
+   */
+  apresDessin: ((ctx: CanvasRenderingContext2D, ecran: Ecran) => void) | null = null
+
   dessiner(): void {
     rendreScene(this.ecran, this.racine, this.camera, this.cartes, this.sprites, this.projection)
+    if (this.apresDessin) this.apresDessin(this.ecran.ctx, this.ecran)
     this.ecran.presenter()
   }
 

@@ -27,6 +27,7 @@ const {
 } = await import('../src/noyau/projection.ts')
 const art = await import('../src/demo/art-iso.ts')
 const artCote = await import('../src/demo/art-cote.ts')
+const artCreatures = await import('../src/demo/art-creatures.ts')
 const { CLE_HEROS, PLANCHE_HEROS, TUILE } = await import('../src/demo/art.ts')
 const { mondeCaverne, mondeCitadelle, mondeDonjon, PLAN_CAVERNE, PLAN_CITADELLE, REGLAGES_DEFAUT } =
   await import('../src/demo/mondes.ts')
@@ -207,6 +208,7 @@ for (const [nom, planche, cle, l, h] of [
   ['iso', art.PLANCHE_ISO, art.CLE_ISO, 32, 32],
   ['caverne', artCote.PLANCHE_CAVERNE, artCote.CLE_CAVERNE, 16, 16],
   ['heros', PLANCHE_HEROS, CLE_HEROS, 16, 16],
+  ['creatures', artCreatures.PLANCHE_CREATURES, artCreatures.CLE_CREATURES, 16, 16],
 ]) {
   let fautes = 0
   let exemple = ''
@@ -589,6 +591,225 @@ console.log('\n--- la citadelle tient debout ---')
   // murs : si elle l'etait, c'est que la collision ne serait pas posee.
   check('les remparts de la cour bloquent bien', carte.solide(4, 5) && carte.solide(6, 4),
     'sinon le heros traverserait le decor sans que rien ne le signale')
+}
+
+console.log('\n--- le combat ---')
+
+{
+  const { Combat, visibleSousInvulnerabilite, INVULNERABILITE_MS } =
+    await import('../src/runtime/combat.ts')
+  const { rect } = await import('../src/noyau/pixel.ts')
+  const boite = { x: -5, y: -7, l: 10, h: 7 }
+  const surCible = () => rect(95, 93, 10, 7)
+
+  // Une frappe DURE. Si elle blessait a chaque image, un coup d'epee ferait
+  // six fois les degats, et la difficulte dependrait du taux d'images.
+  {
+    const c = new Combat()
+    c.inscrire('gelee', { max: 20, camp: 'ennemi', boite, x: 100, y: 100 })
+    c.frapper('heros', surCible(), 1, 100)
+    let total = 0
+    for (let i = 0; i < 10; i++) total += c.avancer(16).length
+    check('un coup qui dure six images ne blesse qu\'une fois',
+      total === 1 && c.vies.get('gelee').pv === 19, `${total} impacts, ${c.vies.get('gelee').pv} pv`)
+
+    // Le sens inverse : sans la memoire de la frappe, six fois les degats.
+    const naif = new Combat()
+    naif.inscrire('gelee', { max: 20, camp: 'ennemi', boite, x: 100, y: 100 })
+    const f = naif.frapper('heros', surCible(), 1, 100)
+    let sansMemoire = 0
+    for (let i = 0; i < 10; i++) {
+      f.touches.clear()
+      naif.vies.get('gelee').invulnerable = 0
+      sansMemoire += naif.avancer(16).length
+    }
+    check('sans cette memoire, le meme coup blesse a chaque image',
+      sansMemoire > 1, `${sansMemoire} impacts pour un seul coup`)
+  }
+
+  // L'invulnerabilite : elle protege de deux coups DIFFERENTS.
+  {
+    const c = new Combat()
+    c.inscrire('heros', { max: 3, camp: 'heros', boite, x: 100, y: 100 })
+    c.frapper('ennemi', surCible(), 1, 10)
+    c.avancer(16)
+    c.frapper('ennemi', surCible(), 1, 10)
+    c.avancer(16)
+    check('deux coups coup sur coup ne comptent que pour un',
+      c.vies.get('heros').pv === 2, `${c.vies.get('heros').pv} pv sur 3`)
+    c.avancer(INVULNERABILITE_MS)
+    c.frapper('ennemi', surCible(), 1, 10)
+    c.avancer(16)
+    check('mais un coup apres la fenetre passe',
+      c.vies.get('heros').pv === 1, `${c.vies.get('heros').pv} pv`)
+  }
+
+  // Les deux regles ne se remplacent pas : la premiere protege d'un meme coup,
+  // la seconde de deux coups differents.
+  {
+    const c = new Combat()
+    c.inscrire('a', { max: 5, camp: 'ennemi', boite, x: 100, y: 100 })
+    c.inscrire('b', { max: 5, camp: 'ennemi', boite, x: 104, y: 100 })
+    c.frapper('heros', rect(90, 90, 30, 14), 1, 50)
+    const impacts = c.avancer(16)
+    check('un seul coup touche DEUX cibles, une fois chacune',
+      impacts.length === 2 && c.vies.get('a').pv === 4 && c.vies.get('b').pv === 4,
+      `${impacts.length} impacts`)
+  }
+
+  // Une frappe d'une seule image doit toucher a l'image ou elle nait : les
+  // frappes vieillissent apres avoir servi, pas avant.
+  {
+    const c = new Combat()
+    c.inscrire('gelee', { max: 5, camp: 'ennemi', boite, x: 100, y: 100 })
+    c.frapper('ennemi', surCible(), 1, 1)
+    const memeCamp = c.avancer(16)
+    check('une frappe ne blesse pas son propre camp', memeCamp.length === 0)
+    c.frapper('heros', surCible(), 1, 1)
+    check('une frappe d\'une seule image touche a l\'image ou elle nait',
+      c.avancer(16).length === 1, 'les frappes vieillissent apres avoir servi')
+    check('et elle a bien disparu ensuite', c.frappes.length === 0)
+  }
+
+  // Le clignotement : un personnage qui encaisse sans rien montrer laisse
+  // croire que le coup n'a pas porte.
+  {
+    const vus = []
+    for (let t = 600; t > 0; t -= 50) vus.push(visibleSousInvulnerabilite(t, 100) ? 1 : 0)
+    check('une entite invulnerable clignote',
+      new Set(vus).size === 2 && vus.join('').includes('1100'),
+      vus.join(''))
+    check('et redevient visible une fois protegee', visibleSousInvulnerabilite(0))
+  }
+}
+
+console.log('\n--- l\'aventure : l\'epee, la troupe, la mort ---')
+
+{
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+  const { Aventure } = await import('../src/demo/aventure.ts')
+  const { RAYON_ACTIVITE } = await import('../src/demo/creatures.ts')
+
+  /** Un contexte de jeu minimal : de quoi faire tourner l'aventure sans DOM. */
+  const monter = () => {
+    const racine = creerNoeud('noeud', 'essai')
+    const heros = creerNoeud('sprite', 'heros')
+    heros.x = 100
+    heros.y = 100
+    const corps = creerNoeud('corps', 'corps')
+    corps.boiteX = -4; corps.boiteY = -6; corps.boiteL = 8; corps.boiteH = 6
+    heros.enfants.push(corps)
+    racine.enfants.push(heros)
+    const av = new Aventure(racine, heros, { pvHeros: 3 })
+    let frappe = false
+    const hote = (cible) => {
+      const chercher = (n) => {
+        for (const e of n.enfants) { if (e.id === cible.id) return n; const r = chercher(e); if (r) return r }
+        return null
+      }
+      return chercher(racine)
+    }
+    const ctx = {
+      dt: 1 / 60,
+      entrees: { consommer: (a) => a === 'action' && frappe, axe: () => ({ x: 0, y: 0 }), tenue: () => false },
+      racine,
+      carte: { tuile: 16, largeur: 200, hauteur: 200, solide: () => false },
+      pas: 0,
+      trouver: () => null,
+      bouger: (cps, dx, dy) => {
+        const h = hote(cps)
+        if (h) { h.x += dx; h.y += dy }
+        return { dx, dy, bloque: false }
+      },
+    }
+    return { racine, heros, av, ctx, frapper: (v) => { frappe = v } }
+  }
+
+  // Une creature COLLEE au heros doit etre touchee. Une premiere version posait
+  // la boite d'epee, carree, a dix-huit pixels devant : elle ratait tout ce qui
+  // etait au contact, c'est-a-dire exactement ce qui venait de blesser.
+  for (const [nom, dx, dy, regard] of [
+    ['collee devant', 6, 0, { x: 1, y: 0 }],
+    ['a bout de portee', 19, 0, { x: 1, y: 0 }],
+    ['au-dessus', 0, -14, { x: 0, y: -1 }],
+    ['en dessous', 0, 14, { x: 0, y: 1 }],
+  ]) {
+    const e = monter()
+    e.av.troupe.ajouter('gelee', 100 + dx, 100 + dy)
+    let coups = 0
+    for (let i = 0; i < 90; i++) {
+      e.frapper(i % 24 === 0)
+      e.av.avancer(e.ctx, regard)
+      coups = e.av.abattus
+      if (coups) break
+    }
+    check(`l'epee touche une gelee ${nom}`, coups === 1,
+      coups ? 'abattue' : 'ratee — une epee qui rate au contact rate quand on en a le plus besoin')
+  }
+
+  // Et le sens inverse : ce qui est derriere ne doit PAS etre touche.
+  {
+    const e = monter()
+    e.av.troupe.ajouter('gelee', 100 - 26, 100)
+    for (let i = 0; i < 60; i++) { e.frapper(i % 24 === 0); e.av.avancer(e.ctx, { x: 1, y: 0 }) }
+    check('mais elle ne touche pas ce qui est derriere',
+      e.av.abattus === 0, `${e.av.abattus} abattue(s) dans le dos`)
+  }
+
+  // Une creature abattue disparait entierement : noeud, vitalite, lecteur.
+  {
+    const e = monter()
+    const n = e.av.troupe.ajouter('gelee', 108, 100)
+    const avant = e.racine.enfants.length
+    for (let i = 0; i < 90 && e.av.abattus === 0; i++) {
+      e.frapper(i % 24 === 0)
+      e.av.avancer(e.ctx, { x: 1, y: 0 })
+    }
+    check('une creature abattue quitte la scene ET le systeme de combat',
+      e.av.abattus === 1 && e.racine.enfants.length === avant - 1
+      && !e.av.combat.vies.has(n.id) && e.av.troupe.vivantes === 0,
+      'une vitalite orpheline continuerait de recevoir des coups')
+  }
+
+  // La distance d'activite : une creature loin ne bouge pas et ne frappe pas.
+  {
+    const e = monter()
+    const loin = e.av.troupe.ajouter('gelee', 100 + RAYON_ACTIVITE + 60, 100)
+    const x0 = loin.x
+    for (let i = 0; i < 120; i++) e.av.avancer(e.ctx, { x: 1, y: 0 })
+    check('une creature hors de portee reste chez elle',
+      loin.x === x0 && e.av.pv === 3,
+      'sinon les vingt-deux creatures de l\'etage convergent des la premiere seconde')
+
+    const proche = monter()
+    const pres = proche.av.troupe.ajouter('gelee', 100 + 40, 100)
+    for (let i = 0; i < 120; i++) proche.av.avancer(proche.ctx, { x: 1, y: 0 })
+    check('une creature a portee, elle, vient et mord',
+      pres.x !== 100 + 40 && proche.av.pv < 3, `${proche.av.pv} pv sur 3`)
+  }
+
+  // La mort appelle ce qu'on lui a donne, et une seule fois.
+  {
+    const racine = creerNoeud('noeud', 'essai')
+    const heros = creerNoeud('sprite', 'heros')
+    heros.x = 100; heros.y = 100
+    const corps = creerNoeud('corps', 'corps')
+    corps.boiteX = -4; corps.boiteY = -6; corps.boiteL = 8; corps.boiteH = 6
+    heros.enfants.push(corps)
+    racine.enfants.push(heros)
+    let morts = 0
+    const av = new Aventure(racine, heros, { pvHeros: 1, surMort: () => morts++ })
+    av.troupe.ajouter('gelee', 106, 100)
+    const ctx = {
+      dt: 1 / 60,
+      entrees: { consommer: () => false, axe: () => ({ x: 0, y: 0 }), tenue: () => false },
+      racine, carte: { tuile: 16, largeur: 200, hauteur: 200, solide: () => false }, pas: 0,
+      trouver: () => null, bouger: () => ({ dx: 0, dy: 0, bloque: false }),
+    }
+    for (let i = 0; i < 240; i++) av.avancer(ctx, { x: 1, y: 0 })
+    check('la mort est annoncee une seule fois', morts === 1 && av.mort,
+      `${morts} annonce(s), pv ${av.pv}`)
+  }
 }
 
 console.log('\n--- l\'etage engendre ---')
