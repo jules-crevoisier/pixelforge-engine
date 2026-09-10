@@ -338,6 +338,12 @@ export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number,
         ? { tuileDepart: l.terrain.tuileDepart, jeu: l.terrain.jeu as 'blob47' | 'bord16',
             dehorsEstPlein: l.terrain.dehorsEstPlein }
         : null,
+      // La presence d'un calque SANS terrain doit revenir elle aussi. Elle ne
+      // revenait pas : `ajouterCalque` n'en cree que pour les calques de
+      // terrain, et l'on ne lui passait rien. Le fichier l'ecrivait, le
+      // lecteur la jetait — une perte silencieuse, c'est-a-dire le pire des
+      // defauts, et celui que le commentaire d'a cote dit refuser.
+      presence: l.presence ? new Uint8Array(s.largeur * s.hauteur) : null,
     })
     s.calques.length && l.cases.forEach((ligne, y) => {
       depuisLigne(ligne, ',').forEach((v, x) => { calque.cases[c.index(x, y)] = v })

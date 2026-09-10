@@ -12,6 +12,9 @@ import { MONDES, type Monde } from '../demo/mondes.ts'
 import { Atelier } from './atelier-panneau.ts'
 import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
+import { PanneauProjet } from './projet-panneau.ts'
+import { projetNeuf } from './projet-neuf.ts'
+import type { ProjetSerialise } from '../export/format.ts'
 import { retirerDe } from '../runtime/entites.ts'
 import * as dossier from '../io/dossier.ts'
 
@@ -50,6 +53,8 @@ for (const m of MONDES) {
 
 let monde: Monde
 let jeu: Jeu
+/** D'ou vient l'entite qu'on traine : c'est ce que « defaire » remettra. */
+let depart: { x: number; y: number } | null = null
 let palette: Palette
 let edition: Edition
 
@@ -159,6 +164,50 @@ function installer(nouveau: Monde): void {
     majHistorique()
   }
 
+  /**
+   * Deplacer une entite deja posee.
+   *
+   * On la SAISIT au clic gauche, on la traine, on la lache. Sans ce geste il
+   * fallait retirer et reposer — deux clics, un identifiant perdu, et tout ce
+   * qui renvoyait a l'entite pointait dans le vide. Le noeud reste le meme
+   * d'un bout a l'autre : seules ses coordonnees changent.
+   */
+  edition.surDeplacement = {
+    saisir: (cx, cy) => {
+      const peuplement = monde.peuplement
+      if (!peuplement) return null
+      const t = monde.carte.tuile
+      const dedans = peuplement.quiTouche(cx * t, cy * t, t, t)
+      const n = dedans[dedans.length - 1] ?? null
+      if (!n) return null
+      depart = { x: n.x, y: n.y }
+      return n.id
+    },
+    poser: (id, cx, cy) => {
+      const n = trouverEntite(monde.racine, id)
+      if (!n) return
+      const t = monde.carte.tuile
+      n.x = cx * t + t / 2
+      n.y = cy * t + t
+      majEtat()
+    },
+    finir: (id) => {
+      const n = trouverEntite(monde.racine, id)
+      if (!n || !depart) return
+      const avant = depart
+      const apres = { x: n.x, y: n.y }
+      depart = null
+      if (avant.x === apres.x && avant.y === apres.y) return
+      edition.historique.poser({
+        nom: 'entité déplacée',
+        defaire: () => { n.x = avant.x; n.y = avant.y; jeu.dessiner() },
+        refaire: () => { n.x = apres.x; n.y = apres.y; jeu.dessiner() },
+      })
+      majHistorique()
+      verdict.textContent = `entité déplacée en ${apres.x},${apres.y}`
+    },
+  }
+
   choisirOutil(outilPrecedent)
   majHistorique()
 
@@ -171,6 +220,8 @@ function installer(nouveau: Monde): void {
   info.textContent = `${monde.vue.largeur}×${monde.vue.hauteur} · ${monde.carte.largeur}×${monde.carte.hauteur} · ${monde.projection.mode}, ${monde.projection.regard}`
   majEtat()
   majMesure()
+  appliquerCadre()
+  panneauProjet?.montrer()
   ;(window as unknown as { pfe: unknown }).pfe = { jeu, monde, palette, edition }
 }
 
@@ -266,6 +317,57 @@ function relire(texte: string, nomFichier: string): void {
   charger(id)
   verdict.textContent = `Relu : ${nomFichier}${avertissement}`
 }
+
+/**
+ * Relit un projet transforme et rouvre l'editeur dessus.
+ *
+ * C'est le SEUL chemin par lequel la structure change — taille de carte,
+ * calques, catalogue d'especes, projet neuf. Voir `projet-neuf.ts` : le geste
+ * transforme le fichier, et l'editeur le relit comme il relirait un fichier
+ * venu du disque. Rien n'est mis a jour en place, donc rien ne peut etre
+ * oublie.
+ */
+function installerProjet(p: ProjetSerialise, nom: string): void {
+  const id = `projet:${nom}`
+  projetsRelus.set(id, () => mondeDepuisProjet(p, nom))
+  if (!Array.from(selectMonde.options).some((o) => o.value === id)) {
+    const o = document.createElement('option')
+    o.value = id
+    o.textContent = `📄 ${nom}`
+    selectMonde.appendChild(o)
+  } else {
+    const o = Array.from(selectMonde.options).find((q) => q.value === id)
+    if (o) o.textContent = `📄 ${nom}`
+  }
+  selectMonde.value = id
+  charger(id)
+}
+
+const panneauProjet = new PanneauProjet(
+  {
+    panneau: document.getElementById('projet') as HTMLElement,
+    corps: document.getElementById('projetCorps') as HTMLElement,
+    message: document.getElementById('projetMessage') as HTMLElement,
+    bascule: document.getElementById('basculeProjet') as HTMLButtonElement,
+    fermer: document.getElementById('fermerProjet') as HTMLButtonElement,
+  },
+  {
+    projet: () => projetCourant(),
+    appliquer: (p, quoi) => {
+      installerProjet(p, p.nom)
+      verdict.textContent = quoi
+    },
+    dire: (m) => { verdict.textContent = m },
+  },
+)
+
+document.getElementById('nouveau')?.addEventListener('click', () => {
+  if (!window.confirm('Créer un projet vide ? Ce qui est à l’écran sera remplacé.')) return
+  const p = projetNeuf()
+  installerProjet(p, p.nom)
+  panneauProjet.ouvrir()
+  verdict.textContent = 'Projet vide. Peignez du mur, posez des entités, appuyez sur Jouer.'
+})
 
 document.getElementById('enregistrer')?.addEventListener('click', () => { void enregistrer() })
 
@@ -491,6 +593,16 @@ function parentDe(racine: Noeud, cible: Noeud): Noeud | null {
   return null
 }
 
+/** Le noeud d'entite portant cet identifiant, ou null. */
+function trouverEntite(racine: Noeud, id: string): Noeud | null {
+  if (racine.id === id) return racine
+  for (const e of racine.enfants) {
+    const r = trouverEntite(e, id)
+    if (r) return r
+  }
+  return null
+}
+
 /** Les noeuds de la scene qui portent une espece. */
 function compterEntites(n: { enfants: unknown[] }): number {
   let total = (n as { espece?: string }).espece ? 1 : 0
@@ -499,10 +611,137 @@ function compterEntites(n: { enfants: unknown[] }): number {
 }
 
 /* ------------------------------------------------------------------ */
+/* L'aide                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ce qu'on lit une fois, et qui evite trois quarts d'heure de tatonnement.
+ *
+ * Elle est ECRITE ici et non dans le HTML pour une raison simple : la moitie
+ * de ce qu'elle dit — les outils, les raccourcis — existe deja dans le code,
+ * et deux endroits pour la meme verite est un jour ou les deux ne disent plus
+ * la meme chose. Ce qui est ici est ce que le code ne dit nulle part : l'ordre
+ * dans lequel s'y prendre.
+ */
+const AIDE = `
+<p>Un projet PixelForge tient dans un seul fichier : la carte, les dessins, les
+animations, la scène, le catalogue des espèces. Il se rouvre, il se joue, il
+s’exporte vers Godot ou Unity.</p>
+
+<h4>Commencer</h4>
+<p><b>Nouveau…</b> crée un projet vide avec une carte, deux calques et un héros
+au milieu. <b>Dossier…</b> choisit où il s’enregistre ; sans dossier,
+<b>Enregistrer</b> télécharge le fichier.</p>
+
+<h4>Dessiner</h4>
+<p><b>Mur</b> peint du terrain : on dit « ici il y a du mur » et la bonne tuile
+parmi 47 se déduit du voisinage. <b>Gomme</b> efface. <b>Tuile</b> pose une
+tuile précise, pour ce que l’autotiling ne sait pas deviner.
+<b>Collision</b> corrige ce qu’une case <i>fait</i> — solide, plateforme
+traversable par en dessous, blessante, échelle, liquide — indépendamment de ce
+qu’elle montre. Clic droit pour retirer, partout.</p>
+
+<h4>Peupler</h4>
+<p><b>Entité</b> pose une créature au clic gauche, la retire au clic droit, et
+la <b>déplace en la faisant glisser</b>. Poser une entité, c’est ajouter un
+nœud à la scène : elle part dans le fichier avec le reste.</p>
+
+<h4>Changer la structure</h4>
+<p><b>Projet</b> ouvre ce que le pinceau ne sait pas faire : redimensionner la
+carte, ajouter ou retirer un calque, créer une espèce sans écrire une ligne de
+code. Ces gestes-là reconstruisent le projet et <b>ne se défont pas</b> au
+Ctrl+Z — enregistrez avant, si vous hésitez.</p>
+
+<h4>Essayer</h4>
+<p><b>Jouer</b> lance le jeu dans le cadre réel, celui que le joueur verra.
+<b>Arrêter</b> remet tout le monde à sa place. Les boutons <b>−</b> et <b>+</b>
+changent seulement le cadre d’<i>édition</i> : voir plus de carte, ou de plus
+près.</p>
+
+<h4>Écrire</h4>
+<p><b>Script</b> ouvre l’atelier : on choisit un nœud, on écrit son
+comportement, <kbd>Ctrl</kbd>+<kbd>Entrée</kbd>, et ça tourne pendant que le jeu
+joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
+<code>n</code>, son nœud — pour qu’il traverse l’export.</p>
+
+<h4>Les raccourcis</h4>
+<p><kbd>Ctrl</kbd>+<kbd>S</kbd> enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd>
+défaire · <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire ·
+<kbd>+</kbd> / <kbd>−</kbd> le cadre d’édition · molette du milieu ou outil
+<b>Main</b> pour déplacer la vue.</p>
+`
+
+{
+  const boite = document.getElementById('aideBoite') as HTMLDialogElement
+  const corps = document.getElementById('aideCorps') as HTMLElement
+  corps.innerHTML = AIDE
+  document.getElementById('basculeAide')?.addEventListener('click', () => boite.showModal())
+  document.getElementById('fermerAide')?.addEventListener('click', () => boite.close())
+  boite.addEventListener('click', (e) => { if (e.target === boite) boite.close() })
+}
+
+/* ------------------------------------------------------------------ */
 /* Jouer, arreter                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Le cadre d'edition : voir plus de carte, ou de plus pres.
+ *
+ * ## Pourquoi ce n'est pas un « zoom » d'ecran
+ *
+ * L'echelle a l'ecran est ENTIERE, toujours, et deduite de la fenetre : c'est
+ * le contrat qui empeche la grille d'onduler. Un zoom qui la multiplierait par
+ * 1,5 casserait ce contrat a la premiere molette.
+ *
+ * Ce reglage change donc la RESOLUTION VIRTUELLE pendant l'edition : un cadre
+ * deux fois plus large montre deux fois plus de carte, avec des pixels deux
+ * fois plus petits a l'ecran — et l'echelle reste entiere. Le cadre du JEU,
+ * lui, ne bouge jamais : il est remis a celui du monde des qu'on appuie sur
+ * Jouer. Sans quoi on reglerait la difficulte du jeu avec un bouton de zoom,
+ * en voyant arriver ce que le joueur ne verra pas.
+ */
+const CADRES = [0.5, 1, 1.5, 2, 3, 4]
+let cadre = 1
+const zoomTexte = document.getElementById('zoomTexte') as HTMLElement
+
+function appliquerCadre(): void {
+  if (!jeu || jeu.tourne) return
+  const v = {
+    largeur: Math.max(64, Math.round(monde.vue.largeur * cadre)),
+    hauteur: Math.max(36, Math.round(monde.vue.hauteur * cadre)),
+  }
+  jeu.ecran.redimensionner(v)
+  zoomTexte.textContent = `${v.largeur}×${v.hauteur}`
+  zoomTexte.title = cadre === 1
+    ? 'Le cadre du jeu lui-même'
+    : `${cadre > 1 ? 'Plus de carte' : 'De plus près'} que le cadre du jeu (${monde.vue.largeur}×${monde.vue.hauteur})`
+  jeu.cadrer()
+  jeu.dessiner()
+  dessinerCollision()
+}
+
+function decalerCadre(pas: number): void {
+  const i = CADRES.indexOf(cadre)
+  const j = Math.max(0, Math.min(CADRES.length - 1, (i < 0 ? 1 : i) + pas))
+  if (CADRES[j] === cadre) return
+  cadre = CADRES[j]
+  appliquerCadre()
+}
+
+document.getElementById('zoomPlus')?.addEventListener('click', () => decalerCadre(-1))
+document.getElementById('zoomMoins')?.addEventListener('click', () => decalerCadre(1))
+window.addEventListener('keydown', (e) => {
+  const dansUnChamp = (e.target as HTMLElement)?.tagName === 'TEXTAREA'
+    || (e.target as HTMLElement)?.tagName === 'INPUT'
+  if (dansUnChamp || e.ctrlKey || e.metaKey) return
+  if (e.key === '+' || e.key === '=') { e.preventDefault(); decalerCadre(-1) }
+  if (e.key === '-') { e.preventDefault(); decalerCadre(1) }
+})
+
 boutonJouer.addEventListener('click', () => {
+  // Le cadre du jeu, et rien d'autre : on joue ce que le joueur verra.
+  jeu.ecran.redimensionner(monde.vue)
+  jeu.cadrer()
   jeu.demarrer()
   boutonJouer.disabled = true
   boutonArreter.disabled = false
@@ -518,6 +757,7 @@ function arreter(): void {
   // On repose le heros a son depart : essayer une salle puis la modifier avec
   // le personnage coince dans un mur qu'on vient de peindre serait absurde.
   monde.reinitialiser()
+  appliquerCadre()
   jeu.cadrer()
   jeu.dessiner()
   dessinerCollision()

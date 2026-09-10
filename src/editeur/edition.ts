@@ -76,6 +76,21 @@ export class Edition {
    */
   surEntite: ((cx: number, cy: number, retirer: boolean) => void) | null = null
 
+  /**
+   * Ce que l'edition fait quand on DEPLACE une entite deja posee.
+   *
+   * Le crochet rend un identifiant a l'appui — l'entite saisie, ou null — puis
+   * recoit les cases traversees, puis la fin du geste. Trois temps et non un,
+   * parce qu'un deplacement doit se voir pendant qu'on le fait : une entite
+   * qui ne saute a sa nouvelle place qu'au relachement se pose de travers une
+   * fois sur deux.
+   */
+  surDeplacement: {
+    saisir(cx: number, cy: number): string | null
+    poser(id: string, cx: number, cy: number): void
+    finir(id: string): void
+  } | null = null
+
   /** Ce qu'on peut defaire. Partage avec l'editeur, qui y pose ses gestes. */
   readonly historique = new Historique()
 
@@ -92,6 +107,8 @@ export class Edition {
   private pose = true
   private dernierePosition: { cx: number; cy: number } | null = null
   private glisseCamera: { x: number; y: number; camX: number; camY: number } | null = null
+  /** L'entite qu'on traine, et si elle a vraiment change de case. */
+  private glisseEntite: { id: string; depart: { cx: number; cy: number }; bougee: boolean } | null = null
 
   constructor(jeu: Jeu, carte: Carte) {
     this.jeu = jeu
@@ -163,6 +180,18 @@ export class Edition {
     }
     const c = this.caseSous(pageX, pageY)
     if (!c) return
+    // Saisir une entite deja posee, au clic gauche, avant toute autre chose.
+    // Sans ce test, poser et deplacer se disputeraient le meme geste, et l'on
+    // empilerait une creature sur celle qu'on voulait bouger.
+    if (this.etat.outil === 'entite' && bouton === 0 && this.surDeplacement) {
+      const pris = this.surDeplacement.saisir(c.cx, c.cy)
+      if (pris) {
+        this.glisseEntite = { id: pris, depart: { cx: c.cx, cy: c.cy }, bougee: false }
+        this.peint = true
+        this.dernierePosition = { cx: c.cx, cy: c.cy }
+        return
+      }
+    }
     this.peint = true
     if (this.etat.outil !== 'entite') this.photographier()
     // Le bouton droit retire, comme partout ailleurs. Et sur un terrain deja
@@ -191,6 +220,13 @@ export class Edition {
     const c = this.caseSous(pageX, pageY)
     if (!c) return
     if (this.dernierePosition && this.dernierePosition.cx === c.cx && this.dernierePosition.cy === c.cy) return
+    if (this.glisseEntite) {
+      this.dernierePosition = { cx: c.cx, cy: c.cy }
+      this.glisseEntite.bougee = true
+      this.surDeplacement?.poser(this.glisseEntite.id, c.cx, c.cy)
+      this.jeu.dessiner()
+      return
+    }
     // On ne seme pas d'entites en glissant : une par clic, sinon un geste
     // depose trente creatures qu'il faut retirer une par une.
     if (this.etat.outil === 'entite') return
@@ -198,6 +234,16 @@ export class Edition {
   }
 
   finir(): void {
+    if (this.glisseEntite) {
+      // Un clic qui n'a pas bouge n'est pas un deplacement : c'est un clic sur
+      // une entite, et il ne doit rien laisser dans l'historique. Sans cette
+      // distinction, chaque clic rate encombre le « defaire ».
+      if (this.glisseEntite.bougee) this.surDeplacement?.finir(this.glisseEntite.id)
+      this.glisseEntite = null
+      this.peint = false
+      this.dernierePosition = null
+      return
+    }
     if (this.peint) this.enregistrer(NOM_GESTE[this.etat.outil] ?? this.etat.outil)
     this.peint = false
     this.glisseCamera = null

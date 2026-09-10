@@ -1961,6 +1961,178 @@ console.log('\n--- les corps mobiles, dans le peuplement ---')
   }
 }
 
+console.log('\n--- l\'editeur autonome : creer, redimensionner, ajouter ---')
+
+{
+  const {
+    projetNeuf, redimensionnerProjet, ajouterCalqueProjet, retirerCalqueProjet,
+    modifierCalqueProjet, poserEspeceProjet, retirerEspeceProjet, changerVueProjet,
+    PROJECTIONS,
+  } = await import('../src/editeur/projet-neuf.ts')
+  const { versTexte, relireCarte, relireNoeud } = await import('../src/export/format.ts')
+  const { Carte } = await import('../src/tuiles/tilemap.ts')
+
+  const relire = (p) => ({
+    carte: relireCarte(p.cartes[0], (l, h, t) => new Carte(l, h, t)),
+    racine: relireNoeud(p.scenes[0].racine),
+  })
+  const compterEntites = (n) => (n.espece ? 1 : 0)
+    + n.enfants.reduce((s, e) => s + compterEntites(e), 0)
+
+  // 1. Un projet neuf est vide ET jouable. Vide et jouable ne se contredisent
+  //    pas : il y a une carte, deux calques, un heros. Un projet neuf sans
+  //    heros s'ouvrirait sur un rectangle noir ou « Jouer » ne fait rien, et
+  //    la premiere impression serait « c'est casse ».
+  {
+    const p = projetNeuf()
+    const r = relire(p)
+    check('un projet neuf a une carte, des calques et un héros',
+      r.carte.largeur === 40 && r.carte.hauteur === 24 && r.carte.calques.length === 2
+      && compterEntites(r.racine) === 1 && p.especes.length > 0,
+      `${r.carte.largeur}×${r.carte.hauteur}, ${r.carte.calques.length} calques,`
+      + ` ${compterEntites(r.racine)} entité, ${p.especes.length} espèces`)
+    check('et il ne porte pas une seule case peinte',
+      r.carte.solides.every((v) => v === 0)
+      && r.carte.calques.every((c) => c.presence && c.presence.every((v) => v === 0)),
+      'aucune case solide, aucune présence — tout reste à dessiner')
+    // Et il traverse le format : c'est le meme chemin que l'enregistrement.
+    const relu = JSON.parse(versTexte(p))
+    // Et le defaut que ce controle a revele : la presence d'un calque SANS
+    // terrain n'etait pas relue. Le fichier l'ecrivait, le lecteur la jetait.
+    check('la présence d’un calque sans terrain revient de l’enregistrement',
+      r.carte.calques.every((c) => c.presence !== null),
+      r.carte.calques.map((c) => `${c.nom}:${c.presence ? 'oui' : 'NON'}`).join(' '))
+    check('un projet neuf traverse l’enregistrement sans rien perdre',
+      JSON.stringify(relu) === JSON.stringify(JSON.parse(JSON.stringify(p))),
+      `${Math.round(versTexte(p).length / 1024)} Ko`)
+  }
+
+  // 2. La projection choisie decide aussi du HEROS : un plateformeur dans un
+  //    monde vu de dessus tomberait indefiniment vers le sud.
+  {
+    const dessus = projetNeuf({ projection: 'dessus' })
+    const cote = projetNeuf({ projection: 'cote' })
+    const herosDe = (p) => relireNoeud(p.scenes[0].racine).enfants.find((n) => n.espece)
+    check('une vue de côté donne un héros de côté, une vue de dessus un héros de dessus',
+      herosDe(dessus).espece === 'heros' && herosDe(cote).espece === 'heros-cote'
+      && cote.projection.regard === 'cote' && dessus.projection.regard === 'dessus',
+      `${herosDe(dessus).espece} / ${herosDe(cote).espece}`)
+    check('et les trois projections proposées se construisent toutes',
+      PROJECTIONS.every((q) => {
+        const r = relire(projetNeuf({ projection: q.id }))
+        return r.carte.calques.length === 2
+      }), PROJECTIONS.map((q) => q.nom).join(', '))
+  }
+
+  // 3. Redimensionner : ce qui rentre est GARDE, l'ancrage est le coin
+  //    haut-gauche. Un ancrage centre paraitrait plus poli et decalerait tout
+  //    ce qu'on a deja dessine, sans que rien ne le dise.
+  {
+    let p = projetNeuf({ largeur: 10, hauteur: 8 })
+    // On peint une case reconnaissable, par le fichier lui-meme.
+    const c = p.cartes[0]
+    c.solides[2] = `${'0'.repeat(3)}4${'0'.repeat(6)}`
+    c.calques[1].cases[2] = c.calques[1].cases[2].split(',').map((v, i) => (i === 3 ? '7' : v)).join(',')
+
+    const grand = redimensionnerProjet(p, 20, 16)
+    const rg = relire(grand)
+    check('agrandir garde ce qui était dessiné, au même endroit',
+      rg.carte.largeur === 20 && rg.carte.hauteur === 16
+      && rg.carte.solides[rg.carte.index(3, 2)] === 4
+      && rg.carte.calques[1].cases[rg.carte.index(3, 2)] === 7,
+      `case 3,2 : matière ${rg.carte.solides[rg.carte.index(3, 2)]},`
+      + ` tuile ${rg.carte.calques[1].cases[rg.carte.index(3, 2)]}`)
+    check('et le terrain neuf est vide, pas rempli de hasard',
+      rg.carte.solides[rg.carte.index(15, 12)] === 0,
+      'la case 15,12 — hors de l’ancienne carte — ne fait rien')
+
+    const petit = redimensionnerProjet(p, 5, 5)
+    const rp = relire(petit)
+    check('réduire ne perd que ce qui dépasse',
+      rp.carte.largeur === 5 && rp.carte.hauteur === 5
+      && rp.carte.solides[rp.carte.index(3, 2)] === 4
+      && rp.carte.cases === 25,
+      `${rp.carte.largeur}×${rp.carte.hauteur}, la case 3,2 est toujours là`)
+    check('et une carte ne descend pas sous quatre cases',
+      relire(redimensionnerProjet(p, 1, 1)).carte.largeur === 4,
+      'une carte d’une case ne se peint pas, et ne se dit pas')
+  }
+
+  // 4. Les calques : ajouter, retirer, ordonner. Le DERNIER ne se retire pas.
+  {
+    const p = projetNeuf()
+    const plus = ajouterCalqueProjet(p, 'plafond', false)
+    check('on ajoute un calque, et il est posé par-dessus les autres',
+      plus.cartes[0].calques.length === 3
+      && plus.cartes[0].calques[2].nom === 'plafond',
+      plus.cartes[0].calques.map((q) => q.nom).join(' → '))
+    check('un calque de terrain neuf a bien son terrain',
+      ajouterCalqueProjet(p, 'roche', true).cartes[0].calques[2].terrain !== null,
+      'sinon l’autotiling ne s’applique pas, et le pinceau ne fait rien')
+    check('un nom déjà pris est numéroté au lieu d’écraser',
+      ajouterCalqueProjet(plus, 'plafond', false).cartes[0].calques[3].nom === 'plafond 2',
+      'deux calques du même nom rendraient « lequel ? » sans réponse')
+    check('on retire un calque',
+      retirerCalqueProjet(plus, 'plafond').cartes[0].calques.length === 2,
+      '3 → 2')
+    const un = retirerCalqueProjet(retirerCalqueProjet(p, 'mur'), 'sol')
+    check('mais jamais le dernier : une carte sans calque ne se dessine plus',
+      un.cartes[0].calques.length === 1, `${un.cartes[0].calques.length} calque restant`)
+    const monte = modifierCalqueProjet(p, 'sol', { decaler: 1 })
+    check('et l’on change leur ordre',
+      monte.cartes[0].calques.map((q) => q.nom).join(',') === 'mur,sol',
+      monte.cartes[0].calques.map((q) => q.nom).join(' → '))
+    check('et leur visibilité',
+      modifierCalqueProjet(p, 'sol', { visible: false }).cartes[0].calques[0].visible === false,
+      'un calque caché reste dans le fichier — on ne perd rien en le cachant')
+  }
+
+  // 5. Une espece creee dans l'editeur doit avoir EXACTEMENT la forme d'une
+  //    espece ecrite en TypeScript : sinon c'est une espece de deuxieme
+  //    classe, a qui il manque le champ qu'on vient d'ajouter au moteur.
+  {
+    const p = projetNeuf()
+    const avec = poserEspeceProjet(p, 'ver', { nom: 'Ver', pv: 3, comportement: 'patrouille' })
+    const neuve = avec.especes.find((e) => e.id === 'ver')
+    const modele = avec.especes.find((e) => e.id === 'gelee')
+    check('une espèce créée dans l’éditeur a tous les champs d’une espèce du moteur',
+      Object.keys(neuve).sort().join() === Object.keys(modele).sort().join(),
+      `${Object.keys(neuve).length} champs, comme « Gelée »`)
+    check('et les champs qu’on n’a pas remplis prennent la valeur du moteur',
+      neuve.invulnerabiliteMs === modele.invulnerabiliteMs && neuve.matiereCorps === 0,
+      `invulnérabilité ${neuve.invulnerabiliteMs} ms`)
+    const modifiee = poserEspeceProjet(avec, 'ver', { pv: 9 })
+    check('reposer le même identifiant modifie au lieu de dupliquer',
+      modifiee.especes.filter((e) => e.id === 'ver').length === 1
+      && modifiee.especes.find((e) => e.id === 'ver').pv === 9
+      && modifiee.especes.find((e) => e.id === 'ver').nom === 'Ver',
+      '9 pv, et le nom est conservé')
+  }
+
+  // 6. Retirer une espece retire AUSSI les entites posees qui la portaient.
+  //    Les laisser ferait des noeuds qui designent une espece absente : ils ne
+  //    se dessinent plus, ne bougent plus, et occupent une case qu'on ne peut
+  //    plus viser.
+  {
+    const p = projetNeuf()
+    const avant = compterEntites(relireNoeud(p.scenes[0].racine))
+    const sans = retirerEspeceProjet(p, 'heros')
+    const apres = compterEntites(relireNoeud(sans.scenes[0].racine))
+    check('retirer une espèce retire les entités posées qui la portaient',
+      sans.especes.every((e) => e.id !== 'heros') && apres === avant - 1,
+      `${avant} entité(s) → ${apres}`)
+  }
+
+  // 7. La vue : elle decide de ce que le joueur voit, et rien d'autre.
+  {
+    const p = changerVueProjet(projetNeuf(), 480, 270)
+    check('on change la résolution virtuelle du jeu',
+      p.vue.largeur === 480 && p.vue.hauteur === 270, '480×270')
+    check('mais pas en dessous de ce qui se voit',
+      changerVueProjet(p, 4, 4).vue.largeur === 32, 'une vue de quatre pixels ne montre rien')
+  }
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

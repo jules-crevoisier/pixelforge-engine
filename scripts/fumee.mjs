@@ -199,7 +199,146 @@ for (const id of ['donjon', 'caverne', 'citadelle', 'etage']) {
     `${e0} -> ${e1} -> ${await compter()}`)
 }
 
+/*
+ * Le parcours d'un debutant, du projet vide au jeu qui tourne.
+ *
+ * C'est la seule verification qui reponde a « quelqu'un d'autre peut-il s'en
+ * servir ». Les bancs prouvent que chaque piece est juste ; ils ne disent rien
+ * du fait qu'on puisse partir de rien et arriver a quelque chose de jouable
+ * sans ecrire une ligne de code. Ce parcours-la ne tient que dans un vrai
+ * navigateur, et il tombe des qu'un bouton se debranche.
+ */
+{
+  p.on('dialog', d => d.accept())
+  await p.click('#nouveau')
+  await p.waitForTimeout(500)
+  const carte = () => p.evaluate(() => [
+    window.pfe.monde.carte.largeur, window.pfe.monde.carte.hauteur,
+    window.pfe.monde.carte.calques.length, window.pfe.monde.especes.length,
+  ])
+  const entites = () => p.evaluate(() => {
+    let n = 0
+    const f = (x) => { if (x.espece) n++; x.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  ok('« Nouveau » donne un projet vide mais jouable',
+    JSON.stringify(await carte()).startsWith('[40,24,2') && (await entites()) === 1,
+    `${(await carte()).join(' · ')} — ${await entites()} entité`)
+
+  // Peindre du mur dans un projet neuf.
+  await p.click('[data-outil="terrain"]')
+  const c = await p.$eval('#vue', e => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  const solides = () => p.evaluate(() => window.pfe.edition.compter().solides)
+  await p.mouse.move(c[0] + c[2] * 0.35, c[1] + c[3] * 0.62)
+  await p.mouse.down()
+  for (let i = 0; i <= 12; i++) {
+    await p.mouse.move(c[0] + c[2] * (0.35 + i * 0.02), c[1] + c[3] * 0.62)
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(150)
+  ok('on peint du sol dans un projet neuf', (await solides()) > 4, `${await solides()} cases solides`)
+
+  // Poser une creature, puis la DEPLACER en la trainant.
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(200)
+  const gelee = await p.$$eval('#paletteGrille button', (b) => b.length)
+  ok('la palette montre les espèces du projet', gelee >= 8, `${gelee} vignettes`)
+  await p.mouse.click(c[0] + c[2] * 0.42, c[1] + c[3] * 0.5)
+  await p.waitForTimeout(150)
+  ok('on pose une créature', (await entites()) === 2, `${await entites()} entités`)
+
+  const ou = () => p.evaluate(() => {
+    const f = (x) => (x.espece && x.nom !== 'heros' ? [x.x, x.y] : x.enfants.map(f).find(Boolean))
+    return f(window.pfe.monde.racine)
+  })
+  const avantGlisse = await ou()
+  await p.mouse.move(c[0] + c[2] * 0.42, c[1] + c[3] * 0.5)
+  await p.mouse.down()
+  for (let i = 1; i <= 8; i++) {
+    await p.mouse.move(c[0] + c[2] * (0.42 + i * 0.012), c[1] + c[3] * (0.5 - i * 0.006))
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(200)
+  const apresGlisse = await ou()
+  ok('et on la déplace en la traînant',
+    String(avantGlisse) !== String(apresGlisse) && (await entites()) === 2,
+    `${avantGlisse} → ${apresGlisse}`)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(150)
+  ok('un déplacement se défait', String(await ou()) === String(avantGlisse),
+    `${await ou()}`)
+
+  // Le panneau Projet : redimensionner, ajouter un calque, creer une espece.
+  // « Nouveau » l'a deja ouvert — le rouvrir le refermerait, ce qui est
+  // exactement ce que le premier essai de ce scenario a fait.
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(250)
+  ok('le panneau Projet s’ouvre', await p.isVisible('#projetCorps'))
+
+  const champs = await p.$$('#projetCorps .bloc:nth-of-type(1) input')
+  await champs[0].fill('60')
+  await champs[1].fill('30')
+  await p.getByRole('button', { name: 'Redimensionner' }).click()
+  await p.waitForTimeout(500)
+  ok('on redimensionne la carte sans écrire une ligne',
+    JSON.stringify(await carte()).startsWith('[60,30'), (await carte()).join(' · '))
+  ok('et ce qui était peint est toujours là', (await solides()) > 4,
+    `${await solides()} cases solides après le redimensionnement`)
+
+  const nomCalque = await p.$('#projetCorps .bloc-actions input')
+  await nomCalque.fill('plafond')
+  await p.getByRole('button', { name: '+ Décor' }).click()
+  await p.waitForTimeout(450)
+  ok('on ajoute un calque', (await carte())[2] === 3, `${(await carte())[2]} calques`)
+
+  // Une espece, sans TypeScript.
+  const especes = () => p.evaluate(() => window.pfe.monde.especes.map((e) => e.id))
+  const avantEsp = (await especes()).length
+  const form = await p.$$('#projetCorps .bloc:nth-of-type(3) input')
+  await form[0].fill('limace')
+  await form[1].fill('Limace')
+  await p.getByRole('button', { name: 'Créer l’espèce' }).click()
+  await p.waitForTimeout(500)
+  ok('on crée une espèce sans écrire une ligne de TypeScript',
+    (await especes()).includes('limace') && (await especes()).length === avantEsp + 1,
+    (await especes()).slice(-3).join(', '))
+
+  await p.click('#fermerProjet')
+  await p.waitForTimeout(150)
+
+  // Le cadre d'edition : il change ce qu'on voit, pas ce que le jeu verra.
+  const vue = () => p.evaluate(() => [window.pfe.jeu.ecran.vue.largeur, window.pfe.monde.vue.largeur])
+  const v0 = await vue()
+  await p.click('#zoomMoins')
+  await p.waitForTimeout(200)
+  const v1 = await vue()
+  ok('le cadre d’édition montre plus de carte', v1[0] > v0[0], `${v0[0]} → ${v1[0]} px`)
+  ok('sans toucher au cadre du jeu', v1[1] === v0[1], `le jeu reste en ${v1[1]} px`)
+  await p.click('#jouer')
+  await p.waitForTimeout(250)
+  const v2 = await vue()
+  ok('et Jouer rend le cadre du jeu', v2[0] === v2[1], `${v2[0]} px`)
+  const posAvant = await p.evaluate(() => window.pfe.monde.heros.x)
+  await p.keyboard.down('ArrowRight'); await p.waitForTimeout(400); await p.keyboard.up('ArrowRight')
+  const posApres = await p.evaluate(() => window.pfe.monde.heros.x)
+  ok('un projet parti de rien se joue vraiment', posApres !== posAvant,
+    `le héros est passé de ${posAvant} à ${posApres}`)
+  await p.click('#arreter')
+  await p.waitForTimeout(200)
+
+  // L'aide s'ouvre et se ferme.
+  await p.click('#basculeAide')
+  await p.waitForTimeout(200)
+  ok('l’aide s’ouvre', await p.evaluate(() => document.getElementById('aideBoite').open))
+  await p.click('#fermerAide')
+  await p.waitForTimeout(150)
+  ok('et se referme', !(await p.evaluate(() => document.getElementById('aideBoite').open)))
+}
+
 // L'atelier
+await p.selectOption('#monde', 'donjon')
+await p.waitForTimeout(300)
 await p.click('#basculeAtelier'); await p.waitForTimeout(150)
 ok('l\'atelier s\'ouvre', await p.isVisible('#scriptSource'))
 await p.click('#fermerAtelier'); await p.waitForTimeout(100)

@@ -291,6 +291,74 @@ Une entité posée garde son nœud, pas une description : la remettre en place d
 rendre la **même** entité, avec son identifiant. Un nœud recréé en porterait un
 autre, et tout ce qui y renvoyait pointerait dans le vide.
 
+## Partir de rien
+
+![Un projet parti de zéro : la carte, les calques, les espèces](docs/projet.png)
+
+**Nouveau…** donne un projet vide et jouable — les deux ne se contredisent
+pas : il y a une carte, deux calques, un héros au milieu et le catalogue des
+espèces. Ce qui manque, c'est le décor, et c'est justement ce qu'on vient
+dessiner. Un projet neuf sans héros s'ouvrirait sur un rectangle noir où
+« Jouer » ne ferait rien, et la première impression serait « c'est cassé ».
+
+Le panneau **Projet** fait ce que le pinceau ne sait pas faire : redimensionner
+la carte, ajouter ou retirer un calque, en changer l'ordre, créer une espèce
+sans écrire une ligne de TypeScript.
+
+### Pourquoi tout passe par le fichier de projet
+
+Ces gestes-là touchent à la **structure**. On pourrait les faire en place —
+agrandir les tableaux, pousser un calque, ajouter une entrée au catalogue — et
+c'est ce qu'on écrit d'abord. Chacun oblige alors à se souvenir de tout ce qui
+dépend de la chose changée : la grille de collision, la présence de chaque
+calque, l'atlas, la caméra, le peuplement déjà adopté, l'historique qui pointe
+sur des index devenus faux. Le premier oubli ne se voit pas, et le deuxième se
+voit trois gestes plus tard.
+
+Ici, chaque geste transforme le **projet sérialisé**, et l'éditeur relit le
+résultat par le chemin qui sert déjà à rouvrir un fichier. Ce chemin est
+éprouvé à chaque banc, il reconstruit tout, et il ne peut rien oublier
+puisqu'il ne garde rien. Le prix est une reconstruction de quelques
+millisecondes, et le fait qu'un geste de structure **ne se défasse pas** au
+Ctrl+Z — ce qu'on dit au lieu de le cacher.
+
+Le gain second n'est pas mince : ces gestes **éprouvent le format**. Un champ
+que la relecture perdrait se voit tout de suite, dans l'éditeur, au lieu
+d'attendre le jour où quelqu'un rouvre un vieux fichier. C'est comme ça qu'on a
+trouvé que la présence d'un calque **sans terrain** n'était pas relue : le
+fichier l'écrivait, le lecteur la jetait. Une perte silencieuse — c'est-à-dire
+le pire des défauts, et celui que le commentaire d'à côté disait refuser.
+
+Une espèce créée dans le panneau passe par la **même fabrique** que le
+catalogue écrit en TypeScript : tout champ qu'on ne remplit pas prend la valeur
+par défaut du moteur, et le banc vérifie qu'elle a exactement les mêmes vingt-six
+champs que « Gelée ». Sans cela, une espèce de l'éditeur serait une espèce de
+deuxième classe, à qui il manquerait le champ qu'on vient d'ajouter au moteur.
+
+### Le cadre d'édition n'est pas un zoom
+
+L'échelle à l'écran est entière, toujours. Un zoom qui la multiplierait par 1,5
+casserait ce contrat à la première molette. Les boutons **−** et **+** changent
+donc la **résolution virtuelle pendant l'édition** : un cadre deux fois plus
+large montre deux fois plus de carte, avec des pixels deux fois plus petits, et
+l'échelle reste entière. Le cadre du jeu, lui, ne bouge jamais — il est remis à
+celui du monde dès qu'on appuie sur Jouer. Sinon on réglerait la difficulté du
+jeu avec un bouton de zoom, en voyant arriver ce que le joueur ne verra pas.
+
+### Ce qu'un vrai navigateur a trouvé et qu'aucun banc ne pouvait dire
+
+Le parcours complet — créer un projet, peindre, poser une créature, la traîner,
+redimensionner, ajouter un calque, créer une espèce, jouer — tourne dans un
+navigateur à chaque exécution de la fumée. C'est la seule vérification qui
+réponde à « quelqu'un d'autre peut-il s'en servir ».
+
+Elle a payé du premier coup. Le panneau gardait le projet **capturé au moment
+où il avait été dessiné** : on ouvrait le panneau, on peignait dix cases, on
+redimensionnait — et les dix cases disparaissaient, parce que le
+redimensionnement s'appliquait à l'état d'avant. Aucun banc ne pouvait le dire :
+ils appellent la fonction sur un projet qu'ils viennent de fabriquer, où la
+question du « quand » ne se pose pas.
+
 ## Le scripting, dans l'éditeur
 
 ![L'atelier de scripts](docs/atelier.png)
@@ -360,6 +428,12 @@ seconde.
 - mort, réapparition et points de reprise
 - édition : terrain, gomme, matières, tuile précise, entités, déplacement de la
   vue — et le pinceau vise le bon losange en isométrique, pas la case d'à côté
+- un projet neuf, vide et jouable, en un bouton
+- redimensionner la carte, ajouter et ordonner les calques, créer une espèce —
+  sans écrire une ligne de code
+- déplacer une entité posée en la traînant, et le défaire
+- un cadre d'édition réglable, qui ne touche jamais au cadre du jeu
+- une aide qui dit dans quel ordre s'y prendre
 - défaire et refaire (Ctrl+Z, Ctrl+Maj+Z), y compris sur les entités posées
 - projet enregistré et relu dans un dossier local, planches et projection comprises
 - scripting embarqué : écrire le comportement d'un nœud dans l'éditeur, à chaud

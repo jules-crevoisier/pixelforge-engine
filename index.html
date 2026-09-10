@@ -27,7 +27,13 @@
       </div>
       <label class="bascule"><input type="checkbox" id="voirCollision" /> Voir les collisions</label>
       <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>
+      <button id="basculeProjet" title="Carte, calques, espèces">Projet</button>
       <span class="sep"></span>
+      <button id="zoomMoins" title="Voir plus de carte (−)">−</button>
+      <span class="info" id="zoomTexte">×1</span>
+      <button id="zoomPlus" title="Voir de plus près (+)">+</button>
+      <span class="sep"></span>
+      <button id="nouveau" title="Repartir d’un projet vide">Nouveau…</button>
       <button id="dossier" title="Choisir le dossier de travail du projet">Dossier…</button>
       <button id="enregistrer" title="Ctrl+S">Enregistrer</button>
       <button id="ouvrir" title="Relire un projet">Ouvrir…</button>
@@ -44,6 +50,15 @@
       <main class="scene">
         <canvas id="vue"></canvas>
       </main>
+      <aside class="atelier panneau" id="projet" hidden>
+        <div class="atelier-tete">
+          <b>Projet</b>
+          <span class="pousse"></span>
+          <button id="fermerProjet" title="Fermer">✕</button>
+        </div>
+        <div class="panneau-corps" id="projetCorps"></div>
+        <p class="atelier-message" id="projetMessage"></p>
+      </aside>
       <aside class="atelier" id="atelier" hidden>
         <div class="atelier-tete">
           <select id="scriptNoeud" title="Le nœud dont on écrit le script"></select>
@@ -62,6 +77,7 @@
       </aside>
     </div>
     <footer class="pied">
+      <button id="basculeAide" class="lien" title="Ce que fait chaque outil">?</button>
       <span id="aide"></span>
       <span class="pousse"></span>
       <span class="info" id="verdict"></span>
@@ -71,6 +87,11 @@
       <span id="mesure"></span>
     </footer>
   </div>
+  <dialog id="aideBoite" class="aide-boite">
+    <div class="aide-tete"><b>Prise en main</b><span class="pousse"></span>
+      <button id="fermerAide">✕</button></div>
+    <div class="aide-corps" id="aideCorps"></div>
+  </dialog>
   <script type="module" src="/src/editeur/main.ts"></script>
 </body>
 </html>

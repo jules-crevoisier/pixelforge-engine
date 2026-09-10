@@ -18,19 +18,26 @@ body {
    l'editeur de cote — commandes de gauche et mesures de droite disparaissent
    ensemble sans que rien ne le laisse prevoir. */
 .app {
-  display: grid; grid-template-rows: 44px 1fr 30px;
+  display: grid; grid-template-rows: auto 1fr 30px;
   height: 100vh; height: 100dvh; overflow: hidden;
 }
 
-/* La barre defile plutot que de se replier : une commande qui passe a la
-   ligne dans une barre de 44 pixels de haut disparait sous le canevas, et l'on
-   ne sait meme pas qu'elle existe. */
+/* La barre se replie, et la rangee GRANDIT avec elle.
+   Elle defilait : c'etait le bon choix tant qu'elle tenait presque sur une
+   ligne, parce qu'une commande passee a la ligne dans une barre de hauteur
+   fixe disparait sous le canevas. A quinze commandes, le defilement cache la
+   moitie de la barre sans le dire — ce qui est pire, puisqu'on ne sait meme
+   plus qu'il manque quelque chose. Le repli redevient le bon choix des lors
+   que la hauteur suit, et c'est ce que `auto` fait ici. */
 .barre {
-  display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
   background: var(--bg-1); border-bottom: 1px solid var(--line);
-  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin;
+  flex-wrap: wrap; row-gap: 6px; min-height: 44px;
 }
 .barre > * { flex-shrink: 0; }
+/* Le ressort ne pousse plus rien quand la barre se replie : il ferait une
+   ligne de vide au lieu de coller l'export a droite. */
+@media (max-width: 1500px) { .barre .pousse { flex: 0; } }
 .marque { font-weight: 600; letter-spacing: .2px; }
 .marque b { color: var(--accent); font-weight: 600; }
 .sep { width: 1px; height: 20px; background: var(--line); }
@@ -145,4 +152,59 @@ button.actif { border-color: var(--accent); color: var(--accent); }
 select {
   padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
   background: var(--bg-2); color: var(--texte); font-size: 12px;
+}
+
+/* Le panneau Projet : carte, calques, especes.
+   Il partage la boite de l'atelier — meme largeur, meme place, meme facon de
+   se fermer — parce que deux panneaux qui se ressemblent a l'ecran mais se
+   comportent differemment sont plus difficiles a apprendre que deux panneaux
+   franchement distincts. */
+.panneau-corps {
+  flex: 1; min-height: 0; overflow: auto; padding: 4px 0 12px;
+}
+.bloc { border-bottom: 1px solid var(--line); padding: 10px 12px; }
+.bloc h3 {
+  margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--dim); font-weight: 600;
+}
+.champs { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+.champs label { font-size: 12px; color: var(--dim); }
+.champs input, .champs select, .bloc input, .bloc select {
+  background: var(--bg-0); color: var(--texte); border: 1px solid var(--line);
+  border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 12px; min-width: 0;
+}
+.champs input:focus, .champs select:focus { outline: 1px solid var(--accent); }
+.bloc-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.liste { display: flex; flex-direction: column; gap: 4px; }
+.ligne {
+  display: flex; align-items: center; gap: 6px; font-size: 12px;
+  background: var(--bg-0); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px;
+}
+.ligne.actif { border-color: var(--accent); }
+.ligne .nom { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ligne button { padding: 2px 6px; font-size: 11px; }
+.ligne .menu { color: var(--dim); font-size: 11px; }
+
+/* L'aide. Une boite modale et non un panneau : on la lit une fois, on la
+   ferme, et elle ne doit pas rogner la scene le reste du temps. */
+button.lien {
+  border: 0; background: transparent; color: var(--dim); padding: 0 6px;
+  font-weight: 700; cursor: pointer;
+}
+button.lien:hover { color: var(--accent); }
+.aide-boite {
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1);
+  color: var(--texte); padding: 0; width: min(680px, 92vw); max-height: 80vh;
+}
+.aide-boite::backdrop { background: rgba(0, 0, 0, .55); }
+.aide-tete {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.aide-corps { padding: 4px 14px 16px; overflow: auto; max-height: 66vh; font-size: 13px; line-height: 1.55; }
+.aide-corps h4 { margin: 14px 0 4px; font-size: 12px; color: var(--accent); }
+.aide-corps p { margin: 4px 0; color: var(--dim); }
+.aide-corps kbd {
+  background: var(--bg-0); border: 1px solid var(--line); border-radius: 4px;
+  padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--texte);
 }
