@@ -990,9 +990,46 @@ console.log('\n--- les paquets Godot et Unity ---')
     catch { return '' }
   })()
   check('chaque paquet annonce est produit',
-    PAQUETS.map((q) => q.id).join(',') === 'web,godot,unity'
+    PAQUETS.map((q) => q.id).join(',') === 'web,bureau,godot,unity'
     && gabarit.includes('<script id="projet" type="application/json"></script>'),
     PAQUETS.map((q) => q.nom).join(', '))
+
+  /*
+   * LE PAQUET DE BUREAU : la page de jeu et l'echafaudage Electron.
+   * L'injection du projet est la MEME que celle du jeu web — une fois,
+   * dans export/jeu-web.ts — et on verifie ici qu'elle survit au pire
+   * projet : celui qui contient « </script » dans un dialogue.
+   */
+  {
+    const { pageDeJeu, paquetBureau } = await import('../src/export/jeu-web.ts')
+    const { projetNeuf, reglerDialogueProjet, ajouterDialogueProjet } =
+      await import('../src/editeur/projet-neuf.ts')
+    let pj = ajouterDialogueProjet(projetNeuf({ depart: 'vierge' }))
+    pj = reglerDialogueProjet(pj, 'dialogue1', {
+      repliques: [{ qui: '', texte: 'un piege : </script> dans un texte', choix: [] }],
+    })
+    const page = pageDeJeu(gabarit, pj)
+    check('le projet s\'inline dans le gabarit, meme avec « </script » dans un texte',
+      page !== null && page.includes('"version"') && !page.includes('</script> dans un texte')
+      && page.includes('<\\/script> dans un texte'.replace('\\\\', '\\')),
+      'l\'echappement « <\\/ » est neutre en JSON — la page ne se ferme pas en plein milieu')
+    check('et un gabarit sans emplacement rend null, pas une page vide',
+      pageDeJeu('<html></html>', pj) === null)
+
+    const entrees = paquetBureau(pj, page)
+    const lire = (chemin) => new TextDecoder().decode(
+      entrees.find((e) => e.chemin === chemin)?.contenu ?? new Uint8Array())
+    const paquetJson = JSON.parse(lire('package.json'))
+    check('le paquet de bureau porte la page, l\'echafaudage Electron et son mode d\'emploi',
+      entrees.map((e) => e.chemin).sort().join(',') === 'LISEZMOI.md,index.html,main.cjs,package.json'
+      && paquetJson.devDependencies.electron && paquetJson.build.linux.target === 'AppImage'
+      && paquetJson.build.win.target === 'portable'
+      && lire('main.cjs').includes('BrowserWindow')
+      && lire('LISEZMOI.md').includes('npm run construire'),
+      `${entrees.length} fichiers — npm install, npm run construire, et les binaires sortent chez vous`)
+    check('la fenetre nait a la taille du jeu, pas a une taille inventee',
+      lire('main.cjs').includes(`width: ${pj.vue.largeur * 3}`))
+  }
 }
 
 console.log('\n--- Tiled, dans les deux sens ---')

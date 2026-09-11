@@ -2081,6 +2081,21 @@ ok('Enregistrer telecharge le projet faute de dossier',
     vie.tourne && vie.pas > 10 && fautesJeu.length === 0,
     `« ${vie.titre} » — pas ${vie.pas}, aucune erreur de page : c'est le jeu, chez un joueur`)
   await enJeu.close()
+
+  // Le paquet de BUREAU : le meme jeu, l'echafaudage Electron autour. Le
+  // zip est stocke sans compression — ses fichiers se lisent donc en clair.
+  await p.selectOption('#cible', 'paquet:bureau')
+  await p.click('#exporter')
+  await p.waitForTimeout(600)
+  const zipBrut = await p.evaluate(() => {
+    const z = window.__disque.get('gouffre-depose-bureau.zip')
+    return typeof z === 'string' ? z : ''
+  })
+  ok('l’export « Bureau » écrit le zip Electron dans le dossier : la page, main.cjs, le mode d’emploi',
+    zipBrut.includes('main.cjs') && zipBrut.includes('electron-builder')
+    && zipBrut.includes('npm run construire') && zipBrut.includes('AppImage')
+    && zipBrut.includes('<canvas'),
+    `${Math.round(zipBrut.length / 1024)} Ko — décompresser, npm install, npm run construire`)
 }
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')

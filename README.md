@@ -857,6 +857,16 @@ un seul fichier autoporteur, qui s'ouvre en **double-clic**, sans serveur,
 et se dépose tel quel sur **itch.io**. S'il se comporte autrement que sous
 « Jouer », c'est un bug : il n'y a qu'un seul chemin de relecture.
 
+Et le **bureau** : l'export « Jeu de bureau — Linux / Windows / macOS »
+emballe la même page avec un échafaudage **Electron** prêt : décompressez,
+`npm install`, `npm run construire` — l'AppImage Linux, le `.exe` portable
+Windows et l'archive macOS sortent **chez vous**. C'est un échafaudage à
+compiler et non un bouton magique : un éditeur dans un navigateur ne peut
+pas produire un `.exe`, et prétendre le contraire serait un bouton qui
+ment. Le LISEZMOI du zip dit exactement quoi taper, et les limites (chaque
+système construit le mieux le sien). Pour du natif complet — mobile,
+consoles — la voie reste le paquet Godot et les exports de Godot.
+
 Le gabarit est un build **commis** (`public/jeu/gabarit.html`, ~108 Ko) —
 l'export doit marcher depuis l'éditeur, qui ne sait pas builder. La même
 règle que pour l'exemple du Gouffre s'applique : `npm run joueur` le

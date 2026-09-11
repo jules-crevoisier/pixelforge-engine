@@ -7,6 +7,7 @@ import type { Noeud } from '../scene/noeud.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
+import { pageDeJeu, paquetBureau } from '../export/jeu-web.ts'
 import { zipper } from '../export/paquet.ts'
 import { MONDES, type Monde } from '../demo/mondes.ts'
 import { Atelier } from './atelier-panneau.ts'
@@ -1505,25 +1506,40 @@ async function exporter(): Promise<void> {
   const choix = selectCible.value
   const p = projetCourant()
 
-  if (choix === 'paquet:web') {
+  if (choix === 'paquet:web' || choix === 'paquet:bureau') {
     /*
-     * Le jeu web : le gabarit autoporteur, avec le projet INLINE. Le
-     * fichier s'ouvre alors sans serveur — c'est tout son interet — et
-     * l'echappement de « </ » empeche le JSON de fermer sa propre balise.
+     * Le jeu web et le paquet de bureau emballent la MEME page : le
+     * gabarit autoporteur, projet inline — l'injection vit dans
+     * export/jeu-web.ts, une fois pour les deux.
      */
     const r = await fetch('jeu/gabarit.html')
     if (!r.ok) {
       verdict.textContent = 'Le gabarit du jeu web manque : lancez `npm run joueur` et redéployez.'
       return
     }
-    const gabarit = await r.text()
-    const inline = versTexte(p).replace(/<\//g, '<\\/')
-    const page = gabarit.replace(
-      '<script id="projet" type="application/json"></script>',
-      `<script id="projet" type="application/json">${inline}</script>`,
-    )
-    if (page === gabarit) {
+    const page = pageDeJeu(await r.text(), p)
+    if (page === null) {
       verdict.textContent = 'Le gabarit n’a pas l’emplacement du projet : refaites `npm run joueur`.'
+      return
+    }
+    if (choix === 'paquet:bureau') {
+      const entrees = paquetBureau(p, page)
+      const nomZip = `${p.nom.replace(/\.json$/i, '')}-bureau.zip`
+      const octets = zipper(entrees)
+      if (travail) {
+        try {
+          await dossier.ecrireOctets(travail, nomZip, octets)
+          verdict.textContent = `${travail.name}/${nomZip} — décompressez, npm install, `
+            + 'npm run construire : les binaires Linux/Windows/macOS sortent chez vous.'
+          return
+        } catch (e) {
+          verdict.textContent = e instanceof Error ? e.message : String(e)
+          return
+        }
+      }
+      dossier.telechargerOctets(nomZip, octets)
+      verdict.textContent = `${nomZip} — décompressez, npm install, npm run construire : `
+        + 'les binaires Linux/Windows/macOS sortent chez vous.'
       return
     }
     // Un projet relu s'appelle souvent « mon-jeu.json » : on ne livre pas

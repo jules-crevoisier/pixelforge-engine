@@ -570,6 +570,12 @@ export const PAQUETS: { id: string; nom: string; fichier: string; note: string }
     note: 'Le jeu, jouable : un seul fichier. Double-clic, ou déposez-le sur itch.io.',
   },
   {
+    id: 'bureau',
+    nom: 'Jeu de bureau — Linux / Windows / macOS (.zip)',
+    fichier: 'bureau.zip',
+    note: 'Le jeu et son échafaudage Electron : npm install, npm run construire — les binaires sortent chez vous.',
+  },
+  {
     id: 'godot',
     nom: 'Projet Godot 4 (.zip)',
     fichier: 'godot.zip',
