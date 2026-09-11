@@ -127,6 +127,8 @@ let monde: Monde
 let jeu: Jeu
 /** D'ou vient l'entite qu'on traine : c'est ce que « defaire » remettra. */
 let depart: { x: number; y: number } | null = null
+/** Le rectangle d'une salle AVANT qu'on la tire. Meme role que `depart`. */
+let tireeDepart: { x: number; y: number; largeur: number; hauteur: number } | null = null
 let palette: Palette
 let edition: Edition
 
@@ -340,6 +342,56 @@ function installer(nouveau: Monde): void {
         refaire: () => { otesSalle(nom) },
       })
       majHistorique()
+    },
+    /*
+     * Tirer une salle : la deplacer, ou la retailler par un bord.
+     *
+     * Pendant le geste on ecrit DIRECTEMENT dans la salle vivante — soixante
+     * fois par seconde, il n'est pas question de reconstruire quoi que ce
+     * soit. Le journal ne recoit qu'a la fin, et il garde les deux
+     * rectangles : le geste se defait alors d'un coup, au lieu de rejouer
+     * trente cases traversees.
+     */
+    tirer: (nom, rect, fini) => {
+      const m = monde as Monde & { salles?: SalleJeu[] }
+      const s2 = m.salles?.find((q) => q.nom === nom)
+      if (!s2) return
+      if (!fini) {
+        if (!tireeDepart) {
+          tireeDepart = { x: s2.x, y: s2.y, largeur: s2.largeur, hauteur: s2.hauteur }
+        }
+        Object.assign(s2, rect)
+        panneauProjet?.montrer()
+        majEtat()
+        return
+      }
+      const avant = tireeDepart
+      tireeDepart = null
+      if (!avant) return
+      const apres = { x: rect.x, y: rect.y, largeur: rect.largeur, hauteur: rect.hauteur }
+      if (avant.x === apres.x && avant.y === apres.y
+        && avant.largeur === apres.largeur && avant.hauteur === apres.hauteur) return
+      const poser = (ou: typeof apres) => (): void => {
+        const vive = (monde as Monde & { salles?: SalleJeu[] }).salles?.find((q) => q.nom === nom)
+        if (!vive) return
+        Object.assign(vive, ou)
+        panneauProjet?.montrer()
+        majEtat()
+        if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+      }
+      const quoi = apres.largeur === avant.largeur && apres.hauteur === avant.hauteur
+        ? `salle « ${nom} » déplacée` : `salle « ${nom} » retaillée`
+      journal.poser({
+        nom: quoi,
+        carte: s2.carte ?? (monde.carteActive ?? ''),
+        defaire: poser(avant),
+        refaire: poser(apres),
+      })
+      majHistorique()
+      // Le MEME mot que dans le journal : ce qu'on lit dans la barre d'etat
+      // doit etre ce qu'on retrouvera dans l'infobulle du « défaire ».
+      verdict.textContent = `${quoi} : ${apres.largeur}×${apres.hauteur} `
+        + `en ${apres.x},${apres.y} — Ctrl+Z la remet`
     },
   }
 
@@ -1277,7 +1329,7 @@ const AIDE_OUTILS: Record<string, string> = {
   collision: 'Collision — peint ce que la case FAIT (solide, pointe, échelle…) sans toucher au dessin',
   tuile: 'Tuile — choisissez une case de la planche à gauche, puis peignez-la',
   entite: 'Entité — clic : poser · clic droit : retirer · tirer : déplacer · Maj+tirer : choisir un rectangle',
-  salle: 'Salle — tirez un rectangle : la caméra s’y bornera, on y réapparaîtra',
+  salle: 'Salle — tirez un rectangle pour en créer une (Maj pour en poser une par-dessus) · tirez son intérieur pour la déplacer, son bord pour la retailler · clic droit pour retirer',
   main: 'Main — tirez pour déplacer la vue',
 }
 
@@ -1374,10 +1426,21 @@ canevas.addEventListener('pointerleave', () => {
   redessinerEdition()
 })
 canevas.addEventListener('pointerup', () => {
+  /*
+   * CE QUE LE GESTE A DIT SURVIT AU COMPTE QUI SUIT.
+   *
+   * `majEtat` ecrit le compte des cases dans la barre d'etat — au meme
+   * endroit que les messages. Un geste qui vient de dire « salle retaillée :
+   * 12×6 » se faisait donc effacer par « 35 couleurs · 114 posées » dans la
+   * milliseconde : le message existait, personne ne l'a jamais lu.
+   */
+  const avant = verdict.textContent
   edition.finir()
+  const dit = verdict.textContent
   redessinerEdition()
   majEtat()
   majHistorique()
+  if (dit && dit !== avant) verdict.textContent = dit
 })
 
 /**

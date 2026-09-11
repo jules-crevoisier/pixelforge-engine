@@ -33,6 +33,80 @@
  * dans le fichier de projet et les six chargeurs les retrouvent.
  */
 
+/**
+ * OU l'on a saisi une salle : son interieur, un bord, un coin.
+ *
+ * ## Pourquoi une fonction pure, a part de l'editeur
+ *
+ * Deplacer et retailler une salle a la souris est un geste d'interface, mais
+ * la QUESTION qu'il pose — « ce point tombe-t-il sur le bord nord, sur le coin
+ * sud-est, ou dedans ? » — est un calcul, et un calcul se met sur un banc. Le
+ * mettre dans l'editeur l'aurait rendu invisible aux verifications : on ne
+ * peut pas prouver qu'un coin de deux cases est atteignable en regardant un
+ * ecran.
+ */
+export type PoigneeSalle = 'dedans' | 'n' | 's' | 'e' | 'o' | 'no' | 'ne' | 'so' | 'se'
+
+/**
+ * La poignee sous un point, ou null si le point est hors de la salle.
+ *
+ * `marge` est en cases : c'est l'epaisseur du bord qu'on peut attraper. Une
+ * marge de zero rendrait les bords inatteignables a la souris — il faudrait
+ * viser la case exacte — et une marge trop grande empecherait de deplacer une
+ * petite salle, qui ne serait plus faite que de bords.
+ */
+export function poigneeSalle(
+  s: { x: number; y: number; largeur: number; hauteur: number },
+  cx: number, cy: number, marge = 1,
+): PoigneeSalle | null {
+  if (cx < s.x || cy < s.y || cx >= s.x + s.largeur || cy >= s.y + s.hauteur) return null
+  // La marge ne depasse jamais le tiers de la salle : sans ce plafond, une
+  // salle de deux cases de cote serait tout entiere un bord, et ne se
+  // deplacerait plus.
+  const m = Math.max(0, Math.min(marge, Math.floor(Math.min(s.largeur, s.hauteur) / 3)))
+  const ouest = cx < s.x + m
+  const est = cx >= s.x + s.largeur - m
+  const nord = cy < s.y + m
+  const sud = cy >= s.y + s.hauteur - m
+  if (nord && ouest) return 'no'
+  if (nord && est) return 'ne'
+  if (sud && ouest) return 'so'
+  if (sud && est) return 'se'
+  if (nord) return 'n'
+  if (sud) return 's'
+  if (ouest) return 'o'
+  if (est) return 'e'
+  return 'dedans'
+}
+
+/**
+ * La salle telle qu'elle devient quand on tire sa poignee de (dx, dy) cases.
+ *
+ * Une salle ne descend jamais sous deux cases de cote : une salle d'une case
+ * n'est pas un tableau, c'est un clic rate — et c'est deja la regle qui
+ * gouverne la creation.
+ */
+export function tirerSalle(
+  s: { x: number; y: number; largeur: number; hauteur: number },
+  poignee: PoigneeSalle, dx: number, dy: number, min = 2,
+): { x: number; y: number; largeur: number; hauteur: number } {
+  if (poignee === 'dedans') return { ...s, x: s.x + dx, y: s.y + dy }
+  let { x, y, largeur, hauteur } = s
+  if (poignee.includes('o')) {
+    const d = Math.min(dx, largeur - min)
+    x += d
+    largeur -= d
+  }
+  if (poignee.includes('e')) largeur = Math.max(min, largeur + dx)
+  if (poignee.includes('n')) {
+    const d = Math.min(dy, hauteur - min)
+    y += d
+    hauteur -= d
+  }
+  if (poignee.includes('s')) hauteur = Math.max(min, hauteur + dy)
+  return { x, y, largeur, hauteur }
+}
+
 /** Une salle, en CASES. Les pixels se deduisent de la taille de tuile. */
 export interface Salle {
   nom: string

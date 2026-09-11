@@ -5567,6 +5567,54 @@ console.log('\n--- trouver : un seul champ pour tout ce que le projet nomme ---'
     beaucoup.length <= TROUVAILLES_MAX, `${beaucoup.length} resultats`)
 }
 
+console.log('\n--- les salles se tirent a la souris ---')
+
+{
+  const { poigneeSalle, tirerSalle } = await import('../src/niveau/salles.ts')
+  const s = { x: 4, y: 3, largeur: 10, hauteur: 6 }
+
+  check('hors de la salle, aucune poignee', poigneeSalle(s, 2, 2) === null
+    && poigneeSalle(s, 14, 3) === null && poigneeSalle(s, 4, 9) === null,
+    'le bord droit est EXCLU : une salle de dix cases occupe 4 a 13')
+  check('au milieu, c\'est l\'interieur', poigneeSalle(s, 9, 6) === 'dedans')
+  check('les quatre bords se distinguent',
+    poigneeSalle(s, 9, 3) === 'n' && poigneeSalle(s, 9, 8) === 's'
+    && poigneeSalle(s, 4, 6) === 'o' && poigneeSalle(s, 13, 6) === 'e',
+    `${poigneeSalle(s, 9, 3)}${poigneeSalle(s, 9, 8)}${poigneeSalle(s, 4, 6)}${poigneeSalle(s, 13, 6)}`)
+  check('et les quatre coins aussi',
+    poigneeSalle(s, 4, 3) === 'no' && poigneeSalle(s, 13, 3) === 'ne'
+    && poigneeSalle(s, 4, 8) === 'so' && poigneeSalle(s, 13, 8) === 'se')
+
+  // Le plafond de marge : une petite salle doit rester DEPLACABLE.
+  const petite = { x: 0, y: 0, largeur: 3, hauteur: 3 }
+  check('une salle de trois cases garde un interieur',
+    poigneeSalle(petite, 1, 1) === 'dedans',
+    'sans plafond sur la marge, une petite salle ne serait faite que de bords')
+
+  // TIRER.
+  check('tirer l\'interieur deplace, sans retailler',
+    JSON.stringify(tirerSalle(s, 'dedans', 3, -2))
+    === JSON.stringify({ x: 7, y: 1, largeur: 10, hauteur: 6 }))
+  check('tirer le bord est change la largeur, pas l\'origine',
+    JSON.stringify(tirerSalle(s, 'e', 4, 0))
+    === JSON.stringify({ x: 4, y: 3, largeur: 14, hauteur: 6 }))
+  check('tirer le bord ouest deplace l\'origine ET la largeur',
+    JSON.stringify(tirerSalle(s, 'o', 2, 0))
+    === JSON.stringify({ x: 6, y: 3, largeur: 8, hauteur: 6 }),
+    'sinon le bord gauche tire vers la droite emmenerait toute la salle')
+  check('un coin tire les deux axes a la fois',
+    JSON.stringify(tirerSalle(s, 'se', 2, 3))
+    === JSON.stringify({ x: 4, y: 3, largeur: 12, hauteur: 9 }))
+
+  // La limite : une salle d'une case est un clic rate, pas une salle.
+  const ecrasee = tirerSalle(s, 'o', 20, 0)
+  check('une salle ne descend jamais sous deux cases de cote',
+    ecrasee.largeur === 2 && ecrasee.x === 12,
+    `${ecrasee.largeur} de large — c'est deja la regle qui gouverne la creation`)
+  const ecrasee2 = tirerSalle(s, 's', 0, -20)
+  check('et la hauteur non plus', ecrasee2.hauteur === 2)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

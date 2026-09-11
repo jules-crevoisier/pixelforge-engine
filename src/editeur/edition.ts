@@ -6,6 +6,7 @@ import {
   Historique, differences, gesteDeChangements, type Changement, type Resolveur,
   adresseCases, adressePresence, adresseSolides,
 } from './historique.ts'
+import { poigneeSalle, tirerSalle, type PoigneeSalle } from '../niveau/salles.ts'
 
 /**
  * Le mode edition : peindre le decor pendant que la scene est arretee.
@@ -102,6 +103,14 @@ export class Edition {
     liste(): { nom: string; x: number; y: number; largeur: number; hauteur: number }[]
     poser(x: number, y: number, largeur: number, hauteur: number): void
     retirer(nom: string): void
+    /**
+     * Une salle vient d'etre TIREE : deplacee ou retaillee.
+     *
+     * `fini` dit si le geste est termine — c'est a ce moment-la, et seulement
+     * a ce moment-la, que l'editeur pose quelque chose dans le journal. Un
+     * geste par case traversee ferait trente lignes pour un deplacement.
+     */
+    tirer?(nom: string, rect: { x: number; y: number; largeur: number; hauteur: number }, fini: boolean): void
   } | null = null
 
   /**
@@ -177,6 +186,14 @@ export class Edition {
   private glisseCamera: { x: number; y: number; camX: number; camY: number } | null = null
   /** L'entite qu'on traine, et si elle a vraiment change de case. */
   private glisseEntite: { id: string; depart: { cx: number; cy: number }; bougee: boolean } | null = null
+  /** La salle qu'on traine ou qu'on retaille, et par quelle poignee. */
+  private glisseSalle: {
+    nom: string
+    poignee: PoigneeSalle
+    depart: { cx: number; cy: number }
+    rect: { x: number; y: number; largeur: number; hauteur: number }
+    bougee: boolean
+  } | null = null
 
   constructor(jeu: Jeu, carte: Carte, options: {
     /** Le journal de la seance, quand il doit survivre a cette Edition. */
@@ -323,6 +340,36 @@ export class Edition {
      */
     if (this.etat.outil === 'salle') {
       this.peint = true
+      /*
+       * SAISIR une salle deja posee, avant de songer a en tirer une neuve.
+       *
+       * Une salle se reglait par quatre nombres dans un panneau. C'est exact
+       * et c'est inutilisable : on dessine un niveau a la souris, en regardant
+       * le decor, pas en tapant « largeur : 14 » puis en allant voir. Le bord
+       * deplace le bord, l'interieur deplace la salle — comme partout ailleurs.
+       */
+      // MAJ force la creation : deux salles peuvent se recouvrir — c'est une
+      // faute, mais l'editeur la signale au lieu de l'interdire, et il faut
+      // donc pouvoir la commettre. Sans ce modificateur, une salle posee
+      // par-dessus une autre deplacerait celle du dessous.
+      if (bouton === 0 && !modificateur && this.surSalle?.tirer) {
+        const dessous = this.salleEn(c.cx, c.cy)
+        if (dessous) {
+          const poignee = poigneeSalle(dessous, c.cx, c.cy)
+          if (poignee) {
+            this.glisseSalle = {
+              nom: dessous.nom,
+              poignee,
+              depart: { cx: c.cx, cy: c.cy },
+              rect: {
+                x: dessous.x, y: dessous.y, largeur: dessous.largeur, hauteur: dessous.hauteur,
+              },
+              bougee: false,
+            }
+            return
+          }
+        }
+      }
       if (bouton === 2) {
         // Le clic droit retire la salle sous le curseur, comme il retire
         // partout ailleurs.
@@ -435,6 +482,20 @@ export class Edition {
   }
 
   bouger(pageX: number, pageY: number): void {
+    if (this.glisseSalle) {
+      const c = this.caseSous(pageX, pageY)
+      if (!c) return
+      const g = this.glisseSalle
+      const dx = c.cx - g.depart.cx
+      const dy = c.cy - g.depart.cy
+      if (!dx && !dy) return
+      g.bougee = true
+      // On tire toujours depuis le rectangle de DEPART : accumuler les
+      // ecarts ferait deriver la salle quand la souris revient en arriere.
+      this.surSalle?.tirer?.(g.nom, tirerSalle(g.rect, g.poignee, dx, dy), false)
+      this.jeu.dessiner()
+      return
+    }
     if (this.glisseCamera) {
       const k = this.jeu.ecran.echelle
       const dpr = Math.min(3, window.devicePixelRatio || 1)
@@ -470,6 +531,24 @@ export class Edition {
   }
 
   finir(): void {
+    if (this.glisseSalle) {
+      const g = this.glisseSalle
+      this.glisseSalle = null
+      this.peint = false
+      // Un clic qui n'a pas bouge n'est pas un geste : il ne doit rien
+      // laisser dans le journal.
+      if (g.bougee) {
+        const liste = this.surSalle?.liste() ?? []
+        const ici = liste.find((q) => q.nom === g.nom)
+        if (ici) {
+          this.surSalle?.tirer?.(g.nom, {
+            x: ici.x, y: ici.y, largeur: ici.largeur, hauteur: ici.hauteur,
+          }, true)
+        }
+      }
+      this.jeu.dessiner()
+      return
+    }
     if (this.rectangleChoisit && this.rectangle) {
       const r = this.rectangle
       this.rectangle = null

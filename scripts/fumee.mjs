@@ -1172,7 +1172,12 @@ ok('Enregistrer telecharge le projet faute de dossier',
     /1 salle/.test(await p.textContent('#verdict')), await p.textContent('#verdict'))
 
   // Une seconde, qui recouvre la premiere : l'avertissement doit DURER.
+  // MAJ pour l'imposer : sans lui, un glisser qui commence DANS une salle la
+  // deplace — c'est le geste de tous les editeurs, et c'est celui qu'on veut
+  // neuf fois sur dix.
+  await p.keyboard.down('Shift')
   await glisser(0.35, 0.35, 0.65, 0.65)
+  await p.keyboard.up('Shift')
   ok('deux salles qui se recouvrent sont signalées, et ça reste affiché',
     /recouvrent/.test(await p.textContent('#verdict')),
     await p.textContent('#verdict'))
@@ -3118,6 +3123,105 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.waitForTimeout(300)
   ok('et Ctrl+clic sur le même le retire', (await choisis()) === 1, `${await choisis()}`)
   await p.screenshot({ path: 'docs/selection.png' })
+}
+
+/*
+ * LES SALLES SE TIRENT A LA SOURIS.
+ *
+ * Une salle se reglait par quatre nombres dans un panneau. C'est exact et
+ * c'est inutilisable : on dessine un niveau en regardant le decor.
+ */
+{
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(800)
+  await p.click('#accueilPlateforme')
+  await p.waitForTimeout(900)
+  if (await p.isVisible('#projetCorps')) await p.click('#fermerProjet')
+
+  const salles = () => p.evaluate(() => (window.pfe.monde.salles ?? [])
+    .map((s) => ({ nom: s.nom, x: s.x, y: s.y, l: s.largeur, h: s.hauteur })))
+  const c = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  // Le monde vers la page : la carte est dessinee au milieu du canevas.
+  const versPage = async (wx, wy) => p.evaluate(([x, y]) => {
+    const j = window.pfe.jeu
+    const r = document.getElementById('vue').getBoundingClientRect()
+    const dpr = Math.min(3, window.devicePixelRatio || 1)
+    const k = j.ecran.echelleCourante ?? j.ecran.echelle
+    return [
+      r.left + ((x - Math.round(j.camera.x)) * k + (j.ecran.decalageX ?? 0)) / dpr,
+      r.top + ((y - Math.round(j.camera.y)) * k + (j.ecran.decalageY ?? 0)) / dpr,
+    ]
+  }, [wx, wy])
+  void c
+
+  await p.click('[data-outil="salle"]')
+  await p.waitForTimeout(200)
+  /*
+   * Une salle de huit cases sur six, tirée à la souris — DANS ce que la vue
+   * montre. Les cases se comptent depuis la caméra et non depuis l'origine de
+   * la carte : la vue montre vingt cases sur quarante, et un rectangle tiré
+   * sur la case (2,2) d'une caméra posée plus loin commence hors de l'écran.
+   */
+  const base = await p.evaluate(() => {
+    const j = window.pfe.jeu
+    return [Math.ceil(j.camera.x / 16) + 1, Math.ceil(j.camera.y / 16) + 1]
+  })
+  const a1 = await versPage((base[0]) * 16 + 4, (base[1]) * 16 + 4)
+  const b1 = await versPage((base[0] + 7) * 16 + 12, (base[1] + 5) * 16 + 12)
+  await p.mouse.move(a1[0], a1[1])
+  await p.mouse.down()
+  for (let i = 1; i <= 8; i++) {
+    await p.mouse.move(a1[0] + (b1[0] - a1[0]) * i / 8, a1[1] + (b1[1] - a1[1]) * i / 8)
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(400)
+  const nee = await salles()
+  ok('on tire une salle', nee.length === 1 && nee[0].l >= 6 && nee[0].h >= 4,
+    JSON.stringify(nee[0]))
+
+  // LA DEPLACER : on tire son INTERIEUR.
+  const milieu = await versPage((nee[0].x + nee[0].l / 2) * 16, (nee[0].y + nee[0].h / 2) * 16)
+  const cible = await versPage((nee[0].x + nee[0].l / 2 + 3) * 16, (nee[0].y + nee[0].h / 2 + 2) * 16)
+  await p.mouse.move(milieu[0], milieu[1])
+  await p.mouse.down()
+  for (let i = 1; i <= 6; i++) {
+    await p.mouse.move(milieu[0] + (cible[0] - milieu[0]) * i / 6, milieu[1] + (cible[1] - milieu[1]) * i / 6)
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(400)
+  const bougee = await salles()
+  ok('tirer son intérieur la DÉPLACE, sans la retailler',
+    bougee[0].x === nee[0].x + 3 && bougee[0].y === nee[0].y + 2
+    && bougee[0].l === nee[0].l && bougee[0].h === nee[0].h,
+    `${JSON.stringify(nee[0])} → ${JSON.stringify(bougee[0])}`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(300)
+  ok('et Ctrl+Z la remet où elle était',
+    JSON.stringify(await salles()) === JSON.stringify(nee),
+    JSON.stringify((await salles())[0]))
+
+  // LA RETAILLER : on tire son BORD droit.
+  const s0 = (await salles())[0]
+  const bord = await versPage((s0.x + s0.l - 1) * 16 + 8, (s0.y + s0.h / 2) * 16)
+  const loin = await versPage((s0.x + s0.l + 3) * 16 + 8, (s0.y + s0.h / 2) * 16)
+  await p.mouse.move(bord[0], bord[1])
+  await p.mouse.down()
+  for (let i = 1; i <= 6; i++) {
+    await p.mouse.move(bord[0] + (loin[0] - bord[0]) * i / 6, bord[1])
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(400)
+  const large = (await salles())[0]
+  ok('tirer son bord la RETAILLE, sans la déplacer',
+    large.l === s0.l + 4 && large.x === s0.x && large.h === s0.h,
+    `${s0.l} → ${large.l} cases de large, origine ${large.x},${large.y}`)
+  ok('et la barre d’état dit ce qu’elle est devenue',
+    (await p.textContent('#verdict')).includes('retaillée'), await p.textContent('#verdict'))
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(300)
+  ok('un seul Ctrl+Z défait toute la retaille',
+    (await salles())[0].l === s0.l, `${(await salles())[0].l} cases`)
 }
 
 /*

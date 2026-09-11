@@ -77,6 +77,28 @@ case sur la vraie grille de tuiles**, depuis le départ, et exige d'atteindre le
 centre de chaque salle. 60 étages, 720 salles, aucune injoignable. Un plan peut
 être parfait et l'assemblage condamner une porte.
 
+### Une salle se tire à la souris
+
+Une salle se réglait par quatre nombres dans un panneau : `x`, `y`, largeur,
+hauteur. C'est exact, et c'est inutilisable — on dessine un niveau à la souris,
+en regardant le décor, pas en tapant « largeur : 14 » puis en allant voir.
+
+Avec l'outil **Salle** : tirer un rectangle en crée une, tirer son **intérieur**
+la déplace, tirer un de ses **bords ou coins** la retaille. <kbd>Maj</kbd> force
+la création — deux salles peuvent se recouvrir, c'est une faute que l'éditeur
+*signale* au lieu de l'interdire, et il faut donc pouvoir la commettre.
+
+La question « ce point tombe-t-il sur le bord nord, sur le coin sud-est, ou
+dedans ? » est un **calcul**, et il vit dans `niveau/salles.ts` avec le reste
+des salles, pas dans l'éditeur : on ne peut pas prouver qu'un coin est
+atteignable en regardant un écran. Deux règles y sont écrites une fois pour
+toutes : l'épaisseur du bord ne dépasse jamais le tiers de la salle — sinon une
+petite salle ne serait faite que de bords et ne se déplacerait plus — et une
+salle ne descend jamais sous deux cases de côté, comme à la création.
+
+Le journal ne reçoit qu'à la **fin** du geste, avec les deux rectangles : un
+Ctrl+Z défait toute la retaille, au lieu de rejouer trente cases traversées.
+
 ### Les salles sont dessinées à la main, le tirage choisit laquelle
 
 Le hasard suffit à prouver qu'un étage tient debout ; il ne fait pas un jeu.
