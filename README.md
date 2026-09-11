@@ -509,11 +509,18 @@ son corps de collision, chaque créature posée, y compris ce qui est caché :
   une scène sans racine n'est pas vide, elle est invalide — et retirer le
   décor prévient de ce que ça casse.
 
+Et l'arbre et la vue **se répondent** : **◎** centre la vue d'édition sur
+le nœud — fini de chercher une entité à la souris —, **⧉** la duplique avec
+des identifiants neufs, une case à côté ; et saisir une entité dans la vue
+la **surligne** dans l'arbre. La vue et l'arbre parlent du même nœud.
+
 Tout passe par les mêmes gestes de structure que le reste : transformer le
 projet sérialisé, relire. Le banc vérifie qu'un nœud renommé garde son
 identifiant, ses enfants et son espèce, qu'une scène sans héros se relit
-sans casser, et la fumée fait le tour complet dans le navigateur sur le
-Gouffre entier — renommer une gelée, la cacher, la retirer.
+sans casser, que deux duplications ne fabriquent jamais le même
+identifiant, et la fumée fait le tour complet dans le navigateur sur le
+Gouffre entier — renommer une gelée, la cacher, la retirer, viser une
+lanterne, la dupliquer.
 
 ## Le scripting, dans l'éditeur
 

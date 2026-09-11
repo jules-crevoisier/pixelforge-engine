@@ -16,7 +16,7 @@ import {
   ajouterDialogueProjet, reglerDialogueProjet, retirerDialogueProjet,
   ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet,
   ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet, retirerAnimationProjet,
-  reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet,
+  reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet, dupliquerNoeudProjet,
   reglerReglesProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
@@ -53,6 +53,8 @@ export interface CrochetsProjet {
   dire(message: string): void
   /** Le nom de la carte sous le pinceau. Vide : la premiere. */
   carteActive(): string
+  /** Centre la vue d'edition sur ce point du monde. */
+  viser(x: number, y: number): void
   /** Met cette carte-la sous le pinceau, sans rien perdre des autres. */
   editerCarte(nom: string): void
   /**
@@ -164,6 +166,8 @@ export class PanneauProjet {
   private sonEdite = ''
   /** La scene ouverte dans l'onglet Scene. Vide : celle de la carte active. */
   private sceneEditee = ''
+  /** Le noeud que la vue vient de designer — surligne dans l'arbre. */
+  private noeudDesigne = ''
 
   constructor(
     elements: {
@@ -877,7 +881,7 @@ export class PanneauProjet {
     liste.className = 'liste'
     const ligneDe = (n: NoeudSerialise, profondeur: number, racine: boolean): void => {
       const ligne = document.createElement('div')
-      ligne.className = 'ligne'
+      ligne.className = `ligne${n.id === this.noeudDesigne ? ' actif' : ''}`
       ligne.style.paddingLeft = `${profondeur * 14}px`
       const oeil = bouton(n.visible ? '👁' : '·',
         'Montrer ou cacher — un nœud caché ne se dessine pas, lui et les siens', () => {
@@ -892,6 +896,11 @@ export class PanneauProjet {
       ou.className = 'menu'
       ou.textContent = `${Math.round(n.x)},${Math.round(n.y)}`
       ligne.append(oeil, nom, ou,
+        bouton('◎', 'Voir — centre la vue d’édition sur ce nœud', () => {
+          this.noeudDesigne = n.id
+          this.crochets.viser(n.x, n.y)
+          this.montrer()
+        }),
         bouton('✎', 'Renommer — c’est ce nom que la caméra et les scripts emploient', () => {
           const neuf = window.prompt(`Nom du nœud « ${n.nom} »`, n.nom)
           if (!neuf?.trim() || neuf === n.nom) return
@@ -900,6 +909,10 @@ export class PanneauProjet {
         }))
       if (!racine) {
         ligne.append(
+          bouton('⧉', 'Dupliquer — lui et tout ce qu’il porte, une case à côté', () => {
+            this.appliquer(dupliquerNoeudProjet(this.frais(), nomScene, n.id),
+              `« ${n.nom} » dupliqué, une case à côté`)
+          }),
           bouton('↑', 'Dessiné plus tôt : passe dessous', () => {
             this.appliquer(decalerNoeudProjet(this.frais(), nomScene, n.id, -1),
               `« ${n.nom} » passe dessous`)
@@ -1223,6 +1236,19 @@ export class PanneauProjet {
       taille('y', 'Hauteur d’une case de l’image importée ou créée, en pixels'),
       entree)
     d.appendChild(rangee)
+  }
+
+  /**
+   * La vue designe un noeud : l'arbre le surligne, s'il est ouvert.
+   *
+   * On ne FORCE pas l'ouverture du panneau — cliquer une entite pour la
+   * trainer ne demande pas un panneau qui surgit — mais si l'arbre est la,
+   * il montre de qui on parle. C'est la moitie vue→arbre du dialogue ;
+   * l'autre moitie est le bouton « viser » de chaque ligne.
+   */
+  designerNoeud(id: string): void {
+    this.noeudDesigne = id
+    if (this.ouvert && this.onglet === 'scene') this.montrer()
   }
 
   /** Public : le glisser-deposer et le panneau des fichiers passent par ici. */

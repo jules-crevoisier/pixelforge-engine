@@ -1765,6 +1765,67 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('la retirer depuis l’arbre la retire — elle, et tout ce qu’elle porte',
     partie && !apres.some((n) => n.includes('gardienne')) && apres.length < avant.length,
     `${avant.length} → ${apres.length} nœuds : la créature et son corps`)
+
+  // L'arbre et la vue se REPONDENT : « voir » centre la camera d'edition,
+  // « dupliquer » double l'entite, et saisir dans la vue surligne l'arbre.
+  const camAvant = await p.evaluate(() => ({ ...window.pfe.jeu.camera }))
+  await surLigne('lanterne-c1', '◎')
+  await p.waitForTimeout(300)
+  const vise = await p.evaluate(() => {
+    const f = (n) => (n.nom === 'lanterne-c1' ? n : n.enfants.map(f).find(Boolean))
+    const l = f(window.pfe.monde.racine)
+    const cam = window.pfe.jeu.camera
+    const vue = window.pfe.jeu.ecran.vue
+    return { ecartX: Math.abs(l.x - (cam.x + vue.largeur / 2)), bouge: cam.x !== 0 || cam.y !== 0 }
+  })
+  ok('« voir » depuis l’arbre centre la vue d’édition sur le nœud',
+    vise.ecartX <= 1 && (vise.bouge || camAvant.x !== 0),
+    `écart au centre : ${vise.ecartX} px`)
+
+  const lanternes = () => p.evaluate(() => {
+    let n = 0
+    const f = (q) => { if (q.espece === 'lanterne') n++; q.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  const avantDouble = await lanternes()
+  await surLigne('lanterne-c1', '⧉')
+  await p.waitForTimeout(400)
+  ok('« dupliquer » depuis l’arbre double la créature, une case à côté',
+    (await lanternes()) === avantDouble + 1,
+    `${avantDouble} → ${await lanternes()} lanternes`)
+  await p.click('#fermerProjet')
+
+  // Saisir une entite dans la VUE la surligne dans l'arbre.
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(200)
+  const chezElle = await p.evaluate(() => {
+    const f = (n) => (n.nom === 'lanterne-c1' ? n : n.enfants.map(f).find(Boolean))
+    const l = f(window.pfe.monde.racine)
+    const cam = window.pfe.jeu.camera
+    const vue = document.getElementById('vue').getBoundingClientRect()
+    const echelle = vue.width / window.pfe.jeu.ecran.vue.largeur
+    return {
+      x: vue.x + (l.x - cam.x) * echelle,
+      y: vue.y + (l.y - 8 - cam.y) * echelle,
+    }
+  })
+  await p.mouse.move(chezElle.x, chezElle.y)
+  await p.mouse.down()
+  await p.mouse.up()
+  await p.waitForTimeout(200)
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+  const surligne = await p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Scène')
+    const actif = [...bloc.querySelectorAll('.ligne.actif')]
+    return actif.map((l) => l.querySelector('.nom')?.textContent ?? '').join(',')
+  })
+  ok('saisir une entité dans la vue la surligne dans l’arbre',
+    surligne.includes('lanterne'),
+    `surligné : « ${surligne} » — la vue et l’arbre parlent du même nœud`)
   await p.click('#fermerProjet')
 }
 

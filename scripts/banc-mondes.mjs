@@ -4815,6 +4815,24 @@ console.log('\n--- l\'arbre de scene ---')
   check('la racine, elle, ne se retire pas',
     scene().racine.id === 'scene' && scene().racine.enfants.length === 2,
     'une scene sans racine n\'est pas vide, elle est invalide')
+
+  const { dupliquerNoeudProjet } = await import('../src/editeur/projet-neuf.ts')
+  pj2 = dupliquerNoeudProjet(pj, 'principale', 'heros')
+  const freres = scene().racine.enfants
+  const copie = freres[freres.findIndex((n) => n.id === 'heros') + 1]
+  check('un noeud se duplique : identifiants neufs, enfants compris, une case a cote',
+    freres.length === 3 && copie.id === 'heros-2' && copie.nom === 'heros'
+    && copie.enfants[0].id !== 'heros-corps' && copie.x === pj.scenes[0].racine.enfants
+      .find((n) => n.id === 'heros').x + 16,
+    `« ${copie.id} » et son corps « ${copie.enfants[0].id} » — deux identifiants ne se partagent pas`)
+  check('et dupliquer deux fois ne fabrique jamais le meme identifiant',
+    (() => {
+      const encore = dupliquerNoeudProjet(pj2, 'principale', 'heros')
+      const ids = []
+      const f = (n) => { ids.push(n.id); n.enfants.forEach(f) }
+      f(encore.scenes[0].racine)
+      return new Set(ids).size === ids.length
+    })())
 }
 
 /*

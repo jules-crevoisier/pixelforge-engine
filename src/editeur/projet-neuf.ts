@@ -1069,6 +1069,51 @@ export function decalerNoeudProjet(
   return surScene(p, nomScene, bouger)
 }
 
+/**
+ * Duplique un noeud — lui et tout ce qu'il porte — a cote de l'original.
+ *
+ * Chaque copie recoit un identifiant NEUF : deux noeuds du meme identifiant
+ * rendraient tous les gestes par identifiant ambigus, a commencer par ceux
+ * de l'arbre. Le nom, lui, est garde tel quel — c'est l'usage des noms ici,
+ * et la copie d'une « lanterne » reste une lanterne.
+ */
+export function dupliquerNoeudProjet(
+  p: ProjetSerialise, nomScene: string, id: string,
+): ProjetSerialise {
+  const scene = p.scenes.find((q) => q.nom === nomScene)
+  if (!scene) return p
+  const pris = new Set<string>()
+  const ramasser = (n: NoeudSerialise): void => {
+    pris.add(n.id)
+    n.enfants.forEach(ramasser)
+  }
+  ramasser(scene.racine)
+  const libre = (base: string): string => {
+    let candidat = `${base}-2`
+    let n = 3
+    while (pris.has(candidat)) candidat = `${base}-${n++}`
+    pris.add(candidat)
+    return candidat
+  }
+  const copier = (n: NoeudSerialise): NoeudSerialise => ({
+    ...structuredClone(n),
+    id: libre(n.id),
+    enfants: n.enfants.map(copier),
+  })
+  const inserer = (n: NoeudSerialise): NoeudSerialise => {
+    const i = n.enfants.findIndex((e) => e.id === id)
+    if (i < 0) return { ...n, enfants: n.enfants.map(inserer) }
+    const copie = copier(n.enfants[i])
+    // Decalee d'une case : une copie exactement dessous se confond avec
+    // l'original, et l'on croit que le bouton n'a rien fait.
+    copie.x += 16
+    const enfants = [...n.enfants]
+    enfants.splice(i + 1, 0, copie)
+    return { ...n, enfants }
+  }
+  return surScene(p, nomScene, inserer)
+}
+
 /* ------------------------------------------------------------------ */
 /* Les sons et les animations                                          */
 /* ------------------------------------------------------------------ */

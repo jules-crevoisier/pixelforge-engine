@@ -232,6 +232,8 @@ function installer(nouveau: Monde): void {
       const n = dedans[dedans.length - 1] ?? null
       if (!n) return null
       depart = { x: n.x, y: n.y }
+      // La moitie vue→arbre du dialogue : l'arbre surligne qui l'on tient.
+      panneauProjet.designerNoeud(n.id)
       return n.id
     },
     poser: (id, cx, cy) => {
@@ -443,6 +445,17 @@ const panneauProjet = new PanneauProjet(
       verdict.textContent = quoi
     },
     carteActive: () => monde.carteActive ?? '',
+    /*
+     * Centrer la vue d'edition sur un point : le bouton « voir » de
+     * l'arbre. La camera d'edition est celle que l'outil Main deplace —
+     * on la pose, on redessine, et le cadre d'edition suit.
+     */
+    viser: (x, y) => {
+      jeu.camera.x = Math.round(x - jeu.ecran.vue.largeur / 2)
+      jeu.camera.y = Math.round(y - jeu.ecran.vue.hauteur / 2)
+      jeu.dessiner()
+      redessinerEdition()
+    },
     editerCarte: (nom) => {
       installerProjet(projetCourant(), monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id, nom)
       verdict.textContent = `Carte « ${nom} » sous le pinceau`
