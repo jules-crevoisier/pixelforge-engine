@@ -981,7 +981,17 @@ console.log('\n--- les paquets Godot et Unity ---')
       'et pas dupliquees : deux endroits pour une valeur, c\'est un jour ou ils divergent')
   }
 
-  check('chaque paquet annonce est produit', PAQUETS.length === 2,
+  // Chaque paquet annonce a son producteur : godot et unity sortent des
+  // fabriques d'archives ci-dessus, et « web » s'appuie sur le gabarit
+  // commis — s'il manque, l'option promettrait un export qui echoue.
+  const { readFileSync } = await import('node:fs')
+  const gabarit = (() => {
+    try { return readFileSync(new URL('../public/jeu/gabarit.html', import.meta.url), 'utf8') }
+    catch { return '' }
+  })()
+  check('chaque paquet annonce est produit',
+    PAQUETS.map((q) => q.id).join(',') === 'web,godot,unity'
+    && gabarit.includes('<script id="projet" type="application/json"></script>'),
     PAQUETS.map((q) => q.nom).join(', '))
 }
 

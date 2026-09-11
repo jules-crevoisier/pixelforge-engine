@@ -979,8 +979,8 @@
     {
       "nom": "banc:deploiement",
       "code": 0,
-      "reussies": 9,
-      "total": 9,
+      "reussies": 12,
+      "total": 12,
       "noms": [
         "tout ce que le Dockerfile copie existe dans le depot",
         "et cela suffit a construire le site",
@@ -990,14 +990,17 @@
         "l'atelier de scripts peut compiler ce qu'on lui ecrit",
         "et un projet peut se telecharger",
         "aucune violation de la politique au demarrage",
-        "aucune erreur de page"
+        "aucune erreur de page",
+        "le gabarit du jeu web se refabrique",
+        "et celui qui est commis est LE MEME",
+        "il tient seul : pas de reference externe, et l'emplacement du projet y est"
       ]
     },
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 145,
-      "total": 145,
+      "reussies": 147,
+      "total": 147,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -1143,11 +1146,13 @@
         "l’étoile de l’arbre fait d’un nœud un assemblage nommé",
         "la palette propose le modèle à côté des espèces",
         "un clic pose une copie du modèle",
-        "et Ctrl+Z reprend la copie, comme toute entité posée"
+        "et Ctrl+Z reprend la copie, comme toute entité posée",
+        "l’export « Jeu web » rend UN fichier autoporteur, projet inline",
+        "et il TOURNE, ouvert depuis le disque, sans serveur"
       ]
     }
   ],
-  "verifications": 1058,
+  "verifications": 1063,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -1307,8 +1312,8 @@
     },
     {
       "jeu": "Faire un jeu sans lire le moteur",
-      "tenus": 17,
-      "total": 17,
+      "tenus": 18,
+      "total": 18,
       "criteres": [
         {
           "nom": "Partir d’un projet vide",
@@ -1349,6 +1354,11 @@
           "nom": "Export vers un moteur du commerce",
           "tenu": true,
           "preuves": 20
+        },
+        {
+          "nom": "Livrer : le jeu web en un fichier, qui tourne chez un joueur",
+          "tenu": true,
+          "preuves": 5
         },
         {
           "nom": "Le comportement d’une espèce peut être un script à soi",
@@ -1561,7 +1571,7 @@
         {
           "nom": "Un jeu-témoin complet, joué par les bancs",
           "tenu": true,
-          "preuves": 13
+          "preuves": 14
         },
         {
           "nom": "Un projet relu meurt et REVIENT, comme un vrai jeu",
@@ -1633,7 +1643,7 @@
         {
           "nom": "Sauvegarde de la PARTIE, distincte du projet",
           "tenu": true,
-          "preuves": 13
+          "preuves": 14
         },
         {
           "nom": "Et tout cela traverse l’enregistrement du projet",
@@ -1882,6 +1892,7 @@
     "et ce qui tient dans les bornes garde sa valeur",
     "et ce qui était peint est toujours là",
     "et cela suffit a construire le site",
+    "et celui qui est commis est LE MEME",
     "et chacune tient toujours en UN caractère",
     "et change de langue sans rien recharger",
     "et chaque clef qu’il demande existe en français",
@@ -1912,6 +1923,7 @@
     "et elles posent leurs créatures elles-mêmes",
     "et hors de toute salle, il n’y en a aucune",
     "et il TIRE en jouant : le script joue son son par c.jouer",
+    "et il TOURNE, ouvert depuis le disque, sans serveur",
     "et il a bien fallu rembobiner",
     "et il a fallu rembobiner pour y arriver",
     "et il boucle en sautant l’entrée inerte",
@@ -2086,6 +2098,7 @@
     "il ne sature jamais, malgré deux voies additionnées",
     "il remonte aussi en la sautant",
     "il se renomme et se reecrit d'un geste",
+    "il tient seul : pas de reference externe, et l'emplacement du projet y est",
     "iso-decalee : aucune case visible n'est ecartee du parcours",
     "iso-decalee : cliquer au centre d'une case retrouve cette case",
     "isometrique : aucune case visible n'est ecartee du parcours",
@@ -2234,6 +2247,7 @@
     "le fichier porte RIFF, WAVE et ses deux morceaux",
     "le fond lointain défile à 40 % de la caméra, mesuré au pixel",
     "le formulaire crée l’espèce scriptée, sur la planche à soi",
+    "le gabarit du jeu web se refabrique",
     "le gel suspend la simulation, il ne la ralentit pas",
     "le generateur est deterministe",
     "le heros neutre tient en deux couleurs, remplacables en cinq minutes",
@@ -2332,6 +2346,7 @@
     "l’atelier de dessin montre une case de planche",
     "l’atelier de sons liste les sons du projet",
     "l’etape de construction copie quelque chose",
+    "l’export « Jeu web » rend UN fichier autoporteur, projet inline",
     "l’onglet Scène montre l’arbre : le décor, le héros et son corps, les créatures",
     "l’opacité d’un calque se fond au lieu d’être ignorée",
     "l’outil « Salle » pose un tableau en tirant un rectangle",

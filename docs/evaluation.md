@@ -10,18 +10,18 @@
 ╰─────────────────────────────────────────────────────────────────
 
 LES ÉPREUVES
-  vert   build                    —  3.9 s
+  vert   build                    —  3.7 s
   vert   banc                 83/83  0.3 s
   vert   banc:plateforme      68/68  0.3 s
   vert   banc:mondes        461/461  1.7 s
-  vert   banc:langages      100/100  1.7 s
-  vert   banc:reseau          33/33  0.5 s
+  vert   banc:langages      100/100  1.6 s
+  vert   banc:reseau          33/33  0.4 s
   vert   banc:habillage     112/112  0.3 s
-  vert   banc:charge          17/17  1.6 s
+  vert   banc:charge          17/17  1.5 s
   vert   banc:image           30/30  0.2 s
-  vert   banc:deploiement       9/9  6.7 s
-  vert   fumee              145/145  103.5 s
-  1058 vérifications au total, 0 rouge(s)
+  vert   banc:deploiement     12/12  7.4 s
+  vert   fumee              147/147  105.1 s
+  1063 vérifications au total, 0 rouge(s)
 
 CE QUE LE PROJET SAIT FAIRE
   Un critère n’est tenu que s’il existe des vérifications qui tomberaient
@@ -60,7 +60,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Pesanteur pour les créatures, en vue de côté         4 preuves
     ✓ Armes et portée réglées, pas devinées                18 preuves
 
-  Faire un jeu sans lire le moteur — 17/17
+  Faire un jeu sans lire le moteur — 18/18
     ✓ Partir d’un projet vide                              6 preuves
     ✓ Redimensionner la carte, gérer les calques           24 preuves
     ✓ Créer une espèce sans écrire de code                 29 preuves
@@ -69,6 +69,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Un projet se ferme, se rouvre, se joue               42 preuves
     ✓ Une aide qui dit dans quel ordre s’y prendre         4 preuves
     ✓ Export vers un moteur du commerce                    20 preuves
+    ✓ Livrer : le jeu web en un fichier, qui tourne chez un joueur 5 preuves
     ✓ Le comportement d’une espèce peut être un script à soi 5 preuves
     ✓ La physique du contrôleur se règle par espèce, et ça se mesure 3 preuves
     ✓ L’épée, les cœurs, la réapparition et les pointes se débrayent 4 preuves
@@ -113,7 +114,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Un script peut tout ce qu’un jeu fait                2 preuves
     ✓ Plusieurs cartes, un déroulé : un projet devient un jeu 17 preuves
     ✓ Une lumière fidèle à la palette, au prix mesuré      32 preuves
-    ✓ Un jeu-témoin complet, joué par les bancs            13 preuves
+    ✓ Un jeu-témoin complet, joué par les bancs            14 preuves
     ✓ Un projet relu meurt et REVIENT, comme un vrai jeu   18 preuves
     ✓ Salles et lumière par carte : la carte partout       8 preuves
     ✓ Peindre autrement que case par case                  11 preuves
@@ -128,7 +129,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Et un son ne se rejoue pas quand le réseau rembobine 6 preuves
     ✓ Particules et effets                                 8 preuves
     ✓ Dialogue : frappe, coupure, choix                    19 preuves
-    ✓ Sauvegarde de la PARTIE, distincte du projet         13 preuves
+    ✓ Sauvegarde de la PARTIE, distincte du projet         14 preuves
     ✓ Et tout cela traverse l’enregistrement du projet     3 preuves
     ✓ Menus : curseur qui boucle, entrées inertes          7 preuves
     ✓ Musique écrite en notes, pas en fichier d’onde       29 preuves
@@ -143,17 +144,8 @@ CE QU’IL RESTE À FAIRE, DANS L’ORDRE
   une grille entièrement verte ne mesure plus rien.
 
 CE QUI A BOUGÉ
-  ↑ 35 vérification(s) de plus
-      un noeud se renomme et se deplace par son identifiant
-      et rien d'autre n'a bouge : l'identifiant reste, les enfants restent
-      un noeud se cache, et la relecture le lit cache
-      l'ordre des freres se decale
-      un noeud se retire avec tout ce qu'il porte
-      et une scene sans heros se relit sans casser
-  + critère nouveau : Les niveaux de Tiled et de LDtk entrent, jouables
-  + critère nouveau : L’arbre de scène : retrouver, renommer, cacher, réordonner, retirer
-  + critère nouveau : Les assemblages : un prefab qui se pose depuis la palette
+  Rien. Ni gagné, ni perdu.
 
-VERDICT : tout est vert · 93/93 critères tenus · 1058 vérifications
+VERDICT : tout est vert · 94/94 critères tenus · 1063 vérifications
 
 ```
