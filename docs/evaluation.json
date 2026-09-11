@@ -178,8 +178,8 @@
     {
       "nom": "banc:mondes",
       "code": 0,
-      "reussies": 461,
-      "total": 461,
+      "reussies": 467,
+      "total": 467,
       "noms": [
         "redemander le clip en cours ne le recommence pas",
         "et le forcer, lui, fige bien l'animation",
@@ -641,14 +641,20 @@
         "les assemblages traversent l'enregistrement, en version 18",
         "un projet relu GARDE ses assemblages",
         "et un modele se retire sans toucher aux copies posees",
-        "un fichier d'avant la version 18 se relit : pas d'assemblages, pas de faute"
+        "un fichier d'avant la version 18 se relit : pas d'assemblages, pas de faute",
+        "chaque script devient un fichier, plus un LISEZMOI jamais relu",
+        "le contenu part VERBATIM",
+        "relire ses propres fichiers ne change rien : l'aller-retour est idempotent",
+        "un fichier modifie dehors ENTRE dans le projet, et c'est dit",
+        "sans toucher au reste du projet",
+        "un fichier qui ne correspond a rien est NOTE, pas jete en silence"
       ]
     },
     {
       "nom": "banc:langages",
       "code": 0,
-      "reussies": 100,
-      "total": 100,
+      "reussies": 104,
+      "total": 104,
       "noms": [
         "le chargeur Python tourne et lit le projet",
         "Python retrouve la vue et la palette",
@@ -724,6 +730,10 @@
         "Unity : la musique rendue dure vraiment ses trois secondes",
         "l'espece et l'image sont remontees a cote des champs communs",
         "chaque paquet annonce est produit",
+        "le projet s'inline dans le gabarit, meme avec « </script » dans un texte",
+        "et un gabarit sans emplacement rend null, pas une page vide",
+        "le paquet de bureau porte la page, l'echafaudage Electron et son mode d'emploi",
+        "la fenetre nait a la taille du jeu, pas a une taille inventee",
         "la sortie est reconnue comme du Tiled",
         "elle porte la planche, ses dimensions et son image",
         "le vide devient zero et la premiere tuile devient un",
@@ -999,8 +1009,8 @@
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 147,
-      "total": 147,
+      "reussies": 151,
+      "total": 151,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -1129,6 +1139,9 @@
         "le formulaire crée l’espèce scriptée, sur la planche à soi",
         "la palette la propose, et elle se pose à la souris",
         "en jeu, c’est SON script qui la fait bouger",
+        "et elle SURVIT à l’arrêt : poser, tester, arrêter ne perd rien",
+        "Enregistrer écrit le projet ET les scripts en vrais fichiers",
+        "Jouer relit le fichier : la version éditée DEHORS est celle qui court",
         "le panneau Fichiers inventorie le projet : cartes, planches, espèces, sons…",
         "cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS",
         "déposer une image sur la page en fait une planche, et le voile se retire",
@@ -1147,12 +1160,13 @@
         "la palette propose le modèle à côté des espèces",
         "un clic pose une copie du modèle",
         "et Ctrl+Z reprend la copie, comme toute entité posée",
-        "l’export « Jeu web » rend UN fichier autoporteur, projet inline",
-        "et il TOURNE, ouvert depuis le disque, sans serveur"
+        "l’export « Jeu web » écrit UN fichier autoporteur dans le dossier de travail",
+        "et il TOURNE, ouvert depuis le disque, sans serveur",
+        "l’export « Bureau » écrit le zip Electron dans le dossier : la page, main.cjs, le mode d’emploi"
       ]
     }
   ],
-  "verifications": 1063,
+  "verifications": 1077,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -1306,14 +1320,14 @@
         {
           "nom": "Armes et portée réglées, pas devinées",
           "tenu": true,
-          "preuves": 18
+          "preuves": 20
         }
       ]
     },
     {
       "jeu": "Faire un jeu sans lire le moteur",
-      "tenus": 18,
-      "total": 18,
+      "tenus": 20,
+      "total": 20,
       "criteres": [
         {
           "nom": "Partir d’un projet vide",
@@ -1343,7 +1357,7 @@
         {
           "nom": "Un projet se ferme, se rouvre, se joue",
           "tenu": true,
-          "preuves": 42
+          "preuves": 44
         },
         {
           "nom": "Une aide qui dit dans quel ordre s’y prendre",
@@ -1354,6 +1368,16 @@
           "nom": "Export vers un moteur du commerce",
           "tenu": true,
           "preuves": 20
+        },
+        {
+          "nom": "Le bureau : Linux, Windows, macOS par l’échafaudage Electron",
+          "tenu": true,
+          "preuves": 4
+        },
+        {
+          "nom": "Le code s’édite dehors : scripts en fichiers, relus à chaque Jouer",
+          "tenu": true,
+          "preuves": 8
         },
         {
           "nom": "Livrer : le jeu web en un fichier, qui tourne chez un joueur",
@@ -1571,7 +1595,7 @@
         {
           "nom": "Un jeu-témoin complet, joué par les bancs",
           "tenu": true,
-          "preuves": 14
+          "preuves": 15
         },
         {
           "nom": "Un projet relu meurt et REVIENT, comme un vrai jeu",
@@ -1623,7 +1647,7 @@
         {
           "nom": "Son : décrit en données, attaché aux événements d’animation",
           "tenu": true,
-          "preuves": 93
+          "preuves": 94
         },
         {
           "nom": "Et un son ne se rejoue pas quand le réseau rembobine",
@@ -1638,12 +1662,12 @@
         {
           "nom": "Dialogue : frappe, coupure, choix",
           "tenu": true,
-          "preuves": 19
+          "preuves": 20
         },
         {
           "nom": "Sauvegarde de la PARTIE, distincte du projet",
           "tenu": true,
-          "preuves": 14
+          "preuves": 15
         },
         {
           "nom": "Et tout cela traverse l’enregistrement du projet",
@@ -1658,7 +1682,7 @@
         {
           "nom": "Musique écrite en notes, pas en fichier d’onde",
           "tenu": true,
-          "preuves": 29
+          "preuves": 30
         },
         {
           "nom": "Et l’export la donne en .wav, que tout moteur sait lire",
@@ -1693,6 +1717,7 @@
     "Ctrl+Maj+Z refait le geste",
     "Ctrl+Z rend la carte a son etat d'avant",
     "Enregistrer telecharge le projet faute de dossier",
+    "Enregistrer écrit le projet ET les scripts en vrais fichiers",
     "Espace le passe, et le déclencheur emmène au niveau deux",
     "GDScript (Godot) porte ses symboles attendus",
     "Godot : chaque planche du projet a son PNG, sous son nom",
@@ -1702,6 +1727,7 @@
     "Godot : le script d'accueil sait changer de carte, scene comprise",
     "Godot : son projet.json se relit",
     "Godot : tout chemin cite existe dans le paquet",
+    "Jouer relit le fichier : la version éditée DEHORS est celle qui court",
     "Lua (LÖVE) porte ses symboles attendus",
     "Math.round, lui, ne commute pas",
     "Python arrondit le decalage de parallaxe EXACTEMENT comme le moteur",
@@ -1801,6 +1827,7 @@
     "chaque paquet annonce est produit",
     "chaque pixel de la nuit reste une couleur de la palette",
     "chaque porte perce LES DEUX murs mitoyens",
+    "chaque script devient un fichier, plus un LISEZMOI jamais relu",
     "chaque tableau fait exactement la taille de la vue",
     "chaque tuile porte sa position source dans la planche",
     "chaque étage a un seul départ, un seul boss, un seul trésor, une seule boutique",
@@ -1907,6 +1934,7 @@
     "et deux étages ne reçoivent pas la même suite de salles",
     "et deux états identiques la même",
     "et dupliquer deux fois ne fabrique jamais le meme identifiant",
+    "et elle SURVIT à l’arrêt : poser, tester, arrêter ne perd rien",
     "et elle a bien disparu ensuite",
     "et elle bouge vraiment",
     "et elle compte comme un appui récent",
@@ -2063,6 +2091,7 @@
     "et un caractere illisible ne fait pas tomber la lecture",
     "et un découpage où tout se touche ne l’est pas",
     "et un fichier illisible est refusé avec la raison, sans rien casser",
+    "et un gabarit sans emplacement rend null, pas une page vide",
     "et un modele se retire sans toucher aux copies posees",
     "et un mort ne se fait plus toucher",
     "et un plan remappé prend effet",
@@ -2157,6 +2186,7 @@
     "la comparaison ne garde que ce qui a bouge",
     "la demi-pente gauche est l’exact miroir de la droite",
     "la distance est la somme des ecarts de canaux",
+    "la fenetre nait a la taille du jeu, pas a une taille inventee",
     "la feuille blanche : les deux héros, et RIEN de la démo",
     "la feuille blanche n'emporte AUCUN asset de demonstration",
     "la fonte couvre tout l’ASCII imprimable",
@@ -2226,6 +2256,7 @@
     "le chargeur TypeScript passe le compilateur en mode strict",
     "le chargeur TypeScript tourne et lit le projet exporte",
     "le conteneur est en lecture seule, avec un tmpfs pour nginx",
+    "le contenu part VERBATIM",
     "le contour d'une case isometrique est un losange",
     "le controleur franchit reellement la fosse de 2 cases",
     "le controleur franchit reellement la fosse de 3 cases",
@@ -2273,6 +2304,7 @@
     "le panneau borne la parallaxe entre zéro et quatre",
     "le panneau pose un déclencheur et son script, en données",
     "le paquet Godot du Gouffre emporte ses trois niveaux et leurs scenes",
+    "le paquet de bureau porte la page, l'echafaudage Electron et son mode d'emploi",
     "le plan de touches aussi",
     "le plan de touches se lit et s’enregistre",
     "le plan des demi-pentes est bien rectangulaire",
@@ -2280,6 +2312,7 @@
     "le plancher principal comporte bien des fosses a franchir",
     "le premier lancement s’ouvre sur l’accueil : deux départs, ouvrir, et un jeu fini à voir",
     "le projet a trois cartes se relit et se construit entier",
+    "le projet s'inline dans le gabarit, meme avec « </script » dans un texte",
     "le projet sort en JSON indente, donc diffable",
     "le puits se remonte en sautant d'une paroi a l'autre",
     "le rebond du pietinement atteint la hauteur demandee",
@@ -2346,7 +2379,8 @@
     "l’atelier de dessin montre une case de planche",
     "l’atelier de sons liste les sons du projet",
     "l’etape de construction copie quelque chose",
-    "l’export « Jeu web » rend UN fichier autoporteur, projet inline",
+    "l’export « Bureau » écrit le zip Electron dans le dossier : la page, main.cjs, le mode d’emploi",
+    "l’export « Jeu web » écrit UN fichier autoporteur dans le dossier de travail",
     "l’onglet Scène montre l’arbre : le décor, le héros et son corps, les créatures",
     "l’opacité d’un calque se fond au lieu d’être ignorée",
     "l’outil « Salle » pose un tableau en tirant un rectangle",
@@ -2440,6 +2474,7 @@
     "rejouer une partie plus courte donne le même début, pas à pas",
     "relacher le bouton coupe la montee",
     "relire avec une carte voulue met CETTE carte sous le pinceau",
+    "relire ses propres fichiers ne change rien : l'aller-retour est idempotent",
     "rembobiner APRES le tir ne le rejoue pas",
     "rembobiner AVANT le tir le fait retirer au rejeu",
     "rembobiner cent vingt pas du vrai jeu refait exactement la même suite",
@@ -2480,6 +2515,7 @@
     "sans tampon, l'appui tombe dans le vide",
     "sans titre, pas d'ecran-titre : on joue tout de suite",
     "sans toucher au cadre du jeu",
+    "sans toucher au reste du projet",
     "sauf si la salle impose un point de reprise",
     "sauter sans appuyer vers le bas ne fait pas traverser",
     "sauter sur une tete tue la creature",
@@ -2553,6 +2589,8 @@
     "un fichier d'avant la version 15 se relit en lumiere de projet",
     "un fichier d'avant la version 18 se relit : pas d'assemblages, pas de faute",
     "un fichier d’avant la version 9 se relit sans une ligne de migration",
+    "un fichier modifie dehors ENTRE dans le projet, et c'est dit",
+    "un fichier qui ne correspond a rien est NOTE, pas jete en silence",
     "un fichier qui n’est pas un projet de sprites est refusé",
     "un fichier écrit avant se relit sans une ligne de migration",
     "un geste sans effet ne laisse aucune trace",

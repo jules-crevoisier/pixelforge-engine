@@ -10,18 +10,18 @@
 ╰─────────────────────────────────────────────────────────────────
 
 LES ÉPREUVES
-  vert   build                    —  3.7 s
+  vert   build                    —  3.8 s
   vert   banc                 83/83  0.3 s
   vert   banc:plateforme      68/68  0.3 s
-  vert   banc:mondes        461/461  1.7 s
-  vert   banc:langages      100/100  1.6 s
+  vert   banc:mondes        467/467  1.6 s
+  vert   banc:langages      104/104  1.5 s
   vert   banc:reseau          33/33  0.4 s
   vert   banc:habillage     112/112  0.3 s
   vert   banc:charge          17/17  1.5 s
   vert   banc:image           30/30  0.2 s
-  vert   banc:deploiement     12/12  7.4 s
-  vert   fumee              147/147  105.1 s
-  1063 vérifications au total, 0 rouge(s)
+  vert   banc:deploiement     12/12  7.6 s
+  vert   fumee              151/151  108.4 s
+  1077 vérifications au total, 0 rouge(s)
 
 CE QUE LE PROJET SAIT FAIRE
   Un critère n’est tenu que s’il existe des vérifications qui tomberaient
@@ -58,17 +58,19 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Entités solides : caisses, obstacles mobiles         5 preuves
     ✓ Piétinement et rebond                                11 preuves
     ✓ Pesanteur pour les créatures, en vue de côté         4 preuves
-    ✓ Armes et portée réglées, pas devinées                18 preuves
+    ✓ Armes et portée réglées, pas devinées                20 preuves
 
-  Faire un jeu sans lire le moteur — 18/18
+  Faire un jeu sans lire le moteur — 20/20
     ✓ Partir d’un projet vide                              6 preuves
     ✓ Redimensionner la carte, gérer les calques           24 preuves
     ✓ Créer une espèce sans écrire de code                 29 preuves
     ✓ Poser et déplacer une entité à la souris             17 preuves
     ✓ Défaire et refaire, y compris sur les entités        14 preuves
-    ✓ Un projet se ferme, se rouvre, se joue               42 preuves
+    ✓ Un projet se ferme, se rouvre, se joue               44 preuves
     ✓ Une aide qui dit dans quel ordre s’y prendre         4 preuves
     ✓ Export vers un moteur du commerce                    20 preuves
+    ✓ Le bureau : Linux, Windows, macOS par l’échafaudage Electron 4 preuves
+    ✓ Le code s’édite dehors : scripts en fichiers, relus à chaque Jouer 8 preuves
     ✓ Livrer : le jeu web en un fichier, qui tourne chez un joueur 5 preuves
     ✓ Le comportement d’une espèce peut être un script à soi 5 preuves
     ✓ La physique du contrôleur se règle par espèce, et ça se mesure 3 preuves
@@ -114,7 +116,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Un script peut tout ce qu’un jeu fait                2 preuves
     ✓ Plusieurs cartes, un déroulé : un projet devient un jeu 17 preuves
     ✓ Une lumière fidèle à la palette, au prix mesuré      32 preuves
-    ✓ Un jeu-témoin complet, joué par les bancs            14 preuves
+    ✓ Un jeu-témoin complet, joué par les bancs            15 preuves
     ✓ Un projet relu meurt et REVIENT, comme un vrai jeu   18 preuves
     ✓ Salles et lumière par carte : la carte partout       8 preuves
     ✓ Peindre autrement que case par case                  11 preuves
@@ -125,14 +127,14 @@ CE QUE LE PROJET SAIT FAIRE
 
   Ce qu’un jeu a en plus de son gameplay — 14/14
     ✓ Une fonte de pixels, accents français compris        5 preuves
-    ✓ Son : décrit en données, attaché aux événements d’animation 93 preuves
+    ✓ Son : décrit en données, attaché aux événements d’animation 94 preuves
     ✓ Et un son ne se rejoue pas quand le réseau rembobine 6 preuves
     ✓ Particules et effets                                 8 preuves
-    ✓ Dialogue : frappe, coupure, choix                    19 preuves
-    ✓ Sauvegarde de la PARTIE, distincte du projet         14 preuves
+    ✓ Dialogue : frappe, coupure, choix                    20 preuves
+    ✓ Sauvegarde de la PARTIE, distincte du projet         15 preuves
     ✓ Et tout cela traverse l’enregistrement du projet     3 preuves
     ✓ Menus : curseur qui boucle, entrées inertes          7 preuves
-    ✓ Musique écrite en notes, pas en fichier d’onde       29 preuves
+    ✓ Musique écrite en notes, pas en fichier d’onde       30 preuves
     ✓ Et l’export la donne en .wav, que tout moteur sait lire 12 preuves
     ✓ Traduction : une clef par texte, et ce qui manque se VOIT 14 preuves
     ✓ Aucun libellé du jeu n’est écrit en clair dans le code 2 preuves
@@ -144,8 +146,8 @@ CE QU’IL RESTE À FAIRE, DANS L’ORDRE
   une grille entièrement verte ne mesure plus rien.
 
 CE QUI A BOUGÉ
-  Rien. Ni gagné, ni perdu.
+  ↑ critère tenu : Livrer : le jeu web en un fichier, qui tourne chez un joueur
 
-VERDICT : tout est vert · 94/94 critères tenus · 1063 vérifications
+VERDICT : tout est vert · 96/96 critères tenus · 1077 vérifications
 
 ```
