@@ -297,9 +297,53 @@ L'éditeur photographie donc la carte avant le geste, compare après, et garde l
 cases qui ont changé. Quelques kilo-octets par coup de pinceau, et la garantie
 est totale **par construction** au lieu d'être totale par vigilance.
 
-Une entité posée garde son nœud, pas une description : la remettre en place doit
-rendre la **même** entité, avec son identifiant. Un nœud recréé en porterait un
-autre, et tout ce qui y renvoyait pointerait dans le vide.
+### Un seul journal, sans exception
+
+L'aide de l'éditeur a longtemps porté cette phrase, et elle était honnête :
+« ces gestes-là reconstruisent le projet et **ne se défont pas** au Ctrl+Z ».
+Redimensionner une carte, ajouter un calque, créer une espèce, importer un
+niveau Tiled, déplacer un nœud dans l'arbre : la moitié de ce qu'on fait dans
+un éditeur.
+
+La cause n'était pas un oubli, c'était une architecture. Un geste de structure
+**relit** le projet et reconstruit le monde de fond en comble ; l'historique
+vivait dans l'objet reconstruit, et naissait donc vide. Et même s'il avait
+survécu, ses gestes n'auraient rien défait : ils gardaient une **référence**
+au tableau de cases, au nœud posé. Après la reconstruction, ces objets existent
+encore en mémoire mais plus personne ne les dessine — défaire y écrivait sans
+rien changer à l'écran.
+
+Le journal ne garde donc plus rien de vivant, il garde des **adresses** :
+
+| Geste | Ce que le journal retient |
+| --- | --- |
+| coup de pinceau | « les cases du calque *décor* de la carte *niveau2* », résolues au moment de défaire |
+| entité posée, retirée, déplacée | son identifiant, celui de son parent, et sa description sérialisée |
+| salle | sa valeur, jamais sa référence |
+| geste de structure | deux photographies du projet entier, sous forme de texte |
+
+Une adresse qui ne mène plus nulle part — le calque a été supprimé depuis —
+n'écrit **rien du tout**, plutôt que d'écrire au hasard dans une autre carte.
+La description d'une entité est reprise à chaque retrait, pour qu'une créature
+déplacée puis retirée revienne là où elle était en partant. Et puisqu'un geste
+sait sur quelle carte il a eu lieu, défaire un coup de pinceau donné sur le
+niveau deux pendant qu'on regarde le niveau un **ramène le niveau deux sous
+les yeux**.
+
+Les photographies ont demandé au journal de compter ce qu'il pèse : cinquante
+photographies d'un projet d'un méga-octet feraient tomber l'onglet. Il oublie
+les plus vieux gestes au-delà de vingt-quatre méga-octets — mais jamais le
+dernier, si énorme soit-il, sinon le geste qu'on vient de faire serait le
+premier à disparaître.
+
+Rien de tout cela n'était possible tant qu'un nœud relu recevait un
+identifiant **neuf**. Il garde maintenant le sien, et le compteur est poussé
+au-delà pour qu'un nœud créé ensuite ne reprenne pas un numéro déjà pris :
+l'identité d'un nœud survit à un aller-retour par le fichier.
+
+Le banc de fumée fait le parcours entier dans un vrai navigateur : peindre,
+redimensionner, Ctrl+Z, puis **Ctrl+Z encore** — c'est le deuxième qui ne
+marchait pas.
 
 ## Partir de rien
 
@@ -528,6 +572,35 @@ Et l'arbre et la vue **se répondent** : **◎** centre la vue d'édition sur
 le nœud — fini de chercher une entité à la souris —, **⧉** la duplique avec
 des identifiants neufs, une case à côté ; et saisir une entité dans la vue
 la **surligne** dans l'arbre. La vue et l'arbre parlent du même nœud.
+
+### L'inspecteur : ce qu'un nœud porte
+
+![L'inspecteur : l'arbre, et sous lui ce que le nœud choisi porte](docs/inspecteur.png)
+
+L'arbre disait *qui* est là ; il ne disait pas *ce qu'il porte*. La position
+d'une créature, son espèce, la case de planche qu'elle montre, l'ancre de son
+dessin, la boîte d'un corps de collision, le rôle d'une zone, les marges d'une
+caméra : rien de tout cela ne se lisait nulle part — il fallait ouvrir le
+fichier de projet.
+
+Cliquer un **nom** dans l'arbre choisit le nœud : l'inspecteur s'ouvre dessous,
+la vue l'entoure de quatre angles jaunes, et saisir une entité dans la vue fait
+le chemin inverse. On y règle le nom, le type (en lecture seule : échanger un
+corps et une zone laisserait un nœud à moitié dans chaque), X, Y, la visibilité,
+l'espèce, l'image — et **tout le reste**.
+
+Ce « reste » est ce qui compte : l'inspecteur **ne connaît aucun type de nœud**.
+Il lit le sac de propriétés et déduit le champ de la **valeur** — un nombre
+donne un champ numérique, un oui/non une case à cocher, un texte un champ de
+texte. Écrire un formulaire par type serait cinq formulaires aujourd'hui, et le
+prochain type ajouté au moteur naîtrait sans le sien : un nœud qu'on voit dans
+l'arbre et qu'on ne peut pas régler. Ce qui n'est ni nombre, ni texte, ni
+oui/non se montre sans se régler, plutôt que de se laisser détruire par un
+champ qui ne saurait pas le relire.
+
+**✎ Script** ouvre l'atelier *sur ce nœud-là*, au lieu de le faire chercher
+dans une liste de quinze noms. Et chaque valeur réglée ici est un geste de
+structure comme un autre : **Ctrl+Z la reprend**.
 
 Tout passe par les mêmes gestes de structure que le reste : transformer le
 projet sérialisé, relire. Le banc vérifie qu'un nœud renommé garde son

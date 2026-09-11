@@ -78,6 +78,16 @@ export interface CrochetsProjet {
   ecouter(s: Son): void
   /** Joue une musique entiere, une fois, pour l'oreille de qui l'ecrit. */
   ecouterMusique(m: import('../runtime/musique.ts').Musique): void
+  /** Ouvre l'atelier de scripts SUR ce noeud, designe par son nom. */
+  editerScript(nom: string): void
+  /**
+   * Un noeud vient d'etre choisi dans l'arbre.
+   *
+   * La vue l'entoure d'un liseré : sans cela, choisir dans l'arbre montrerait
+   * l'inspecteur sans jamais dire DE QUI l'on parle a l'ecran, et il faudrait
+   * lire les coordonnees pour le savoir.
+   */
+  surChoixNoeud(id: string): void
 }
 
 const bouton = (texte: string, titre: string, action: () => void): HTMLButtonElement => {
@@ -169,6 +179,8 @@ export class PanneauProjet {
   private sceneEditee = ''
   /** Le noeud que la vue vient de designer — surligne dans l'arbre. */
   private noeudDesigne = ''
+  /** Le dernier noeud que l'inspecteur a MONTRE : voir `blocInspecteur`. */
+  private noeudInspecte = ''
 
   constructor(
     elements: {
@@ -893,14 +905,20 @@ export class PanneauProjet {
       nom.className = 'nom'
       const genre = n.espece ?? (n.type === 'sprite' ? '' : n.type)
       nom.textContent = genre && genre !== n.nom ? `${n.nom} · ${genre}` : n.nom
+      // Cliquer le NOM choisit le noeud : c'est le geste de tous les arbres
+      // de scene, et c'est ce que l'inspecteur d'en dessous suit. Le clic
+      // vit sur le nom et non sur la ligne entiere, sinon chaque bouton de
+      // la ligne choisirait aussi en passant.
+      nom.className = 'nom choisissable'
+      nom.title = 'Choisir ce nœud — l’inspecteur montre ce qu’il porte'
+      nom.addEventListener('click', () => this.choisir(n.id))
       const ou = document.createElement('span')
       ou.className = 'menu'
       ou.textContent = `${Math.round(n.x)},${Math.round(n.y)}`
       ligne.append(oeil, nom, ou,
         bouton('◎', 'Voir — centre la vue d’édition sur ce nœud', () => {
-          this.noeudDesigne = n.id
           this.crochets.viser(n.x, n.y)
-          this.montrer()
+          this.choisir(n.id)
         }),
         bouton('✎', 'Renommer — c’est ce nom que la caméra et les scripts emploient', () => {
           const neuf = window.prompt(`Nom du nœud « ${n.nom} »`, n.nom)
@@ -947,8 +965,10 @@ export class PanneauProjet {
     const note = document.createElement('p')
     note.className = 'ligne menu'
     note.textContent = 'L’ordre est l’ordre de dessin : le dernier passe dessus. '
-      + 'L’outil Entité pose et déplace ; ici, on retrouve, on renomme, on retire.'
+      + 'Cliquez un nom : l’inspecteur montre ce que ce nœud porte.'
     d.appendChild(note)
+
+    this.blocInspecteur(p, nomScene, scene.racine)
 
     /*
      * Les assemblages du projet : la liste, et le retrait. Ils NAISSENT
@@ -977,6 +997,167 @@ export class PanneauProjet {
         la.appendChild(ligne)
       }
       da.appendChild(la)
+    }
+  }
+
+  /**
+   * L'INSPECTEUR : ce qu'un noeud porte, et de quoi le regler.
+   *
+   * ## Pourquoi il ne connait aucun type de noeud
+   *
+   * Un noeud a quatre champs communs — nom, visible, x, y — et un sac de
+   * proprietes propres a son type : la boite d'un corps, le role d'une zone,
+   * les marges d'une camera, l'ancre et le miroir d'un sprite. Ecrire un
+   * formulaire par type serait cinq formulaires aujourd'hui, et le prochain
+   * type ajoute au moteur naitrait sans le sien — un noeud qu'on voit dans
+   * l'arbre et qu'on ne peut pas regler.
+   *
+   * L'inspecteur lit donc le sac et DEDUIT le champ de la valeur : un nombre
+   * donne un champ numerique, un oui/non une case a cocher, un texte un champ
+   * de texte. Ce qui n'est ni l'un ni l'autre — un tableau, un objet — se
+   * montre sans se regler, plutot que de se laisser detruire par un champ qui
+   * ne saurait pas le relire.
+   *
+   * ## Pourquoi chaque champ est un geste
+   *
+   * Regler une propriete passe par le meme chemin que redimensionner une
+   * carte : transformer le projet, le relire. C'est plus cher qu'ecrire dans
+   * le noeud vivant, et c'est ce qui fait que chaque valeur reglee ici se
+   * defait au Ctrl+Z comme le reste — voir le journal.
+   */
+  private blocInspecteur(p: ProjetSerialise, nomScene: string, racine: NoeudSerialise): void {
+    const trouver = (n: NoeudSerialise): NoeudSerialise | null => {
+      if (n.id === this.noeudDesigne) return n
+      for (const e of n.enfants) { const r = trouver(e); if (r) return r }
+      return null
+    }
+    const n = trouver(racine)
+    const d = bloc(this.corps, n ? `Inspecteur · ${n.nom}` : 'Inspecteur')
+    if (!n) {
+      const vide = document.createElement('p')
+      vide.className = 'ligne menu'
+      vide.textContent = 'Aucun nœud choisi. Cliquez un nom dans l’arbre — ou saisissez '
+        + 'une entité dans la vue : l’inspecteur suit la sélection.'
+      d.appendChild(vide)
+      return
+    }
+    const regler = (
+      changements: Parameters<typeof reglerNoeudProjet>[3], dit: string,
+    ): void => {
+      this.appliquer(reglerNoeudProjet(this.frais(), nomScene, n.id, changements), dit)
+    }
+
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const cNom = champ(g, 'Nom', n.nom)
+    cNom.title = 'Le nom que la caméra, les scripts et les déclencheurs emploient'
+    cNom.addEventListener('change', () => {
+      if (!cNom.value.trim() || cNom.value === n.nom) return
+      regler({ nom: cNom.value }, `Nœud « ${cNom.value.trim()} »`)
+    })
+    const cType = champ(g, 'Type', n.type)
+    cType.disabled = true
+    cType.title = 'Le type ne se change pas : un corps et une zone ne portent pas les mêmes '
+      + 'propriétés, et les échanger laisserait un nœud à moitié dans chaque.'
+    const cX = champ(g, 'X', Math.round(n.x), 'number')
+    const cY = champ(g, 'Y', Math.round(n.y), 'number')
+    cX.addEventListener('change', () => regler({ x: Number(cX.value) }, `« ${n.nom} » en x=${cX.value}`))
+    cY.addEventListener('change', () => regler({ y: Number(cY.value) }, `« ${n.nom} » en y=${cY.value}`))
+    d.appendChild(g)
+
+    const g2 = document.createElement('div')
+    g2.className = 'champs'
+    const cVu = champ(g2, 'Visible', '', 'checkbox')
+    cVu.checked = n.visible
+    cVu.title = 'Un nœud caché ne se dessine pas, lui et les siens'
+    cVu.addEventListener('change', () => regler({ visible: cVu.checked },
+      `« ${n.nom} » ${cVu.checked ? 'montré' : 'caché'}`))
+    // L'espece : elle n'a de sens que pour ce qui en porte une, ou pour un
+    // sprite qui pourrait en recevoir une. La proposer sur une camera ferait
+    // croire qu'une camera peut etre une gelee.
+    if (n.espece !== null || n.type === 'sprite') {
+      const options = [{ valeur: '', nom: '(aucune)' }]
+        .concat(p.especes.map((e) => ({ valeur: e.id, nom: e.id })))
+      const cEsp = choix(g2, 'Espèce', options, n.espece ?? '')
+      cEsp.title = 'Ce que ce nœud EST : sa vitalité, ses dégâts, son comportement '
+        + 'viennent du catalogue des espèces'
+      cEsp.addEventListener('change', () => regler({ espece: cEsp.value || null },
+        cEsp.value ? `« ${n.nom} » est une ${cEsp.value}` : `« ${n.nom} » n’est plus d’aucune espèce`))
+    }
+    if (n.type === 'sprite') {
+      const cImg = champ(g2, 'Image', n.image, 'number')
+      cImg.title = 'La case de la planche qu’il montre, quand aucune animation ne le décide'
+      cImg.addEventListener('change', () => regler({ image: Number(cImg.value) },
+        `« ${n.nom} » montre la case ${cImg.value}`))
+    }
+    d.appendChild(g2)
+
+    /*
+     * LE SAC DE PROPRIETES. Le champ se deduit de la valeur : voir plus haut
+     * pourquoi l'inspecteur ne connait aucun type de noeud.
+     */
+    const propres = Object.entries(n.proprietes ?? {})
+    if (propres.length) {
+      const gp = document.createElement('div')
+      gp.className = 'champs'
+      for (const [cle, valeur] of propres) {
+        if (typeof valeur === 'number') {
+          const i = champ(gp, cle, valeur, 'number')
+          i.addEventListener('change', () => regler(
+            { proprietes: { [cle]: Number(i.value) } }, `« ${n.nom} » · ${cle} = ${i.value}`))
+        } else if (typeof valeur === 'boolean') {
+          const i = champ(gp, cle, '', 'checkbox')
+          i.checked = valeur
+          i.addEventListener('change', () => regler(
+            { proprietes: { [cle]: i.checked } }, `« ${n.nom} » · ${cle} = ${i.checked ? 'oui' : 'non'}`))
+        } else if (typeof valeur === 'string') {
+          const i = champ(gp, cle, valeur)
+          i.addEventListener('change', () => regler(
+            { proprietes: { [cle]: i.value } }, `« ${n.nom} » · ${cle} = ${i.value || '(vide)'}`))
+        } else {
+          const i = champ(gp, cle, JSON.stringify(valeur) ?? '')
+          i.disabled = true
+          i.title = 'Cette propriété n’est ni un nombre, ni un texte, ni un oui/non : '
+            + 'l’inspecteur la montre sans la régler, plutôt que de risquer de l’abîmer.'
+        }
+      }
+      d.appendChild(gp)
+    }
+
+    const actions = document.createElement('div')
+    actions.className = 'ligne'
+    const etat = document.createElement('span')
+    etat.className = 'nom'
+    etat.textContent = n.script
+      ? `script : ${n.script.trim().split('\n').length} ligne(s)`
+      : 'aucun script'
+    actions.append(etat,
+      bouton('◎', 'Centrer la vue d’édition sur ce nœud', () => this.crochets.viser(n.x, n.y)),
+      bouton('✎ Script', 'Ouvrir l’atelier sur ce nœud', () => this.crochets.editerScript(n.nom)))
+    if (n.script) {
+      actions.append(bouton('✕ Script', 'Retirer le script de ce nœud', () => {
+        if (!window.confirm(`Retirer le script de « ${n.nom} » ?`)) return
+        regler({ script: null }, `« ${n.nom} » n’a plus de script`)
+      }))
+    }
+    d.appendChild(actions)
+
+    const note = document.createElement('p')
+    note.className = 'ligne menu'
+    note.textContent = 'Chaque valeur réglée ici est un geste : Ctrl+Z la reprend.'
+    d.appendChild(note)
+
+    /*
+     * L'inspecteur vit SOUS l'arbre, et un arbre de trente noeuds le pousse
+     * hors de l'ecran : on choisirait une creature dans la vue et rien
+     * n'aurait l'air de se passer. On l'amene donc sous les yeux — mais
+     * seulement quand on vient de changer de noeud. Le faire a chaque
+     * affichage du panneau ferait sauter la page a chaque valeur reglee,
+     * pendant qu'on la regle.
+     */
+    if (this.noeudInspecte !== n.id) {
+      this.noeudInspecte = n.id
+      d.scrollIntoView({ block: 'nearest' })
     }
   }
 
@@ -1285,6 +1466,13 @@ export class PanneauProjet {
   designerNoeud(id: string): void {
     this.noeudDesigne = id
     if (this.ouvert && this.onglet === 'scene') this.montrer()
+  }
+
+  /** Choisir depuis l'arbre : la vue doit le savoir aussi. */
+  private choisir(id: string): void {
+    this.noeudDesigne = id
+    this.crochets.surChoixNoeud(id)
+    this.montrer()
   }
 
   /** Public : le glisser-deposer et le panneau des fichiers passent par ici. */

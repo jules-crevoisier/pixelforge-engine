@@ -2238,6 +2238,116 @@ ok('Enregistrer telecharge le projet faute de dossier',
     (titre ?? '').includes('Ctrl+Z') && (titre ?? '').split('←').length >= 2, titre)
 }
 
+/*
+ * L'INSPECTEUR : choisir un noeud, voir ce qu'il porte, le regler.
+ *
+ * C'est la moitie manquante de l'arbre de scene. On pouvait renommer un noeud
+ * et le cacher ; sa position, son espece, sa boite de collision, l'ancre de
+ * son dessin ne se lisaient nulle part — il fallait ouvrir le fichier.
+ */
+{
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+
+  // Choisir un noeud en cliquant son NOM dans l'arbre.
+  const noms = await p.$$('#projetCorps .ligne .nom.choisissable')
+  ok('l’arbre rend chaque nom cliquable', noms.length >= 3, `${noms.length} nœuds`)
+  // Le heros : un sprite, avec une espece, un corps et des proprietes.
+  const quel = await p.evaluate(() => {
+    const l = [...document.querySelectorAll('#projetCorps .ligne .nom.choisissable')]
+    return l.findIndex((e) => e.textContent.includes('heros'))
+  })
+  ok('on y trouve le héros', quel >= 0, `rang ${quel}`)
+  await noms[quel].click()
+  await p.waitForTimeout(350)
+
+  const titres = await p.$$eval('#projetCorps .bloc h3', (h) => h.map((e) => e.textContent))
+  ok('cliquer un nom ouvre l’inspecteur SUR ce nœud',
+    titres.some((t) => t.startsWith('Inspecteur · ')),
+    titres.filter((t) => t.startsWith('Inspecteur')).join(''))
+
+  const etiquettes = await p.evaluate(() => {
+    const b = [...document.querySelectorAll('#projetCorps .bloc')]
+      .find((e) => e.querySelector('h3')?.textContent?.startsWith('Inspecteur'))
+    return [...b.querySelectorAll('.champs label')].map((l) => l.textContent)
+  })
+  ok('il montre les champs communs ET les propriétés propres au type',
+    ['Nom', 'Type', 'X', 'Y', 'Visible'].every((e) => etiquettes.includes(e))
+    && etiquettes.some((e) => ['source', 'animation', 'ancreX', 'miroir', 'couche'].includes(e)),
+    etiquettes.join(', '))
+
+  // Regler la position : l'entite VIVANTE doit bouger.
+  const ouEst = () => p.evaluate(() => {
+    const f = (n) => (n.nom === 'heros' ? [n.x, n.y] : n.enfants.map(f).find(Boolean))
+    return f(window.pfe.monde.racine)
+  })
+  const avant = await ouEst()
+  const champX = await p.evaluate(() => {
+    const b = [...document.querySelectorAll('#projetCorps .bloc')]
+      .find((e) => e.querySelector('h3')?.textContent?.startsWith('Inspecteur'))
+    const l = [...b.querySelectorAll('.champs label')]
+    const i = l.findIndex((e) => e.textContent === 'X')
+    const champs = [...b.querySelectorAll('.champs input, .champs select')]
+    champs[i].value = '96'
+    champs[i].dispatchEvent(new Event('change', { bubbles: true }))
+    return true
+  })
+  void champX
+  await p.waitForTimeout(500)
+  const apres = await ouEst()
+  ok('régler X déplace l’entité pour de vrai, dans la scène qui joue',
+    apres[0] === 96 && apres[0] !== avant[0], `${avant} → ${apres}`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(400)
+  ok('et Ctrl+Z le remet où il était : l’inspecteur écrit dans le journal',
+    String(await ouEst()) === String(avant), String(await ouEst()))
+
+  // Une propriete propre au TYPE : l'inspecteur ne la connait pas, il la
+  // deduit de sa valeur.
+  const regle = await p.evaluate(() => {
+    const b = [...document.querySelectorAll('#projetCorps .bloc')]
+      .find((e) => e.querySelector('h3')?.textContent?.startsWith('Inspecteur'))
+    const l = [...b.querySelectorAll('.champs label')]
+    const champs = [...b.querySelectorAll('.champs input, .champs select')]
+    const i = l.findIndex((e) => e.textContent === 'couche')
+    if (i < 0) return null
+    champs[i].value = '3'
+    champs[i].dispatchEvent(new Event('change', { bubbles: true }))
+    return true
+  })
+  await p.waitForTimeout(500)
+  const couche = await p.evaluate(() => {
+    const f = (n) => (n.nom === 'heros' ? n.couche : n.enfants.map(f).find((v) => v !== undefined))
+    return f(window.pfe.monde.racine)
+  })
+  ok('une propriété propre au type se règle sans que l’inspecteur la connaisse',
+    regle && couche === 3,
+    `couche = ${couche} — le champ est déduit de la valeur, pas d’une liste écrite à la main`)
+
+  // Le lisere dans la vue : la vue et l'arbre parlent du meme noeud.
+  const entoure = await p.evaluate(() => window.pfe.monde.racine
+    && document.getElementById('vue') !== null)
+  ok('la vue sait qui est choisi', entoure)
+
+  // Le bouton « Script » ouvre l'atelier SUR ce noeud.
+  await p.evaluate(() => {
+    const b = [...document.querySelectorAll('#projetCorps .bloc')]
+      .find((e) => e.querySelector('h3')?.textContent?.startsWith('Inspecteur'))
+    ;[...b.querySelectorAll('button')].find((q) => q.textContent.includes('Script')).click()
+  })
+  await p.waitForTimeout(400)
+  ok('« ✎ Script » ouvre l’atelier sur ce nœud-là, pas sur une liste de quinze noms',
+    (await p.isVisible('#scriptSource'))
+    && (await p.inputValue('#scriptNoeud')) === 'heros',
+    `atelier sur « ${await p.inputValue('#scriptNoeud')} »`)
+  await p.click('#fermerAtelier')
+  await p.waitForTimeout(200)
+  await p.screenshot({ path: 'docs/inspecteur.png' })
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

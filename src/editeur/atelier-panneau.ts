@@ -112,6 +112,22 @@ export class Atelier {
     this.charger()
   }
 
+  /**
+   * Ouvre l'atelier SUR un noeud, designe par son nom.
+   *
+   * C'est par la qu'arrive l'inspecteur : on regarde ce qu'un noeud porte, on
+   * veut ecrire son comportement, et le nom est deja connu. Le recensement
+   * precede le choix — un noeud ne de la derniere reconstruction ne serait
+   * pas encore dans la liste, et le choix tomberait a cote.
+   */
+  viser(nom: string): void {
+    this.recenser()
+    if (!Array.from(this.a.selection.options).some((o) => o.value === nom)) return
+    this.a.selection.value = nom
+    this.charger()
+    this.a.source.focus()
+  }
+
   /** Le monde a change : les scripts d'origine ne sont plus les memes. */
   reinitialiser(): void {
     this.origines.clear()

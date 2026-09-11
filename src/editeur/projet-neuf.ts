@@ -1020,10 +1020,35 @@ const surScene = (
   scenes: p.scenes.map((s) => (s.nom === nomScene ? { ...s, racine: f(s.racine) } : s)),
 })
 
-/** Regle le nom, la visibilite ou la position d'un noeud de scene. */
+/**
+ * Regle ce qu'un noeud de scene porte.
+ *
+ * ## Pourquoi les proprietes libres passent par ici aussi
+ *
+ * Un noeud a quatre champs que tout le monde comprend — nom, visible, x, y —
+ * et un sac de proprietes propres a son type : la boite d'un corps, le role
+ * d'une zone, la marge d'une camera. L'inspecteur les montre toutes, sans en
+ * connaitre une seule : il lit le sac et deduit le champ de la VALEUR. Un
+ * geste qui ne saurait regler que les quatre champs communs obligerait a
+ * ecrire un formulaire par type de noeud, et le prochain type ajoute au
+ * moteur naitrait sans formulaire.
+ *
+ * Les proprietes se FONDENT au lieu de remplacer le sac : l'inspecteur
+ * n'envoie que celle qu'on vient de changer, et tout envoyer ferait qu'un
+ * champ rendu vide effacerait les autres.
+ */
 export function reglerNoeudProjet(
   p: ProjetSerialise, nomScene: string, id: string,
-  changements: Partial<{ nom: string; visible: boolean; x: number; y: number }>,
+  changements: Partial<{
+    nom: string
+    visible: boolean
+    x: number
+    y: number
+    espece: string | null
+    image: number
+    script: string | null
+    proprietes: Record<string, unknown>
+  }>,
 ): ProjetSerialise {
   return surScene(p, nomScene, (racine) => surNoeud(racine, id, (n) => ({
     ...n,
@@ -1031,6 +1056,14 @@ export function reglerNoeudProjet(
     visible: changements.visible ?? n.visible,
     x: Number.isFinite(changements.x) ? (changements.x as number) : n.x,
     y: Number.isFinite(changements.y) ? (changements.y as number) : n.y,
+    // `undefined` veut dire « ne touche pas » ; `null` veut dire « plus
+    // d'espece ». Les confondre rendrait impossible d'en retirer une.
+    espece: changements.espece === undefined ? n.espece : changements.espece,
+    image: Number.isFinite(changements.image) ? (changements.image as number) : n.image,
+    script: changements.script === undefined ? n.script : changements.script,
+    proprietes: changements.proprietes
+      ? { ...n.proprietes, ...changements.proprietes }
+      : n.proprietes,
   })))
 }
 

@@ -272,6 +272,15 @@ button.lien:hover { color: var(--accent); }
   border: 1px solid var(--line); background: var(--bg-0);
 }
 
+/* L'arbre de scene : cliquer un NOM choisit le noeud, et l'inspecteur suit.
+   Sans le curseur et le survol, rien ne dit que le nom est cliquable — et
+   personne ne trouve l'inspecteur. */
+.ligne .nom.choisissable { cursor: pointer; }
+.ligne .nom.choisissable:hover { color: var(--accent); }
+.ligne.actif .nom { color: var(--accent); }
+.champs input[type="checkbox"] { width: 14px; height: 14px; justify-self: start; }
+.champs input:disabled { color: var(--dim); background: transparent; }
+
 /* Une salle qui en recouvre une autre : la caméra ne saurait pas laquelle
    choisir. Le liseré le dit sur la ligne, là où l'on peut corriger. */
 .ligne.faute { border-color: #ff8a8a; }

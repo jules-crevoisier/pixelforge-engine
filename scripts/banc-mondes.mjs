@@ -5134,6 +5134,59 @@ console.log('\n--- l\'identite d\'un noeud survit au fichier ---')
     arbre.enfants[0].id === enfant.id)
 }
 
+console.log('\n--- l\'inspecteur : regler ce qu\'un noeud porte ---')
+
+{
+  const { projetNeuf, reglerNoeudProjet } = await import('../src/editeur/projet-neuf.ts')
+  const pj = projetNeuf({ nom: 'inspect', projection: 'cote' })
+  const scene = pj.scenes[0]
+  const chercher = (n, f) => (f(n) ? n : n.enfants.map((e) => chercher(e, f)).find(Boolean))
+  const heros = chercher(scene.racine, (n) => n.type === 'sprite')
+  check('le projet neuf a un noeud a inspecter', !!heros, heros?.nom)
+
+  const bouge = reglerNoeudProjet(pj, scene.nom, heros.id, { x: 128, y: 64 })
+  const bouge2 = chercher(bouge.scenes[0].racine, (n) => n.id === heros.id)
+  check('l\'inspecteur deplace un noeud au clavier',
+    bouge2.x === 128 && bouge2.y === 64, `${bouge2.x},${bouge2.y}`)
+  check('sans toucher au projet d\'avant : le geste est une transformation',
+    heros.x !== 128 || heros.y !== 64,
+    'c\'est ce qui permet au journal de garder l\'etat d\'avant')
+
+  // Le sac de proprietes : il se FOND, il ne remplace pas. Un inspecteur qui
+  // renverrait le sac entier effacerait tout ce qu'il ne sait pas montrer.
+  const avecMiroir = reglerNoeudProjet(pj, scene.nom, heros.id, { proprietes: { miroir: true } })
+  const vu = chercher(avecMiroir.scenes[0].racine, (n) => n.id === heros.id)
+  check('une propriete propre au type se regle',
+    vu.proprietes.miroir === true)
+  check('et les autres proprietes du sac survivent',
+    Object.keys(vu.proprietes).length === Object.keys(heros.proprietes).length
+    && vu.proprietes.source === heros.proprietes.source,
+    `${Object.keys(vu.proprietes).length} proprietes gardees`)
+
+  // `undefined` veut dire « ne touche pas », `null` veut dire « plus rien ».
+  const memeEspece = reglerNoeudProjet(pj, scene.nom, heros.id, { x: 1 })
+  check('ne rien dire de l\'espece la laisse en place',
+    chercher(memeEspece.scenes[0].racine, (n) => n.id === heros.id).espece === heros.espece)
+  const sansEspece = reglerNoeudProjet(pj, scene.nom, heros.id, { espece: null })
+  check('mais on peut la retirer explicitement',
+    chercher(sansEspece.scenes[0].racine, (n) => n.id === heros.id).espece === null,
+    'sans la distinction, une espece ne se retirerait jamais')
+
+  const scripte = reglerNoeudProjet(pj, scene.nom, heros.id, { script: 'n.x += 1' })
+  check('l\'inspecteur pose et retire un script',
+    chercher(scripte.scenes[0].racine, (n) => n.id === heros.id).script === 'n.x += 1'
+    && chercher(reglerNoeudProjet(scripte, scene.nom, heros.id, { script: null })
+      .scenes[0].racine, (n) => n.id === heros.id).script === null)
+
+  const renomme = reglerNoeudProjet(pj, scene.nom, heros.id, { nom: '  ' })
+  check('un nom vide ne renomme pas : un noeud sans nom est introuvable',
+    chercher(renomme.scenes[0].racine, (n) => n.id === heros.id).nom === heros.nom)
+
+  const image = reglerNoeudProjet(pj, scene.nom, heros.id, { image: 7 })
+  check('et la case de planche qu\'il montre se regle aussi',
+    chercher(image.scenes[0].racine, (n) => n.id === heros.id).image === 7)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

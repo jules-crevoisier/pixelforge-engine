@@ -4,7 +4,7 @@ import { atlasDepuisLettres } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil, type Trace } from './edition.ts'
 import { Historique, type TableauCarte, type Geste } from './historique.ts'
-import type { Noeud } from '../scene/noeud.ts'
+import { positionMonde, type Noeud } from '../scene/noeud.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud, serialiserNoeud } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
@@ -373,7 +373,9 @@ function installer(nouveau: Monde): void {
       const n = dedans[dedans.length - 1] ?? null
       if (!n) return null
       depart = { x: n.x, y: n.y }
-      // La moitie vue→arbre du dialogue : l'arbre surligne qui l'on tient.
+      // La moitie vue→arbre du dialogue : l'arbre surligne qui l'on tient,
+      // l'inspecteur montre ce qu'il porte, et la vue l'entoure.
+      noeudDesigne = n.id
       panneauProjet.designerNoeud(n.id)
       return n.id
     },
@@ -713,6 +715,20 @@ const panneauProjet = new PanneauProjet(
     sons: () => (monde.sons ?? []) as never,
     ecouter: (s) => ecouterSon(s),
     ecouterMusique: (m) => ecouterMusique(m),
+    /*
+     * L'inspecteur envoie ecrire : il ouvre l'atelier SUR le noeud. Sans
+     * cela, « ce noeud a un script » se lisait dans l'inspecteur et se
+     * modifiait dans un autre panneau, ou il fallait le retrouver dans une
+     * liste de quinze noms.
+     */
+    editerScript: (nom) => {
+      if (!atelier.ouvert) atelier.basculer(true)
+      atelier.viser(nom)
+    },
+    surChoixNoeud: (id) => {
+      noeudDesigne = id
+      if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+    },
   },
 )
 
@@ -1156,6 +1172,14 @@ canevas.addEventListener('pointerup', () => {
  * voit ce que le joueur verra, rien d'autre.
  */
 let caseSurvolee: { cx: number; cy: number } | null = null
+/**
+ * Le noeud CHOISI, celui que l'inspecteur montre.
+ *
+ * Il vit ici et non dans le panneau parce que la vue doit l'entourer : choisir
+ * dans l'arbre sans que rien ne bouge a l'ecran laisse chercher lequel des
+ * quatre gardiens on vient de choisir.
+ */
+let noeudDesigne = ''
 function dessinerCadreEdition(): void {
   if (jeu.tourne) return
   const ctx = jeu.ecran.ctx
@@ -1194,11 +1218,53 @@ function dessinerCadreEdition(): void {
   jeu.ecran.presenter()
 }
 
+/**
+ * Le noeud choisi, entoure dans la vue.
+ *
+ * On entoure LA CASE qu'il occupe et non sa boite de dessin : l'editeur pose
+ * les entites par les pieds, au bas d'une case, et c'est cette case-la qu'on
+ * vise en cliquant. Un cadre a la taille du sprite serait plus joli et
+ * designerait autre chose que ce que le prochain clic prendra.
+ *
+ * Les angles seuls plutot qu'un rectangle plein : un rectangle de plus sur
+ * une case deja bordee par la grille et parfois par une salle ferait trois
+ * traits pour trois choses differentes.
+ */
+function dessinerSelection(): void {
+  if (jeu.tourne || !noeudDesigne) return
+  const n = trouverEntite(monde.racine, noeudDesigne)
+  if (!n) return
+  const ou = positionMonde(monde.racine, n.id)
+  if (!ou) return
+  const t = monde.carte.tuile
+  const ctx = jeu.ecran.ctx
+  const x = Math.round(ou.x - t / 2 - Math.round(jeu.camera.x))
+  const y = Math.round(ou.y - t - Math.round(jeu.camera.y))
+  const c = Math.max(3, Math.round(t / 3))
+  ctx.strokeStyle = '#ffd479'
+  ctx.lineWidth = 1
+  // Le demi-pixel : un trait d'un pixel pose sur un entier deborde des deux
+  // cotes et se dessine sur deux pixels gris. C'est la meme regle que partout
+  // ailleurs dans les surcouches.
+  const x0 = x + 0.5
+  const y0 = y + 0.5
+  const x1 = x + t - 0.5
+  const y1 = y + t - 0.5
+  ctx.beginPath()
+  ctx.moveTo(x0, y0 + c); ctx.lineTo(x0, y0); ctx.lineTo(x0 + c, y0)
+  ctx.moveTo(x1 - c, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0 + c)
+  ctx.moveTo(x0, y1 - c); ctx.lineTo(x0, y1); ctx.lineTo(x0 + c, y1)
+  ctx.moveTo(x1 - c, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1 - c)
+  ctx.stroke()
+  jeu.ecran.presenter()
+}
+
 /** Les surcouches de l'editeur, dans l'ordre ou elles se posent. */
 function redessinerEdition(): void {
   dessinerCadreEdition()
   dessinerCollision()
   dessinerSalles()
+  dessinerSelection()
 }
 
 /* ------------------------------------------------------------------ */
