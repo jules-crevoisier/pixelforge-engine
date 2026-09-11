@@ -14,6 +14,7 @@ import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
 import { projetNeuf } from './projet-neuf.ts'
+import { PanneauFichiers, genreDe } from './fichiers-panneau.ts'
 import { rendre as rendreSon } from '../runtime/son.ts'
 import { rendreMusique } from '../runtime/musique.ts'
 import type { ProjetSerialise } from '../export/format.ts'
@@ -291,7 +292,7 @@ function direDossier(): void {
       : 'Ce navigateur ne sait pas ouvrir un dossier : l’enregistrement passera par un téléchargement.')
 }
 
-boutonDossier.addEventListener('click', async () => {
+async function choisirDossierTravail(): Promise<void> {
   if (!dossier.disponible()) {
     verdict.textContent = 'Ce navigateur ne donne pas accès à un dossier. '
       + 'Enregistrer téléchargera le fichier, Ouvrir demandera à le choisir.'
@@ -303,7 +304,9 @@ boutonDossier.addEventListener('click', async () => {
   await dossier.memoriser(d)
   direDossier()
   verdict.textContent = `Dossier de travail : ${d.name}`
-})
+}
+
+boutonDossier.addEventListener('click', () => { void choisirDossierTravail() })
 
 /** Le projet courant, tel qu'il partira dans le fichier. */
 function projetCourant() {
@@ -413,7 +416,13 @@ function installerProjet(p: ProjetSerialise, nom: string, carteVoulue = ''): voi
   }
   selectMonde.value = id
   charger(id)
+  // Le panneau des fichiers montre l'inventaire du projet : un geste de
+  // structure vient peut-etre de le changer.
+  panneauxAPrevenir.forEach((f) => f())
 }
+
+/** Ce que installerProjet previent — rempli plus bas, une fois les panneaux nes. */
+const panneauxAPrevenir: (() => void)[] = []
 
 const panneauProjet = new PanneauProjet(
   {
@@ -467,6 +476,98 @@ const panneauProjet = new PanneauProjet(
     ecouterMusique: (m) => ecouterMusique(m),
   },
 )
+
+/* ------------------------------------------------------------------ */
+/* Le panneau des fichiers, et le depot d'assets                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Route un fichier vers ce qu'il EST : un .json s'ouvre comme projet, une
+ * image devient une planche. C'est le meme aiguillage pour le panneau des
+ * fichiers et pour le glisser-deposer — deux portes, une seule regle, sinon
+ * les deux finissent par diverger.
+ */
+async function routerFichier(f: File): Promise<void> {
+  const genre = genreDe(f.name)
+  if (genre === 'projet') {
+    relire(await f.text(), f.name)
+    return
+  }
+  if (genre === 'image' || genre === 'sprites') {
+    await panneauProjet.importerFichier(f)
+    panneauProjet.ouvrirSur('dessin')
+    return
+  }
+  verdict.textContent = `« ${f.name} » : rien à en faire ici. `
+    + 'Une image devient une planche, un .json s’ouvre comme projet.'
+}
+
+const panneauFichiers = new PanneauFichiers(
+  {
+    panneau: document.getElementById('fichiers') as HTMLElement,
+    corps: document.getElementById('fichiersCorps') as HTMLElement,
+    bascule: document.getElementById('basculeFichiers') as HTMLButtonElement,
+    fermer: document.getElementById('fermerFichiers') as HTMLButtonElement,
+  },
+  {
+    projet: () => projetCourant(),
+    nomDossier: () => travail?.name ?? null,
+    apiDossier: () => dossier.disponible(),
+    choisirDossier: () => choisirDossierTravail(),
+    listerDossier: () => (travail ? dossier.lister(travail, '') : Promise.resolve([])),
+    lireFichier: (nom) => (travail ? dossier.lireFichier(travail, nom) : Promise.resolve(null)),
+    lireTexte: (nom) => (travail ? dossier.lire(travail, nom) : Promise.resolve(null)),
+    ouvrirProjet: (texte, nom) => relire(texte, nom),
+    importerAsset: (f) => routerFichier(f),
+    ouvrirProjetPanneau: (onglet, cible) => panneauProjet.ouvrirSur(onglet, cible),
+    editerCarte: (nom) => {
+      installerProjet(projetCourant(), monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id, nom)
+      verdict.textContent = `Carte « ${nom} » sous le pinceau`
+    },
+    dire: (m) => { verdict.textContent = m },
+  },
+)
+
+/*
+ * Le DEPOT : deposer un fichier n'importe ou sur la page.
+ *
+ * C'est le geste que tous les moteurs ont appris a leurs usagers, et le
+ * navigateur le detourne par defaut — il OUVRIRAIT l'image a la place de la
+ * page. Le voile ne s'affiche que pendant qu'un fichier survole la fenetre,
+ * et dit ce que chaque type deviendra : un depot muet obligerait a essayer
+ * pour savoir.
+ */
+{
+  const voile = document.getElementById('depot') as HTMLElement
+  let profondeur = 0
+  window.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer?.types.includes('Files')) return
+    e.preventDefault()
+    profondeur++
+    voile.hidden = false
+  })
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+  })
+  window.addEventListener('dragleave', () => {
+    // dragleave tire a chaque changement d'element : on compte les entrees
+    // et les sorties, sinon le voile clignote en traversant la page.
+    profondeur = Math.max(0, profondeur - 1)
+    if (profondeur === 0) voile.hidden = true
+  })
+  window.addEventListener('drop', (e) => {
+    e.preventDefault()
+    profondeur = 0
+    voile.hidden = true
+    const fichiers = [...(e.dataTransfer?.files ?? [])]
+    if (!fichiers.length) return
+    void (async () => {
+      for (const f of fichiers) await routerFichier(f)
+      panneauFichiers.montrer()
+    })()
+  })
+}
+panneauxAPrevenir.push(() => { if (panneauFichiers.ouvert) panneauFichiers.montrer() })
 
 /**
  * Faire entendre un son dans l'editeur.

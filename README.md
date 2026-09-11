@@ -428,6 +428,40 @@ déjà (une descente de 440 à 220 Hz — chaque réglage du panneau s'entendra)
 case vide à dessiner sur place. Ces boutons manquaient, et leur absence
 fermait des portes que rien ne signalait.
 
+## Les fichiers, comme dans un moteur
+
+Le retour : *« comparé à Godot, il me manque tout le système de fichiers,
+l'importation des assets »*. Et c'était vrai — non parce que ça manquait,
+mais parce que c'était **caché** : un bouton « Dossier… » ici, un import au
+fond d'un onglet là. Un moteur dont on ne voit pas les fichiers ne donne pas
+l'impression d'en avoir.
+
+Le panneau **Fichiers** rend tout visible :
+
+- **Le dossier de travail** — un vrai dossier du disque (File System Access).
+  Le panneau liste ce qu'il contient : un `.json` s'**ouvre** comme projet,
+  une image s'**importe** en planche, les `.wav` et `.zip` que l'export a
+  écrits se voient. Sans dossier choisi, le panneau le dit et explique le
+  repli (téléchargement, glisser-déposer).
+- **Dans le projet** — l'inventaire du fichier unique : cartes, planches,
+  espèces, animations, sons, musiques, dialogues, déclencheurs, chacun avec
+  son compte. Cliquer une entrée ouvre **son** éditeur : une carte passe sous
+  le pinceau, une planche s'ouvre dans l'atelier de dessin, une espèce dans
+  son formulaire. C'est ce qui fait d'une liste un système de fichiers : le
+  clic mène quelque part.
+
+Et le **glisser-déposer** : lâchez n'importe quoi sur la page. Une image
+devient une planche (avec détection d'échelle et quantification à la
+palette), un `.json` s'ouvre comme projet, un `.pixelforge` devient une
+planche dont chaque image d'animation est une case. Un voile pendant le
+survol dit ce que chaque type deviendra — un dépôt muet obligerait à essayer
+pour savoir.
+
+Un projet PixelForge reste **un seul fichier** — c'est le choix qui permet de
+l'ouvrir en le déposant sur la page, et le panneau ne fait pas semblant du
+contraire : la colonne « dans le projet » montre le contenu du fichier, pas
+des sous-dossiers inventés.
+
 ## Le scripting, dans l'éditeur
 
 ![L'atelier de scripts](docs/atelier.png)

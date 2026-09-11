@@ -31,7 +31,9 @@ interface PoigneeFichier {
     write(d: string | Uint8Array): Promise<void>
     close(): Promise<void>
   }>
-  getFile(): Promise<{ text(): Promise<string> }>
+  // Un vrai File : le panneau des fichiers importe des images du dossier,
+  // et une image se lit en octets, pas en texte.
+  getFile(): Promise<File>
 }
 export interface PoigneeDossier {
   name: string
@@ -90,6 +92,20 @@ export async function lire(d: PoigneeDossier, nom: string): Promise<string | nul
   try {
     const f = await d.getFileHandle(nom)
     return await (await f.getFile()).text()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Le fichier lui-meme, pour ce qui ne se lit pas en texte : une image a
+ * importer, un projet de sprites. Null si le fichier n'existe pas ou plus —
+ * le dossier a pu changer sous nos pieds, et ce n'est pas une faute.
+ */
+export async function lireFichier(d: PoigneeDossier, nom: string): Promise<File | null> {
+  try {
+    const f = await d.getFileHandle(nom)
+    return await f.getFile()
   } catch {
     return null
   }

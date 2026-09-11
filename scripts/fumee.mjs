@@ -1568,6 +1568,106 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.click('#arreter')
 }
 
+/*
+ * LES FICHIERS, COMME DANS UN MOTEUR : le panneau, et le depot.
+ *
+ * « Compare a Godot, il me manque tout le systeme de fichiers,
+ * l'importation des assets. » Le panneau Fichiers montre le dossier de
+ * travail et l'inventaire du projet, chaque entree menant a SON editeur ;
+ * le glisser-deposer route un fichier vers ce qu'il est. Tout cela n'existe
+ * que dans un navigateur, et un bouton debranche ne s'y voit qu'ici.
+ */
+{
+  await p.click('#basculeFichiers')
+  await p.waitForTimeout(400)
+  const inventaire = await p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#fichiersCorps .bloc')]
+    const dedans = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Dans le projet')
+    const titres = [...dedans.querySelectorAll('p.menu')].map((q) => q.textContent)
+    return {
+      titres: titres.join(' | '),
+      cartes: window.pfe.monde.cartes?.length ?? 1,
+      planches: window.pfe.monde.planches.length,
+      especes: window.pfe.monde.especes.length,
+    }
+  })
+  ok('le panneau Fichiers inventorie le projet : cartes, planches, espèces, sons…',
+    inventaire.titres.includes(`Cartes (${inventaire.cartes})`)
+    && inventaire.titres.includes(`Planches (${inventaire.planches})`)
+    && inventaire.titres.includes(`Espèces (${inventaire.especes})`),
+    inventaire.titres)
+
+  // Cliquer un asset mene a SON editeur : la planche du heros, dans Dessin.
+  await p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#fichiersCorps .bloc')]
+    const dedans = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Dans le projet')
+    const ligne = [...dedans.querySelectorAll('.ligne')]
+      .find((l) => l.textContent.startsWith('heros'))
+    ligne.querySelector('button').click()
+  })
+  await p.waitForTimeout(400)
+  const surDessin = await p.evaluate(() => {
+    const corps = document.getElementById('projetCorps')
+    const onglet = [...corps.querySelectorAll('button')].find((b2) => b2.classList.contains('actif')
+      && b2.textContent === 'Dessin')
+    const planche = [...corps.querySelectorAll('select')].map((q) => q.value)
+    return { panneau: !document.getElementById('projet').hidden, onglet: !!onglet, planche: planche.join(',') }
+  })
+  ok('cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS',
+    surDessin.panneau && surDessin.planche.split(',').includes('1'),
+    `panneau ouvert, planche « ${surDessin.planche} »`)
+
+  // Le DEPOT : une image lachee sur la page devient une planche.
+  const planchesAvant = await p.evaluate(() => window.pfe.monde.planches.length)
+  await p.evaluate(async () => {
+    const c = document.createElement('canvas')
+    c.width = 32; c.height = 16
+    const x = c.getContext('2d')
+    let g = 7
+    for (let y = 0; y < 16; y++) {
+      for (let xx = 0; xx < 32; xx++) {
+        g = (Math.imul(g + y * 31 + xx, 1664525) + 1013904223) >>> 0
+        if (g % 3 === 0) {
+          x.fillStyle = ['#ff4455', '#44ff88', '#3355ff'][(g >> 4) % 3]
+          x.fillRect(xx, y, 1, 1)
+        }
+      }
+    }
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+    const dt = new DataTransfer()
+    dt.items.add(new File([blob], 'perso.png', { type: 'image/png' }))
+    window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await p.waitForTimeout(800)
+  const apresDepot = await p.evaluate(() => ({
+    planches: window.pfe.monde.planches.map((q) => q.nom).join(','),
+    voile: document.getElementById('depot').hidden,
+  }))
+  ok('déposer une image sur la page en fait une planche, et le voile se retire',
+    apresDepot.planches.split(',').length === planchesAvant + 1
+    && apresDepot.planches.includes('perso') && apresDepot.voile === true,
+    `planches : ${apresDepot.planches}`)
+
+  // Et un .json depose s'ouvre comme projet — celui du Gouffre, en vitrine.
+  await p.evaluate(async () => {
+    const texte = await (await fetch('exemples/le-gouffre.json')).text()
+    const dt = new DataTransfer()
+    dt.items.add(new File([texte], 'gouffre-depose.json', { type: 'application/json' }))
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await p.waitForTimeout(1200)
+  const projetDepose = await p.evaluate(() => ({
+    id: window.pfe.monde.id,
+    option: [...document.getElementById('monde').options].some((o) => o.value === 'projet:gouffre-depose.json'),
+  }))
+  ok('déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait',
+    projetDepose.id === 'projet:gouffre-depose.json' && projetDepose.option,
+    projetDepose.id)
+  await p.click('#basculeFichiers')
+  await p.waitForTimeout(200)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

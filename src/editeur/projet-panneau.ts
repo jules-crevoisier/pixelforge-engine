@@ -125,6 +125,9 @@ function bloc(parent: HTMLElement, titre: string): HTMLElement {
   return d
 }
 
+/** Les onglets du panneau — le panneau des fichiers en ouvre un a la demande. */
+export type OngletProjet = 'carte' | 'jeu' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes'
+
 export class PanneauProjet {
   private panneau: HTMLElement
   private corps: HTMLElement
@@ -151,7 +154,7 @@ export class PanneauProjet {
    * Des onglets rendent chaque section atteignable en un clic — au prix d'un
    * clic de plus pour celle qu'on regardait.
    */
-  private onglet: 'carte' | 'jeu' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes' = 'carte'
+  private onglet: OngletProjet = 'carte'
   /** La planche et la case qu'on dessine. */
   private plancheEditee = 0
   private caseEditee = 0
@@ -188,6 +191,26 @@ export class PanneauProjet {
   fermer(): void {
     this.panneau.hidden = true
     this.bascule.classList.remove('actif')
+  }
+
+  /**
+   * Ouvre le panneau sur un onglet precis, et si possible sur une CIBLE :
+   * la planche, l'espece, le son ou le clip nomme. C'est le geste du panneau
+   * des fichiers — cliquer un asset doit mener a l'asset, pas a un onglet
+   * ou il reste a le chercher.
+   */
+  ouvrirSur(onglet: OngletProjet, cible = ''): void {
+    this.onglet = onglet
+    if (cible) {
+      if (onglet === 'especes') this.especeEditee = cible
+      if (onglet === 'sons') this.sonEdite = cible
+      if (onglet === 'animations') this.clipEdite = cible
+      if (onglet === 'dessin') {
+        const i = this.crochets.planches().findIndex((q) => q.nom === cible)
+        if (i >= 0) { this.plancheEditee = i; this.caseEditee = 0 }
+      }
+    }
+    this.ouvrir()
   }
 
   dire(m: string): void { this.message.textContent = m }
@@ -1109,7 +1132,8 @@ export class PanneauProjet {
     d.appendChild(rangee)
   }
 
-  private async importerFichier(f: File): Promise<void> {
+  /** Public : le glisser-deposer et le panneau des fichiers passent par ici. */
+  async importerFichier(f: File): Promise<void> {
     try {
       const nom = f.name.replace(/\.[^.]+$/, '')
       const brut = f.name.toLowerCase().endsWith('.pixelforge')

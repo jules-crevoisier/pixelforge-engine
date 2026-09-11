@@ -20,6 +20,7 @@
       <span class="pousse"></span>
       <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>
       <button id="basculeProjet" title="Cartes, dessins, sons, textes, espèces">Projet</button>
+      <button id="basculeFichiers" title="Le dossier de travail, et tout ce que le projet contient">Fichiers</button>
       <span class="sep"></span>
       <button id="nouveau" title="Créer un nouveau jeu">Nouveau…</button>
       <button id="ouvrir" title="Relire un projet enregistré">Ouvrir…</button>
@@ -81,6 +82,21 @@
         <div class="panneau-corps" id="projetCorps"></div>
         <p class="atelier-message" id="projetMessage"></p>
       </aside>
+      <aside class="atelier panneau" id="fichiers" hidden>
+        <div class="atelier-tete">
+          <b>Fichiers</b>
+          <span class="pousse"></span>
+          <button id="fermerFichiers" title="Fermer">✕</button>
+        </div>
+        <div class="panneau-corps" id="fichiersCorps"></div>
+      </aside>
+      <!-- Le voile du depot : visible pendant qu'on traine un fichier sur la page. -->
+      <div class="depot" id="depot" hidden>
+        <div class="depot-carte">
+          <b>Déposez vos fichiers</b>
+          <p>une image → une planche · un .json → un projet · un .pixelforge → une planche</p>
+        </div>
+      </div>
       <aside class="atelier" id="atelier" hidden>
         <div class="atelier-tete">
           <select id="scriptNoeud" title="Le nœud dont on écrit le script"></select>
