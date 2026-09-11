@@ -1,5 +1,5 @@
 import {
-  VERSION_FORMAT, decrirePlanche, serialiserAnimation,
+  VERSION_FORMAT, decrirePlanche, serialiserAnimation, serialiserCarte,
   type ProjetSerialise, type CarteSerialisee, type NoeudSerialise, type PlancheSerialisee,
   type DeclencheurSerialise,
 } from '../export/format.ts'
@@ -781,8 +781,21 @@ export function ajouterCarteProjet(p: ProjetSerialise): ProjetSerialise {
     })),
     solides: Array.from({ length: modele.hauteur }, () => matiereEnCaractere(VIDE).repeat(modele.largeur)),
   }
+  const scene = sceneAppariee(p, nom, modele.tuile)
+  return { ...p, cartes: [...p.cartes, carte], scenes: [...p.scenes, scene] }
+}
+
+/**
+ * La scene du meme nom qu'une carte neuve, avec une copie du heros de la
+ * premiere scene, posee pres du coin. C'est le contrat du multi-cartes —
+ * carte et scene vont par paires — et « + Carte » comme l'import Tiled
+ * passent par ICI : deux fabriques de scene finiraient par diverger.
+ */
+function sceneAppariee(
+  p: ProjetSerialise, nom: string, tuile: number,
+): ProjetSerialise['scenes'][number] {
   const heros = chercherHeros(p.scenes[0]?.racine)
-  const scene = {
+  return {
     nom,
     racine: {
       id: `scene-${nom}`, nom: 'scene', type: 'noeud' as const, x: 0, y: 0, visible: true,
@@ -796,13 +809,35 @@ export function ajouterCarteProjet(p: ProjetSerialise): ProjetSerialise {
         ...(heros ? [{
           ...structuredClone(heros),
           id: `heros-${nom}`,
-          x: modele.tuile * 3,
-          y: modele.tuile * 3,
+          x: tuile * 3,
+          y: tuile * 3,
         }] : []),
       ],
     },
   }
-  return { ...p, cartes: [...p.cartes, carte], scenes: [...p.scenes, scene] }
+}
+
+/**
+ * Ajoute une carte IMPORTEE — venue de Tiled ou de LDtk — et sa scene.
+ *
+ * La carte arrive telle que l'autre outil l'a faite : ses calques, ses
+ * solides, sa taille de case. Elle recoit un nom libre derive du sien, une
+ * scene appariee avec le heros — un niveau importe doit etre JOUABLE, pas
+ * seulement visible — et l'ambiante reste celle du projet.
+ */
+export function ajouterCarteImporteeProjet(
+  p: ProjetSerialise, nomVoulu: string, carte: import('../tuiles/tilemap.ts').Carte,
+): ProjetSerialise {
+  const base = nomVoulu.replace(/\.[^.]+$/, '').trim() || 'importee'
+  let nom = base
+  let n = 2
+  while (p.cartes.some((c) => c.nom === nom)) nom = `${base}-${n++}`
+  const serialisee: CarteSerialisee = { ...serialiserCarte(nom, carte), nom }
+  return {
+    ...p,
+    cartes: [...p.cartes, serialisee],
+    scenes: [...p.scenes, sceneAppariee(p, nom, carte.tuile)],
+  }
 }
 
 /** Le premier noeud qui porte une espece : le heros a copier. */
@@ -959,6 +994,79 @@ export function reglerMusiqueProjet(
 
 export function retirerMusiqueProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
   return { ...p, musiques: (p.musiques ?? []).filter((m) => m.nom !== nom) }
+}
+
+/* ------------------------------------------------------------------ */
+/* Les noeuds d'une scene                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * L'arbre de scene se modifie par les MEMES gestes de structure que tout le
+ * reste : transformer le projet serialise, relire. Un noeud est designe par
+ * son identifiant — le nom, lui, se renomme, et deux noeuds peuvent en
+ * partager un.
+ */
+
+const surNoeud = (
+  n: NoeudSerialise, id: string, f: (q: NoeudSerialise) => NoeudSerialise,
+): NoeudSerialise => (n.id === id
+  ? f(n)
+  : { ...n, enfants: n.enfants.map((e) => surNoeud(e, id, f)) })
+
+const surScene = (
+  p: ProjetSerialise, nomScene: string, f: (racine: NoeudSerialise) => NoeudSerialise,
+): ProjetSerialise => ({
+  ...p,
+  scenes: p.scenes.map((s) => (s.nom === nomScene ? { ...s, racine: f(s.racine) } : s)),
+})
+
+/** Regle le nom, la visibilite ou la position d'un noeud de scene. */
+export function reglerNoeudProjet(
+  p: ProjetSerialise, nomScene: string, id: string,
+  changements: Partial<{ nom: string; visible: boolean; x: number; y: number }>,
+): ProjetSerialise {
+  return surScene(p, nomScene, (racine) => surNoeud(racine, id, (n) => ({
+    ...n,
+    nom: changements.nom?.trim() || n.nom,
+    visible: changements.visible ?? n.visible,
+    x: Number.isFinite(changements.x) ? (changements.x as number) : n.x,
+    y: Number.isFinite(changements.y) ? (changements.y as number) : n.y,
+  })))
+}
+
+/**
+ * Retire un noeud — et tout ce qu'il porte. La racine ne se retire pas :
+ * une scene sans racine n'est pas une scene vide, c'est un fichier invalide.
+ */
+export function retirerNoeudProjet(
+  p: ProjetSerialise, nomScene: string, id: string,
+): ProjetSerialise {
+  const elaguer = (n: NoeudSerialise): NoeudSerialise => ({
+    ...n,
+    enfants: n.enfants.filter((e) => e.id !== id).map(elaguer),
+  })
+  return surScene(p, nomScene, elaguer)
+}
+
+/**
+ * Decale un noeud parmi ses freres. L'ordre des freres est l'ordre de
+ * DESSIN : le dernier se dessine par-dessus — c'est la meme regle que les
+ * calques, et c'est pour cela que le geste existe.
+ */
+export function decalerNoeudProjet(
+  p: ProjetSerialise, nomScene: string, id: string, delta: number,
+): ProjetSerialise {
+  const bouger = (n: NoeudSerialise): NoeudSerialise => {
+    const i = n.enfants.findIndex((e) => e.id === id)
+    if (i < 0) return { ...n, enfants: n.enfants.map(bouger) }
+    const j = Math.max(0, Math.min(n.enfants.length - 1, i + delta))
+    if (i === j) return n
+    const enfants = [...n.enfants]
+    const [pris] = enfants.splice(i, 1)
+    enfants.splice(j, 0, pris)
+    return { ...n, enfants }
+  }
+  return surScene(p, nomScene, bouger)
 }
 
 /* ------------------------------------------------------------------ */

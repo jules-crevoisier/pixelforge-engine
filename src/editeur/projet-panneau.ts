@@ -1,4 +1,4 @@
-import type { ProjetSerialise, PlancheSerialisee } from '../export/format.ts'
+import type { ProjetSerialise, PlancheSerialisee, NoeudSerialise } from '../export/format.ts'
 import type { Son } from '../runtime/son.ts'
 import { FORMES, rendre as rendreSon } from '../runtime/son.ts'
 import type { AnimationSerialisee } from '../export/format.ts'
@@ -16,6 +16,7 @@ import {
   ajouterDialogueProjet, reglerDialogueProjet, retirerDialogueProjet,
   ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet,
   ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet, retirerAnimationProjet,
+  reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet,
   reglerReglesProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
@@ -126,7 +127,7 @@ function bloc(parent: HTMLElement, titre: string): HTMLElement {
 }
 
 /** Les onglets du panneau — le panneau des fichiers en ouvre un a la demande. */
-export type OngletProjet = 'carte' | 'jeu' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes'
+export type OngletProjet = 'carte' | 'scene' | 'jeu' | 'dessin' | 'animations' | 'sons' | 'textes' | 'especes'
 
 export class PanneauProjet {
   private panneau: HTMLElement
@@ -161,6 +162,8 @@ export class PanneauProjet {
   private lettreEditee = ''
   private clipEdite = ''
   private sonEdite = ''
+  /** La scene ouverte dans l'onglet Scene. Vide : celle de la carte active. */
+  private sceneEditee = ''
 
   constructor(
     elements: {
@@ -205,6 +208,7 @@ export class PanneauProjet {
       if (onglet === 'especes') this.especeEditee = cible
       if (onglet === 'sons') this.sonEdite = cible
       if (onglet === 'animations') this.clipEdite = cible
+      if (onglet === 'scene') this.sceneEditee = cible
       if (onglet === 'dessin') {
         const i = this.crochets.planches().findIndex((q) => q.nom === cible)
         if (i >= 0) { this.plancheEditee = i; this.caseEditee = 0 }
@@ -231,6 +235,7 @@ export class PanneauProjet {
       // cela noyait la taille de la carte sous sept blocs.
       this.blocDeroule(p); this.blocRegles(p); this.blocDeclencheurs(p); this.blocLumiere(p)
     }
+    else if (this.onglet === 'scene') this.blocScene(p)
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
     else if (this.onglet === 'animations') this.blocAnimations()
@@ -242,7 +247,7 @@ export class PanneauProjet {
     const barre = document.createElement('div')
     barre.className = 'onglets'
     const items: [typeof this.onglet, string][] = [
-      ['carte', 'Carte'], ['jeu', 'Jeu'], ['dessin', 'Dessin'], ['animations', 'Animations'],
+      ['carte', 'Carte'], ['scene', 'Scène'], ['jeu', 'Jeu'], ['dessin', 'Dessin'], ['animations', 'Animations'],
       ['sons', 'Sons'], ['textes', 'Textes'], ['especes', 'Espèces'],
     ]
     for (const [id, nom] of items) {
@@ -836,6 +841,94 @@ export class PanneauProjet {
           `Calque de terrain « ${nom.value || 'terrain'} » ajouté`)),
     )
     d.appendChild(actions)
+  }
+
+  /**
+   * L'arbre de scene : ce que la partie CONTIENT, noeud par noeud.
+   *
+   * ## Pourquoi un arbre et pas la seule palette
+   *
+   * L'outil Entite pose et deplace ; il ne repond pas a « qu'y a-t-il dans
+   * cette scene ? ». Des qu'un niveau depasse dix entites, on en perd une
+   * derriere un mur ou sous une autre, et il n'existait AUCUN moyen de la
+   * retrouver, de la renommer — le nom que les scripts et la camera
+   * emploient — ou de la retirer sans la chercher a la souris. L'arbre
+   * montre tout, y compris ce qui est cache, et c'est son role.
+   *
+   * L'ordre des freres est l'ordre de DESSIN, comme les calques : le
+   * dernier passe dessus. Les fleches existent pour cela.
+   */
+  private blocScene(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Scène')
+    const noms = p.scenes.map((q) => q.nom)
+    const voulu = this.sceneEditee || this.crochets.carteActive() || noms[0] || ''
+    const nomScene = noms.includes(voulu) ? voulu : (noms[0] ?? '')
+    if (noms.length > 1) {
+      const g = document.createElement('div')
+      g.className = 'champs'
+      const quelle = choix(g, 'Scène', noms.map((n) => ({ valeur: n, nom: n })), nomScene)
+      quelle.addEventListener('change', () => { this.sceneEditee = quelle.value; this.montrer() })
+      d.appendChild(g)
+    }
+    const scene = p.scenes.find((q) => q.nom === nomScene)
+    if (!scene) return
+
+    const liste = document.createElement('div')
+    liste.className = 'liste'
+    const ligneDe = (n: NoeudSerialise, profondeur: number, racine: boolean): void => {
+      const ligne = document.createElement('div')
+      ligne.className = 'ligne'
+      ligne.style.paddingLeft = `${profondeur * 14}px`
+      const oeil = bouton(n.visible ? '👁' : '·',
+        'Montrer ou cacher — un nœud caché ne se dessine pas, lui et les siens', () => {
+          this.appliquer(reglerNoeudProjet(this.frais(), nomScene, n.id, { visible: !n.visible }),
+            `« ${n.nom} » ${n.visible ? 'caché' : 'montré'}`)
+        })
+      const nom = document.createElement('span')
+      nom.className = 'nom'
+      const genre = n.espece ?? (n.type === 'sprite' ? '' : n.type)
+      nom.textContent = genre && genre !== n.nom ? `${n.nom} · ${genre}` : n.nom
+      const ou = document.createElement('span')
+      ou.className = 'menu'
+      ou.textContent = `${Math.round(n.x)},${Math.round(n.y)}`
+      ligne.append(oeil, nom, ou,
+        bouton('✎', 'Renommer — c’est ce nom que la caméra et les scripts emploient', () => {
+          const neuf = window.prompt(`Nom du nœud « ${n.nom} »`, n.nom)
+          if (!neuf?.trim() || neuf === n.nom) return
+          this.appliquer(reglerNoeudProjet(this.frais(), nomScene, n.id, { nom: neuf }),
+            `Nœud « ${neuf.trim()} »`)
+        }))
+      if (!racine) {
+        ligne.append(
+          bouton('↑', 'Dessiné plus tôt : passe dessous', () => {
+            this.appliquer(decalerNoeudProjet(this.frais(), nomScene, n.id, -1),
+              `« ${n.nom} » passe dessous`)
+          }),
+          bouton('↓', 'Dessiné plus tard : passe dessus', () => {
+            this.appliquer(decalerNoeudProjet(this.frais(), nomScene, n.id, +1),
+              `« ${n.nom} » passe dessus`)
+          }),
+          bouton('✕', 'Retirer ce nœud et tout ce qu’il porte', () => {
+            const garde = n.type === 'carte'
+              ? `Retirer « ${n.nom} » ? C’est le décor : sans lui, la carte ne se dessine plus.`
+              : `Retirer « ${n.nom} » et tout ce qu’il porte ?`
+            if (!window.confirm(garde)) return
+            this.appliquer(retirerNoeudProjet(this.frais(), nomScene, n.id),
+              `Nœud « ${n.nom} » retiré`)
+          }),
+        )
+      }
+      liste.appendChild(ligne)
+      for (const e of n.enfants) ligneDe(e, profondeur + 1, false)
+    }
+    ligneDe(scene.racine, 0, true)
+    d.appendChild(liste)
+
+    const note = document.createElement('p')
+    note.className = 'ligne menu'
+    note.textContent = 'L’ordre est l’ordre de dessin : le dernier passe dessus. '
+      + 'L’outil Entité pose et déplace ; ici, on retrouve, on renomme, on retire.'
+    d.appendChild(note)
   }
 
   private blocEspeces(p: ProjetSerialise): void {

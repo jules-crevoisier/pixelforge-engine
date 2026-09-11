@@ -4768,6 +4768,55 @@ console.log('\n--- le son importe ---')
     `version ${rejoue.version}, son « ${rejoue.sons[0].nom} », ${rejoue.sons[0].duree} ms`)
 }
 
+/*
+ * L'ARBRE DE SCENE : les noeuds poses se retrouvent, se renomment, se
+ * cachent, se reordonnent et se retirent — par les memes gestes de
+ * structure que tout le reste. L'outil Entite pose ; l'arbre repond a
+ * « qu'y a-t-il dans cette scene ? », la question qu'aucun outil ne posait.
+ */
+console.log('\n--- l\'arbre de scene ---')
+{
+  const { projetNeuf, reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { versTexte } = await import('../src/export/format.ts')
+
+  const pj = projetNeuf()
+  const scene = () => pj2.scenes[0]
+  let pj2 = reglerNoeudProjet(pj, 'principale', 'heros', { nom: 'vigie', x: 99 })
+  const vigie = scene().racine.enfants.find((n) => n.id === 'heros')
+  check('un noeud se renomme et se deplace par son identifiant',
+    vigie?.nom === 'vigie' && vigie?.x === 99 && vigie?.espece,
+    `« ${vigie?.nom} » en x=${vigie?.x} — l'espece et le corps n'ont pas bouge`)
+  check('et rien d\'autre n\'a bouge : l\'identifiant reste, les enfants restent',
+    vigie?.id === 'heros' && vigie?.enfants.length === 1
+    && scene().racine.enfants.length === pj.scenes[0].racine.enfants.length)
+
+  pj2 = reglerNoeudProjet(pj, 'principale', 'heros', { visible: false })
+  check('un noeud se cache, et la relecture le lit cache',
+    scene().racine.enfants.find((n) => n.id === 'heros')?.visible === false
+    && JSON.parse(versTexte(pj2)).scenes[0].racine.enfants
+      .find((n) => n.id === 'heros').visible === false)
+
+  pj2 = decalerNoeudProjet(pj, 'principale', 'heros', -1)
+  check('l\'ordre des freres se decale — c\'est l\'ordre de dessin',
+    scene().racine.enfants[0].id === 'heros' && scene().racine.enfants[1].id === 'decor',
+    'le heros passe avant le decor : il se dessinerait dessous')
+
+  pj2 = retirerNoeudProjet(pj, 'principale', 'heros')
+  check('un noeud se retire avec tout ce qu\'il porte',
+    !JSON.stringify(scene().racine).includes('"heros"'),
+    'le corps du heros est parti avec lui')
+  const m = mondeDepuisProjet(retirerNoeudProjet(pj, 'principale', 'heros'), 'x')
+  check('et une scene sans heros se relit sans casser',
+    m.carte.largeur === 40, m.etat())
+
+  pj2 = retirerNoeudProjet(pj, 'principale', 'scene')
+  check('la racine, elle, ne se retire pas',
+    scene().racine.id === 'scene' && scene().racine.enfants.length === 2,
+    'une scene sans racine n\'est pas vide, elle est invalide')
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

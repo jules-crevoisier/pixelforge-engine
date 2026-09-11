@@ -476,6 +476,31 @@ l'ouvrir en le déposant sur la page, et le panneau ne fait pas semblant du
 contraire : la colonne « dans le projet » montre le contenu du fichier, pas
 des sous-dossiers inventés.
 
+## L'arbre de scène
+
+L'outil Entité pose et déplace ; il ne répond pas à « qu'y a-t-il dans cette
+scène ? ». Dès qu'un niveau dépasse dix entités, on en perd une derrière un
+mur ou sous une autre — et il n'existait aucun moyen de la retrouver, de la
+**renommer** (le nom que la caméra et les scripts emploient), ou de la
+retirer sans la chercher à la souris.
+
+L'onglet **Scène** du panneau montre l'arbre entier — le décor, le héros et
+son corps de collision, chaque créature posée, y compris ce qui est caché :
+
+- **👁** montre ou cache un nœud, lui et les siens ;
+- **✎** le renomme ;
+- **↑ ↓** le décalent parmi ses frères — l'ordre des frères est l'ordre de
+  **dessin**, comme les calques : le dernier passe dessus ;
+- **✕** le retire avec tout ce qu'il porte. La racine ne se retire pas —
+  une scène sans racine n'est pas vide, elle est invalide — et retirer le
+  décor prévient de ce que ça casse.
+
+Tout passe par les mêmes gestes de structure que le reste : transformer le
+projet sérialisé, relire. Le banc vérifie qu'un nœud renommé garde son
+identifiant, ses enfants et son espèce, qu'une scène sans héros se relit
+sans casser, et la fumée fait le tour complet dans le navigateur sur le
+Gouffre entier — renommer une gelée, la cacher, la retirer.
+
 ## Le scripting, dans l'éditeur
 
 ![L'atelier de scripts](docs/atelier.png)

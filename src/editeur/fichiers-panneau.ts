@@ -262,6 +262,13 @@ export class PanneauFichiers {
       detail: `${c.largeur}×${c.hauteur}`,
       aller: () => this.crochets.editerCarte(c.nom),
     })))
+    const compteNoeuds = (n: { enfants: unknown[] }): number =>
+      1 + (n.enfants as { enfants: unknown[] }[]).reduce((t, e) => t + compteNoeuds(e), 0)
+    categorie('Scènes', p.scenes.map((q) => ({
+      nom: q.nom,
+      detail: `${compteNoeuds(q.racine) - 1} nœud(s)`,
+      aller: () => ouvre('scene', q.nom),
+    })))
     categorie('Planches', p.planches.map((t) => ({
       nom: t.nom,
       detail: `${t.dessins.length} case(s)`,

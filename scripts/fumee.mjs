@@ -1702,6 +1702,72 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.waitForTimeout(200)
 }
 
+/*
+ * L'ARBRE DE SCENE, dans le panneau : retrouver, renommer, cacher,
+ * retirer — sur le Gouffre entier, trois scenes, une vingtaine de noeuds.
+ */
+{
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(250)
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+  const arbre = () => p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Scène')
+    return [...bloc.querySelectorAll('.ligne')].map((l) => l.querySelector('.nom')?.textContent ?? '')
+  })
+  const avant = await arbre()
+  ok('l’onglet Scène montre l’arbre : le décor, le héros et son corps, les créatures',
+    avant.some((n) => n.includes('decor')) && avant.some((n) => n.includes('heros'))
+    && avant.some((n) => n.includes('gelee-c1')) && avant.length >= 6,
+    `${avant.length} nœuds, dont ${avant.slice(0, 4).join(' · ')}`)
+
+  const surLigne = (contenu, quelBouton) => p.evaluate(({ c, q }) => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Scène')
+    const ligne = [...bloc.querySelectorAll('.ligne')]
+      .find((l) => l.querySelector('.nom')?.textContent.includes(c))
+    const bouton = ligne && [...ligne.querySelectorAll('button')]
+      .find((b2) => b2.textContent === q)
+    if (bouton) bouton.click()
+    return !!bouton
+  }, { c: contenu, q: quelBouton })
+
+  // Renommer, sans passer par la vraie invite : on la remplace, parce
+  // qu'une invite native ne se pilote pas depuis un banc.
+  await p.evaluate(() => { window.prompt = () => 'gardienne' })
+  await surLigne('gelee-c1', '✎')
+  await p.waitForTimeout(350)
+  const renomme = await p.evaluate(() => {
+    const f = (n) => (n.nom === 'gardienne' ? n : n.enfants.map(f).find(Boolean))
+    return !!f(window.pfe.monde.racine)
+  })
+  ok('renommer un nœud depuis l’arbre renomme la vraie entité', renomme,
+    '« gelee-c1 » est devenue « gardienne », dans la scène qui joue')
+
+  await surLigne('gardienne', '👁')
+  await p.waitForTimeout(350)
+  const cachee = await p.evaluate(() => {
+    const f = (n) => (n.nom === 'gardienne' ? n : n.enfants.map(f).find(Boolean))
+    return f(window.pfe.monde.racine)?.visible
+  })
+  ok('la cacher depuis l’arbre la cache vraiment', cachee === false)
+
+  await surLigne('gardienne', '✕')
+  await p.waitForTimeout(400)
+  const partie = await p.evaluate(() => {
+    const f = (n) => (n.nom === 'gardienne' ? n : n.enfants.map(f).find(Boolean))
+    return !f(window.pfe.monde.racine)
+  })
+  const apres = await arbre()
+  // Deux lignes de moins et non une : la gelee emporte son CORPS de
+  // collision avec elle — c'est le « et tout ce qu'il porte » du bouton.
+  ok('la retirer depuis l’arbre la retire — elle, et tout ce qu’elle porte',
+    partie && !apres.some((n) => n.includes('gardienne')) && apres.length < avant.length,
+    `${avant.length} → ${apres.length} nœuds : la créature et son corps`)
+  await p.click('#fermerProjet')
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)
