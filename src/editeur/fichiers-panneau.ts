@@ -271,6 +271,11 @@ export class PanneauFichiers {
       detail: `${compteNoeuds(q.racine) - 1} nœud(s)`,
       aller: () => ouvre('scene', q.nom),
     })))
+    categorie('Assemblages', (p.assemblages ?? []).map((a) => ({
+      nom: a.nom,
+      detail: `${compteNoeuds(a.racine)} nœud(s)`,
+      aller: () => ouvre('scene'),
+    })))
     categorie('Planches', p.planches.map((t) => ({
       nom: t.nom,
       detail: `${t.dessins.length} case(s)`,

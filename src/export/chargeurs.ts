@@ -349,6 +349,12 @@ export interface Projet {
   lumiere: { ambiante: number }
   /** Les regles du jeu : epee, coeurs, reapparition, degats des pointes. */
   regles: { epee: boolean; coeurs: boolean; reapparitionMs: number; degatsPointes: number }
+  /**
+   * Les assemblages — des MODELES d'editeur (version 18). Les scenes portent
+   * des copies deja instanciees : un moteur peut ignorer ce champ sans rien
+   * perdre du jeu, et c'est pour cela qu'il est le seul a etre optionnel.
+   */
+  assemblages?: { nom: string; racine: Noeud }[]
 }
 
 export interface Declencheur {

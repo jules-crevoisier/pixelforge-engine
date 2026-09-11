@@ -4762,7 +4762,7 @@ console.log('\n--- le son importe ---')
   const pj = ajouterSonImporteProjet(projetNeuf({ depart: 'vierge' }), 'blip.wav', b64, 90)
   const rejoue = JSON.parse(versTexte(pj))
   check('le wav traverse l\'enregistrement, nomme d\'apres son fichier',
-    rejoue.version === VERSION_FORMAT && rejoue.version === 17
+    rejoue.version === VERSION_FORMAT && rejoue.version >= 17
     && rejoue.sons.length === 1 && rejoue.sons[0].nom === 'blip'
     && rejoue.sons[0].wav === b64 && rejoue.sons[0].duree === 90,
     `version ${rejoue.version}, son « ${rejoue.sons[0].nom} », ${rejoue.sons[0].duree} ms`)
@@ -4890,6 +4890,52 @@ console.log('\n--- la carte importee ---')
   const nomVide = ajouterCarteImporteeProjet(projetNeuf(), '.tmj', brute)
   check('un nom de fichier vide recoit un nom quand meme',
     nomVide.cartes[1].nom === 'importee')
+}
+
+/*
+ * LES ASSEMBLAGES : un noeud et tout ce qu'il porte, enregistre comme
+ * MODELE et pose depuis la palette — le prefab. Ce sont des modeles
+ * d'editeur : les scenes portent des copies deja instanciees, un moteur du
+ * commerce peut ignorer le champ sans rien perdre du jeu.
+ */
+console.log('\n--- les assemblages ---')
+{
+  const { projetNeuf, poserAssemblageProjet, retirerAssemblageProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { versTexte, VERSION_FORMAT } = await import('../src/export/format.ts')
+
+  const pj = projetNeuf()
+  const heros = pj.scenes[0].racine.enfants.find((n) => n.id === 'heros')
+  let pj2 = poserAssemblageProjet(pj, 'sentinelle', heros)
+  check('un noeud devient un assemblage nomme, enfants compris',
+    pj2.assemblages.length === 1 && pj2.assemblages[0].nom === 'sentinelle'
+    && pj2.assemblages[0].racine.enfants.length === 1,
+    'le corps de collision part dans le modele')
+  pj2.scenes[0].racine.enfants.find((n) => n.id === 'heros').x = 9999
+  check('le modele est une COPIE : retoucher la scene ne le change pas',
+    pj2.assemblages[0].racine.x !== 9999)
+  pj2 = poserAssemblageProjet(pj2, 'sentinelle', heros)
+  check('deux modeles ne partagent pas un nom',
+    pj2.assemblages[1].nom === 'sentinelle-2')
+
+  const relu = JSON.parse(versTexte(pj2))
+  check('les assemblages traversent l\'enregistrement, en version 18',
+    relu.version === VERSION_FORMAT && relu.version >= 18
+    && relu.assemblages.length === 2 && relu.assemblages[0].racine.espece === 'heros',
+    `version ${relu.version}, ${relu.assemblages.length} modele(s)`)
+
+  const m = mondeDepuisProjet(relu, 'x')
+  check('un projet relu GARDE ses assemblages — rien ne se perd en silence',
+    m.assemblages.length === 2, 'ils repasseront dans le prochain enregistrement')
+
+  check('et un modele se retire sans toucher aux copies posees',
+    retirerAssemblageProjet(pj2, 'sentinelle').assemblages.length === 1
+    && JSON.stringify(retirerAssemblageProjet(pj2, 'sentinelle').scenes[0].racine).includes('heros'))
+
+  check('un fichier d\'avant la version 18 se relit : pas d\'assemblages, pas de faute',
+    mondeDepuisProjet(JSON.parse(JSON.stringify({ ...projetNeuf(), assemblages: undefined })), 'x')
+      .assemblages.length === 0)
 }
 
 const echecs = bilan.filter((b) => !b.ok)

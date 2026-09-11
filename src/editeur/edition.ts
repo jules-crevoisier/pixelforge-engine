@@ -69,6 +69,8 @@ export interface EtatEdition {
    * bouton : on veut pouvoir changer d'outil et retrouver son choix.
    */
   espece: string | null
+  /** L'assemblage que l'outil « entite » pose, s'il prime sur l'espece. */
+  assemblage?: string | null
   tuileChoisie: number
   /**
    * La matiere que l'outil « collision » pose : un jeu de drapeaux.
@@ -85,7 +87,7 @@ export interface EtatEdition {
 export class Edition {
   readonly etat: EtatEdition = {
     outil: 'terrain', calque: null, montrerCollision: false, tuileFixe: 0,
-    espece: null, tuileChoisie: 0, calqueChoisi: null, matiere: SOLIDE, trace: 'libre',
+    espece: null, assemblage: null, tuileChoisie: 0, calqueChoisi: null, matiere: SOLIDE, trace: 'libre',
   }
 
   /**

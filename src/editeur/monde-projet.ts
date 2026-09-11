@@ -242,6 +242,9 @@ export function mondeDepuisProjet(
     couleurs: p.palette.couleurs,
     animations,
     especes: p.especes ?? [],
+    // Les assemblages REPASSENT dans le monde, comme les musiques : un
+    // projet relu puis reenregistre les perdrait sinon en silence.
+    assemblages: p.assemblages ?? [],
     sons: p.sons ?? [],
     dialogues: p.dialogues ?? [],
     // Les musiques et les textes REPASSENT dans le monde, sinon un projet

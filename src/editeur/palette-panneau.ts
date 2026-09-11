@@ -49,11 +49,11 @@ function vignette(atlas: Atlas, index: number): HTMLCanvasElement {
 export class Palette {
   private a: AttachesPalette
   private jeu: () => Jeu
-  private choix: (v: { espece?: string; tuile?: number; calque?: string; matiere?: number }) => void
+  private choix: (v: { espece?: string; assemblage?: string; tuile?: number; calque?: string; matiere?: number }) => void
 
   constructor(
     attaches: AttachesPalette, jeu: () => Jeu,
-    choix: (v: { espece?: string; tuile?: number; calque?: string; matiere?: number }) => void,
+    choix: (v: { espece?: string; assemblage?: string; tuile?: number; calque?: string; matiere?: number }) => void,
   ) {
     this.a = attaches
     this.jeu = jeu
@@ -63,10 +63,18 @@ export class Palette {
   /** Remplit la palette pour cet outil, ou la cache si l'outil n'en a pas. */
   montrer(
     outil: Outil, especes: Espece[], peuplement: Peuplement | null,
-    actuel: { espece: string | null; tuile: number; calque: string | null; matiere: number },
+    actuel: {
+      espece: string | null; assemblage?: string | null
+      tuile: number; calque: string | null; matiere: number
+    },
+    assemblages: { nom: string; racine: { enfants: unknown[] } }[] = [],
   ): void {
     this.a.grille.innerHTML = ''
-    if (outil === 'entite') { this.remplirEspeces(especes, peuplement, actuel.espece); return }
+    if (outil === 'entite') {
+      this.remplirEspeces(especes, peuplement, actuel.assemblage ? null : actuel.espece)
+      this.remplirAssemblages(assemblages, actuel.assemblage ?? null)
+      return
+    }
     if (outil === 'tuile') { this.remplirTuiles(actuel); return }
     if (outil === 'collision') { this.remplirMatieres(actuel.matiere); return }
     this.a.panneau.hidden = true
@@ -165,6 +173,40 @@ export class Palette {
     }
     this.a.note.textContent = 'Clic pour poser, clic droit pour retirer. '
       + 'Une entité posée part dans le fichier de projet.'
+  }
+
+  /**
+   * Les assemblages, apres les especes : les modeles composes — un noeud et
+   * tout ce qu'il porte, enregistre depuis l'arbre de scene. Un bouton en
+   * texte et non une vignette : un assemblage n'a pas UNE image, il en a
+   * plusieurs, et une vignette qui n'en montre qu'une mentirait.
+   */
+  private remplirAssemblages(
+    assemblages: { nom: string; racine: { enfants: unknown[] } }[],
+    choisi: string | null,
+  ): void {
+    if (!assemblages.length) return
+    const titre = document.createElement('div')
+    titre.style.width = '100%'
+    titre.style.fontSize = '10px'
+    titre.style.color = 'var(--dim, #9aa3b5)'
+    titre.style.margin = '6px 0 2px'
+    titre.textContent = 'ASSEMBLAGES'
+    this.a.grille.appendChild(titre)
+    for (const a of assemblages) {
+      const compter = (n: { enfants: unknown[] }): number =>
+        1 + (n.enfants as { enfants: unknown[] }[]).reduce((t, e) => t + compter(e), 0)
+      const b = document.createElement('button')
+      b.textContent = `⧉ ${a.nom}`
+      b.title = `${a.nom} — ${compter(a.racine)} nœud(s). Clic pour poser une copie, identifiants neufs.`
+      b.classList.toggle('actif', a.nom === choisi)
+      b.addEventListener('click', () => {
+        this.choix({ assemblage: a.nom })
+        for (const q of this.a.grille.querySelectorAll('button')) q.classList.remove('actif')
+        b.classList.add('actif')
+      })
+      this.a.grille.appendChild(b)
+    }
   }
 
   private remplirTuiles(actuel: { tuile: number; calque: string | null }): void {

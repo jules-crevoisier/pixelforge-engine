@@ -92,6 +92,8 @@ export interface Monde {
   readonly dialogues?: { nom: string; repliques: RepliqueJeu[] }[]
   /** Les musiques du monde, en notes. Meme raison que les sons. */
   readonly musiques?: MusiqueJeu[]
+  /** Les assemblages — modeles d'editeur. Ils repassent a l'enregistrement. */
+  readonly assemblages?: { nom: string; racine: import('../export/format.ts').NoeudSerialise }[]
   /**
    * Le decoupage du niveau en salles, quand il en a un.
    *

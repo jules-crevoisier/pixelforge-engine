@@ -1891,6 +1891,84 @@ ok('Enregistrer telecharge le projet faute de dossier',
     `cartes : ${apresLdtk.cartes}`)
 }
 
+/*
+ * LES ASSEMBLAGES, par les vraies portes : l'etoile de l'arbre fait un
+ * modele, la palette le propose, un clic en pose une copie aux identifiants
+ * neufs — et Ctrl+Z la reprend, comme toute entite posee.
+ */
+{
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(250)
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+  // La carte active est « crypte » depuis l'import LDtk : l'arbre s'ouvre
+  // dessus. La lanterne, elle, vit dans « clairiere » — on change de scene
+  // par le selecteur, comme une personne le ferait.
+  await p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Scène')
+    const select = bloc.querySelector('select')
+    select.value = 'clairiere'
+    select.dispatchEvent(new Event('change'))
+  })
+  await p.waitForTimeout(300)
+  await p.evaluate(() => { window.prompt = () => 'lampadaire' })
+  await p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Scène')
+    const ligne = [...bloc.querySelectorAll('.ligne')]
+      .find((l) => l.querySelector('.nom')?.textContent.includes('lanterne-c2'))
+    ;[...ligne.querySelectorAll('button')].find((b2) => b2.textContent === '☆').click()
+  })
+  await p.waitForTimeout(400)
+  const modele = await p.evaluate(() => (window.pfe.monde.assemblages ?? [])
+    .map((a) => a.nom).join(','))
+  ok('l’étoile de l’arbre fait d’un nœud un assemblage nommé',
+    modele === 'lampadaire', `modèles : « ${modele} »`)
+  await p.click('#fermerProjet')
+
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(300)
+  const propose = await p.evaluate(() => {
+    const b2 = [...document.querySelectorAll('#paletteGrille button')]
+      .find((q) => q.textContent.includes('lampadaire'))
+    if (b2) b2.click()
+    return !!b2
+  })
+  ok('la palette propose le modèle à côté des espèces', propose)
+  const lanternes = () => p.evaluate(() => {
+    let n = 0
+    const f = (q) => { if (q.espece === 'lanterne') n++; q.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  const avantPose = await lanternes()
+  // La scene active est la petite « crypte » de LDtk : 6×4 cases. Un clic
+  // au jugé tombe HORS de la carte, et l'editeur refuse — a raison. On vise
+  // donc une case qui existe, calculee depuis la camera.
+  const dansLaCrypte = await p.evaluate(() => {
+    const cam = window.pfe.jeu.camera
+    const vue = document.getElementById('vue').getBoundingClientRect()
+    const e = vue.width / window.pfe.jeu.ecran.vue.largeur
+    return { x: vue.x + (40 - cam.x) * e, y: vue.y + (24 - cam.y) * e }
+  })
+  await p.mouse.click(dansLaCrypte.x, dansLaCrypte.y)
+  await p.waitForTimeout(300)
+  const identifiants = await p.evaluate(() => {
+    const ids = []
+    const f = (q) => { ids.push(q.id); q.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return { uniques: new Set(ids).size === ids.length }
+  })
+  ok('un clic pose une copie du modèle — identifiants neufs, jamais deux pareils',
+    (await lanternes()) === avantPose + 1 && identifiants.uniques,
+    `${avantPose} → ${await lanternes()} lanternes, tous les identifiants uniques`)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(300)
+  ok('et Ctrl+Z reprend la copie, comme toute entité posée',
+    (await lanternes()) === avantPose)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

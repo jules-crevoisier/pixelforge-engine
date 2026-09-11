@@ -515,6 +515,15 @@ son corps de collision, chaque créature posée, y compris ce qui est caché :
   une scène sans racine n'est pas vide, elle est invalide — et retirer le
   décor prévient de ce que ça casse.
 
+**☆ Les assemblages** — le prefab. L'étoile de l'arbre enregistre un nœud
+et tout ce qu'il porte comme **modèle nommé** ; la palette de l'outil Entité
+le propose à côté des espèces, et chaque clic en pose une **copie aux
+identifiants neufs** — jamais deux pareils, c'est vérifié au banc — qui se
+défait au Ctrl+Z comme toute entité posée. Le modèle est une copie :
+retoucher l'original dans la scène ne le change pas, et retirer un modèle
+laisse les copies posées. Format v18 ; les scènes portant des copies déjà
+instanciées, un moteur du commerce peut ignorer le champ sans rien perdre.
+
 Et l'arbre et la vue **se répondent** : **◎** centre la vue d'édition sur
 le nœud — fini de chercher une entité à la souris —, **⧉** la duplique avec
 des identifiants neufs, une case à côté ; et saisir une entité dans la vue

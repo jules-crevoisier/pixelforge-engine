@@ -17,6 +17,7 @@ import {
   ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet,
   ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet, retirerAnimationProjet,
   reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet, dupliquerNoeudProjet,
+  poserAssemblageProjet, retirerAssemblageProjet,
   reglerReglesProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
@@ -913,6 +914,12 @@ export class PanneauProjet {
             this.appliquer(dupliquerNoeudProjet(this.frais(), nomScene, n.id),
               `« ${n.nom} » dupliqué, une case à côté`)
           }),
+          bouton('☆', 'En faire un assemblage : un modèle nommé, à poser depuis la palette', () => {
+            const voulu = window.prompt('Nom de l’assemblage', n.nom)
+            if (!voulu?.trim()) return
+            this.appliquer(poserAssemblageProjet(this.frais(), voulu, n),
+              `Assemblage « ${voulu.trim()} » — l’outil Entité le propose maintenant`)
+          }),
           bouton('↑', 'Dessiné plus tôt : passe dessous', () => {
             this.appliquer(decalerNoeudProjet(this.frais(), nomScene, n.id, -1),
               `« ${n.nom} » passe dessous`)
@@ -942,6 +949,35 @@ export class PanneauProjet {
     note.textContent = 'L’ordre est l’ordre de dessin : le dernier passe dessus. '
       + 'L’outil Entité pose et déplace ; ici, on retrouve, on renomme, on retire.'
     d.appendChild(note)
+
+    /*
+     * Les assemblages du projet : la liste, et le retrait. Ils NAISSENT
+     * dans l'arbre (le bouton etoile) et se posent depuis la palette ;
+     * ici on voit ce qu'on a, et on s'en defait.
+     */
+    const assemblages = p.assemblages ?? []
+    if (assemblages.length) {
+      const da = bloc(this.corps, 'Assemblages')
+      const la = document.createElement('div')
+      la.className = 'liste'
+      for (const a of assemblages) {
+        const compter = (q: NoeudSerialise): number =>
+          1 + q.enfants.reduce((t2, e) => t2 + compter(e), 0)
+        const ligne = document.createElement('div')
+        ligne.className = 'ligne'
+        const nomA = document.createElement('span')
+        nomA.className = 'nom'
+        nomA.textContent = `⧉ ${a.nom} · ${compter(a.racine)} nœud(s)`
+        ligne.append(nomA,
+          bouton('✕', 'Retirer ce modèle — les copies déjà posées restent', () => {
+            if (!window.confirm(`Retirer l’assemblage « ${a.nom} » ? Les copies posées restent.`)) return
+            this.appliquer(retirerAssemblageProjet(this.frais(), a.nom),
+              `Assemblage « ${a.nom} » retiré`)
+          }))
+        la.appendChild(ligne)
+      }
+      da.appendChild(la)
+    }
   }
 
   private blocEspeces(p: ProjetSerialise): void {

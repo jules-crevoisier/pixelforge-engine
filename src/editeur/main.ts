@@ -4,7 +4,7 @@ import { atlasDepuisLettres } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil, type Trace } from './edition.ts'
 import type { Noeud } from '../scene/noeud.ts'
-import { serialiserProjet, versTexte, VERSION_FORMAT } from '../export/format.ts'
+import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
 import { zipper } from '../export/paquet.ts'
@@ -206,6 +206,44 @@ function installer(nouveau: Monde): void {
       majHistorique()
       return
     }
+    if (edition.etat.assemblage) {
+      /*
+       * Poser un ASSEMBLAGE : une copie du modele, identifiants neufs, la
+       * racine aux pieds de la case — la meme ancre qu'une entite. La copie
+       * s'attache VIVANTE a la scene, comme une entite posee : le peuplement
+       * l'adopte au pas suivant, et le geste se defait au Ctrl+Z.
+       */
+      const modele = (monde.assemblages ?? []).find((a) => a.nom === edition.etat.assemblage)
+      if (!modele) return
+      const pris = new Set<string>()
+      const ramasser = (q: { id: string; enfants: { id: string; enfants: unknown[] }[] }): void => {
+        pris.add(q.id)
+        q.enfants.forEach((e) => ramasser(e as never))
+      }
+      ramasser(monde.racine as never)
+      const libre = (base: string): string => {
+        let candidat = `${base}-2`
+        let n2 = 3
+        while (pris.has(candidat)) candidat = `${base}-${n2++}`
+        pris.add(candidat)
+        return candidat
+      }
+      const copie = structuredClone(modele.racine)
+      const renommer = (q: typeof copie): void => {
+        q.id = libre(q.id)
+        q.enfants.forEach(renommer)
+      }
+      renommer(copie)
+      copie.x = cx * t + t / 2
+      copie.y = cy * t + t
+      const noeud = relireNoeud(copie)
+      monde.racine.enfants.push(noeud)
+      edition.historique.poser(gesteEntite('assemblage posé', monde.racine, noeud, true))
+      verdict.textContent = `« ${modele.nom} » posé — des identifiants neufs, le modèle intact`
+      majEtat()
+      majHistorique()
+      return
+    }
     if (!edition.etat.espece) return
     // Les pieds au bas de la case : c'est la convention d'ancrage de tout le
     // moteur, et c'est ce qui aligne l'entite sur le sol qu'elle foule.
@@ -345,6 +383,7 @@ function projetCourant() {
     monde.deroule ?? { titre: '', ordre: [] },
     monde.lumiere ?? { ambiante: 1 },
     monde.regles ?? { epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1 },
+    monde.assemblages ?? [],
   )
 }
 
@@ -788,7 +827,8 @@ const palettePanneau = new PalettePanneau(
   },
   () => jeu,
   (v) => {
-    if (v.espece !== undefined) edition.etat.espece = v.espece
+    if (v.espece !== undefined) { edition.etat.espece = v.espece; edition.etat.assemblage = null }
+    if (v.assemblage !== undefined) { edition.etat.assemblage = v.assemblage; edition.etat.espece = null }
     if (v.tuile !== undefined) edition.etat.tuileChoisie = v.tuile
     if (v.calque !== undefined) edition.etat.calqueChoisi = v.calque
     if (v.matiere !== undefined) edition.etat.matiere = v.matiere
@@ -823,10 +863,11 @@ function choisirOutil(o: Outil): void {
   canevas.classList.toggle('main', o === 'main')
   palettePanneau.montrer(o, monde.especes, monde.peuplement ?? null, {
     espece: edition.etat.espece,
+    assemblage: edition.etat.assemblage ?? null,
     tuile: edition.etat.tuileChoisie,
     calque: edition.etat.calqueChoisi,
     matiere: edition.etat.matiere,
-  })
+  }, monde.assemblages ?? [])
   if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
 }
 outils.addEventListener('click', (e) => {

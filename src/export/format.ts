@@ -39,6 +39,12 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **18** — les assemblages. Un noeud et tout ce qu'il porte, enregistre
+ * sous un nom et pose depuis la palette — ce que d'autres moteurs appellent
+ * un prefab. Ce sont des MODELES d'editeur : les scenes portent des copies
+ * deja instanciees, si bien qu'un moteur du commerce peut ignorer le champ
+ * sans rien perdre du jeu. Chaque pose recoit des identifiants neufs.
+ *
  * **17** — le son importe. Un son peut porter un fichier WAV en base64
  * (`Son.wav`) : il n'est alors plus synthetise, il est JOUE. La synthese en
  * six nombres reste le depart — elle se regle, se diffe, s'exporte — mais un
@@ -168,7 +174,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 17
+export const VERSION_FORMAT = 18
 
 export interface ProjetSerialise {
   version: number
@@ -270,6 +276,8 @@ export interface ProjetSerialise {
    * deviennent du decor.
    */
   regles: ReglesJeu
+  /** Les assemblages — modeles d'editeur. Absent avant la version 18. */
+  assemblages?: AssemblageSerialise[]
 }
 
 export interface ReglesJeu {
@@ -408,6 +416,15 @@ export interface SceneSerialisee {
   racine: NoeudSerialise
 }
 
+/**
+ * Un assemblage : un sous-arbre nomme, a poser tel quel — le « prefab ».
+ * La racine garde ses coordonnees d'origine ; la pose les remplace.
+ */
+export interface AssemblageSerialise {
+  nom: string
+  racine: NoeudSerialise
+}
+
 export interface NoeudSerialise {
   id: string
   nom: string
@@ -521,6 +538,7 @@ export function serialiserProjet(
   deroule: { titre: string; ordre: string[] } = { titre: '', ordre: [] },
   lumiere: { ambiante: number } = { ambiante: 1 },
   regles: ReglesJeu = { ...REGLES_DEFAUT },
+  assemblages: AssemblageSerialise[] = [],
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -565,6 +583,7 @@ export function serialiserProjet(
       reapparitionMs: Math.max(0, Math.round(regles.reapparitionMs ?? 700)),
       degatsPointes: Math.max(0, Math.round(regles.degatsPointes ?? 1)),
     },
+    assemblages: assemblages.map((a) => structuredClone(a)),
   }
 }
 

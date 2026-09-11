@@ -1115,6 +1115,34 @@ export function dupliquerNoeudProjet(
 }
 
 /* ------------------------------------------------------------------ */
+/* Les assemblages                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Enregistre un noeud — et tout ce qu'il porte — comme ASSEMBLAGE : un
+ * modele nomme, que la palette propose ensuite a cote des especes. C'est le
+ * prefab des autres moteurs. Le modele est une COPIE : retoucher l'original
+ * dans la scene ne change pas le modele, et c'est dit plutot que subi.
+ */
+export function poserAssemblageProjet(
+  p: ProjetSerialise, nom: string, racine: NoeudSerialise,
+): ProjetSerialise {
+  const base = nom.trim() || racine.nom || 'assemblage'
+  const liste = p.assemblages ?? []
+  let propre = base
+  let n = 2
+  while (liste.some((a) => a.nom === propre)) propre = `${base}-${n++}`
+  return {
+    ...p,
+    assemblages: [...liste, { nom: propre, racine: structuredClone(racine) }],
+  }
+}
+
+export function retirerAssemblageProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, assemblages: (p.assemblages ?? []).filter((a) => a.nom !== nom) }
+}
+
+/* ------------------------------------------------------------------ */
 /* Les sons et les animations                                          */
 /* ------------------------------------------------------------------ */
 
