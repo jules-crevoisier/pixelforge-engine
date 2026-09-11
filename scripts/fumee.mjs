@@ -1768,6 +1768,68 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.click('#fermerProjet')
 }
 
+/*
+ * LES NIVEAUX DES AUTRES OUTILS : un .tmj de Tiled et un .ldtk deposes
+ * deviennent des cartes du projet — jouables, avec leur scene et le heros.
+ * C'est le contenu qui decide, jamais l'extension : le .tmj est du JSON.
+ */
+{
+  const cartesAvant = await p.evaluate(() => window.pfe.monde.cartes.map((c) => c.nom))
+  await p.evaluate(() => {
+    const tmj = {
+      type: 'map', orientation: 'orthogonal', renderorder: 'right-down',
+      width: 8, height: 6, tilewidth: 16, tileheight: 16, infinite: false,
+      tilesets: [{ firstgid: 1, name: 'donjon' }],
+      layers: [
+        { name: 'sol', type: 'tilelayer', width: 8, height: 6,
+          data: Array.from({ length: 48 }, () => 48) },
+        { name: 'collision', type: 'objectgroup',
+          objects: [{ id: 1, name: 'sol', type: 'solide', x: 0, y: 80, width: 128, height: 16 }] },
+      ],
+    }
+    const dt = new DataTransfer()
+    dt.items.add(new File([JSON.stringify(tmj)], 'grotte.tmj', { type: 'application/json' }))
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await p.waitForTimeout(800)
+  const apresTiled = await p.evaluate(() => ({
+    cartes: window.pfe.monde.cartes.map((c) => c.nom).join(','),
+    active: window.pfe.monde.carteActive,
+    scene: window.pfe.monde.scenes.some((q) => q.nom === 'grotte'),
+  }))
+  ok('un niveau Tiled déposé devient une carte du projet, sous le pinceau',
+    apresTiled.cartes.split(',').length === cartesAvant.length + 1
+    && apresTiled.active === 'grotte' && apresTiled.scene,
+    `cartes : ${apresTiled.cartes} — la carte active est « ${apresTiled.active} »`)
+
+  await p.evaluate(() => {
+    const ldtk = {
+      jsonVersion: '1.5.3', defaultGridSize: 16,
+      levels: [{
+        identifier: 'crypte', worldX: 0, worldY: 0, pxWid: 96, pxHei: 64,
+        layerInstances: [
+          { __identifier: 'Sol', __type: 'Tiles', __cWid: 6, __cHei: 4, __gridSize: 16,
+            visible: true, gridTiles: [{ px: [0, 0], src: [0, 0], f: 0, t: 47 }], intGridCsv: null },
+          { __identifier: 'Collision', __type: 'IntGrid', __cWid: 6, __cHei: 4, __gridSize: 16,
+            visible: true, gridTiles: null,
+            intGridCsv: Array.from({ length: 24 }, (_q, i) => (i >= 18 ? 1 : 0)) },
+        ],
+      }],
+    }
+    const dt = new DataTransfer()
+    dt.items.add(new File([JSON.stringify(ldtk)], 'monde.ldtk', { type: 'application/json' }))
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await p.waitForTimeout(800)
+  const apresLdtk = await p.evaluate(() => ({
+    cartes: window.pfe.monde.cartes.map((c) => c.nom).join(','),
+    active: window.pfe.monde.carteActive,
+  }))
+  ok('et un projet LDtk déposé apporte ses niveaux, nommés comme dans LDtk',
+    apresLdtk.cartes.includes('crypte') && apresLdtk.active === 'crypte',
+    `cartes : ${apresLdtk.cartes}`)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

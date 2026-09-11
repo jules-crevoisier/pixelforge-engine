@@ -476,6 +476,20 @@ l'ouvrir en le déposant sur la page, et le panneau ne fait pas semblant du
 contraire : la colonne « dans le projet » montre le contenu du fichier, pas
 des sous-dossiers inventés.
 
+### Les niveaux des autres outils : Tiled et LDtk entrent
+
+`depuisTiled` et `depuisLdtk` existaient et étaient benchés — il manquait le
+**dernier mètre**, celui qui les fait entrer dans un projet. Déposez un
+`.tmj` (ou un `.json` exporté de Tiled — c'est le **contenu** qui décide,
+jamais l'extension) : le niveau devient une carte du projet, avec ses
+calques, ses solides tirés du calque d'objets `collision`, et **sa scène
+appariée avec le héros dedans** — un niveau importé se joue, il ne se
+regarde pas. Un `.ldtk` apporte tous ses niveaux d'un coup, nommés comme
+dans LDtk (IntGrid → collision, tuiles → calques). Ce qui n'est pas lu est
+dit : carte infinie, tuiles retournées, entités — chaque avertissement
+s'affiche au lieu de laisser croire qu'on a tout compris. L'export vers
+Tiled et LDtk existait déjà : l'aller-retour est complet.
+
 ## L'arbre de scène
 
 L'outil Entité pose et déplace ; il ne répond pas à « qu'y a-t-il dans cette

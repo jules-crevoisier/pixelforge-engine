@@ -13,7 +13,9 @@ import { Atelier } from './atelier-panneau.ts'
 import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
-import { projetNeuf, ajouterSonImporteProjet } from './projet-neuf.ts'
+import { projetNeuf, ajouterSonImporteProjet, ajouterCarteImporteeProjet } from './projet-neuf.ts'
+import { depuisTiled, estDuTiled } from '../export/tiled.ts'
+import { depuisLdtk, estDuLdtk } from '../export/ldtk.ts'
 import { PanneauFichiers, genreDe } from './fichiers-panneau.ts'
 import { rendre as rendreSon, dechiffrerWav, base64DepuisOctets } from '../runtime/son.ts'
 import { rendreMusique } from '../runtime/musique.ts'
@@ -490,7 +492,44 @@ const panneauProjet = new PanneauProjet(
 async function routerFichier(f: File): Promise<void> {
   const genre = genreDe(f.name)
   if (genre === 'projet') {
-    relire(await f.text(), f.name)
+    const texte = await f.text()
+    /*
+     * Le contenu decide, jamais l'extension : un niveau Tiled s'exporte
+     * souvent en `.json`, et un projet PixelForge pourrait s'appeler
+     * `.tmj` par accident. On lit, on regarde, on route — et ce qui n'est
+     * ni l'un ni l'autre part vers `relire`, qui sait DIRE ce qui cloche.
+     */
+    let brut: unknown = null
+    try { brut = JSON.parse(texte) } catch { /* relire expliquera */ }
+    if (estDuTiled(brut)) {
+      const r = depuisTiled(brut)
+      const p2 = ajouterCarteImporteeProjet(projetCourant(), f.name, r.carte)
+      const nomCarte = p2.cartes[p2.cartes.length - 1].nom
+      installerProjet(p2, p2.nom, nomCarte)
+      panneauProjet.ouvrirSur('carte')
+      verdict.textContent = `Carte Tiled « ${nomCarte} » importée : ${r.calquesLus} calque(s), `
+        + `${r.objetsLus} objet(s)${r.avertissements.length ? ` · ${r.avertissements.join(' · ')}` : ''}`
+      return
+    }
+    if (estDuLdtk(brut)) {
+      const r = depuisLdtk(brut)
+      if (!r.cartes.length) {
+        verdict.textContent = `« ${f.name} » : ${r.avertissements.join(' · ') || 'aucun niveau'}`
+        return
+      }
+      let p2 = projetCourant()
+      let derniere = ''
+      for (const c of r.cartes) {
+        p2 = ajouterCarteImporteeProjet(p2, c.nom, c.carte)
+        derniere = p2.cartes[p2.cartes.length - 1].nom
+      }
+      installerProjet(p2, p2.nom, derniere)
+      panneauProjet.ouvrirSur('carte')
+      verdict.textContent = `${r.cartes.length} niveau(x) LDtk importé(s)`
+        + `${r.avertissements.length ? ` · ${r.avertissements.join(' · ')}` : ''}`
+      return
+    }
+    relire(texte, f.name)
     return
   }
   if (genre === 'image' || genre === 'sprites') {
@@ -518,7 +557,8 @@ async function routerFichier(f: File): Promise<void> {
     return
   }
   verdict.textContent = `« ${f.name} » : rien à en faire ici. `
-    + 'Une image devient une planche, un .json s’ouvre comme projet, un .wav devient un son.'
+    + 'Une image devient une planche, un .json s’ouvre comme projet, un .wav devient un son, '
+    + 'un niveau Tiled ou LDtk devient une carte.'
 }
 
 const panneauFichiers = new PanneauFichiers(

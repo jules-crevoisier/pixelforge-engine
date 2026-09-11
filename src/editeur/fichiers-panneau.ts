@@ -59,7 +59,9 @@ export type GenreFichier = 'projet' | 'image' | 'sprites' | 'son' | 'archive' | 
 /** Ce qu'un nom de fichier permet d'en faire. */
 export function genreDe(nom: string): GenreFichier {
   const bas = nom.toLowerCase()
-  if (bas.endsWith('.json')) return 'projet'
+  // .tmj (Tiled) et .ldtk sont du JSON : le meme aiguillage les recoit, et
+  // c'est le CONTENU qui decide — un .json peut etre du Tiled exporte.
+  if (bas.endsWith('.json') || bas.endsWith('.tmj') || bas.endsWith('.ldtk')) return 'projet'
   if (EXTENSIONS_IMAGE.some((e) => bas.endsWith(e))) return 'image'
   if (bas.endsWith('.pixelforge')) return 'sprites'
   if (bas.endsWith('.wav')) return 'son'

@@ -4817,6 +4817,63 @@ console.log('\n--- l\'arbre de scene ---')
     'une scene sans racine n\'est pas vide, elle est invalide')
 }
 
+/*
+ * LA CARTE IMPORTEE : un niveau dessine dans Tiled ou LDtk devient une
+ * carte du projet, avec sa scene appariee et le heros dedans — un niveau
+ * importe doit etre JOUABLE, pas seulement visible. `depuisTiled` et
+ * `depuisLdtk` etaient benches depuis longtemps ; ce qui manquait etait le
+ * DERNIER metre, celui qui les fait entrer dans un projet.
+ */
+console.log('\n--- la carte importee ---')
+{
+  const { projetNeuf, ajouterCarteImporteeProjet } = await import('../src/editeur/projet-neuf.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { depuisTiled } = await import('../src/export/tiled.ts')
+  const { Carte, SOLIDE } = await import('../src/tuiles/tilemap.ts')
+
+  const tmj = {
+    type: 'map', orientation: 'orthogonal', renderorder: 'right-down',
+    width: 6, height: 4, tilewidth: 16, tileheight: 16, infinite: false,
+    tilesets: [{ firstgid: 1, name: 'donjon' }],
+    layers: [
+      { name: 'sol', type: 'tilelayer', width: 6, height: 4,
+        data: Array.from({ length: 24 }, (_q, i) => (i % 3 === 0 ? 48 : 1)) },
+      { name: 'collision', type: 'objectgroup',
+        objects: [{ id: 1, name: 'mur', type: 'solide', x: 0, y: 48, width: 96, height: 16 }] },
+    ],
+  }
+  const lue = depuisTiled(tmj)
+  const pj = ajouterCarteImporteeProjet(projetNeuf(), 'grotte.tmj', lue.carte)
+  const carte = pj.cartes[1]
+  check('un niveau Tiled devient une carte du projet, nommee d\'apres son fichier',
+    pj.cartes.length === 2 && carte.nom === 'grotte'
+    && carte.largeur === 6 && carte.hauteur === 4 && carte.tuile === 16,
+    `« ${carte.nom} », ${carte.largeur}×${carte.hauteur}`)
+  check('ses tuiles et ses solides ont survecu a la traversee',
+    carte.calques[0].cases[0].split(',')[0] === '47'
+    && carte.solides[3].split('').every((q) => q !== '0'),
+    'l\'index 48 de Tiled redevient 47 — Tiled compte a partir de un')
+  check('et sa scene appariee arrive avec le heros dedans',
+    pj.scenes.length === 2 && pj.scenes[1].nom === 'grotte'
+    && JSON.stringify(pj.scenes[1].racine).includes('"espece"'),
+    'un niveau importe se JOUE, il ne se regarde pas')
+
+  const encore = ajouterCarteImporteeProjet(pj, 'grotte.tmj', lue.carte)
+  check('un deuxieme import du meme fichier ne l\'ecrase pas',
+    encore.cartes[2].nom === 'grotte-2' && encore.scenes[2].nom === 'grotte-2')
+
+  const m = mondeDepuisProjet(encore, 'x')
+  check('le projet a trois cartes se relit et se construit entier',
+    m.cartes.length === 3 && !m.etat().includes('refus'), m.etat())
+
+  const brute = new Carte(4, 3, 16)
+  brute.ajouterCalque('sol')
+  brute.solides[0] = SOLIDE
+  const nomVide = ajouterCarteImporteeProjet(projetNeuf(), '.tmj', brute)
+  check('un nom de fichier vide recoit un nom quand meme',
+    nomVide.cartes[1].nom === 'importee')
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {
