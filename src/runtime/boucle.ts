@@ -35,6 +35,22 @@ export class Boucle {
   private dernier = 0
   private id = 0
   private enMarche = false
+  /**
+   * Fige la simulation sans la perdre.
+   *
+   * ## Pourquoi ce n'est pas « arreter »
+   *
+   * Arreter rend la main a l'editeur, qui repose alors tout le monde a son
+   * depart : on perd l'instant qu'on voulait justement regarder. Un jeu de
+   * precision se debogue sur UNE image — la frame ou le saut accroche, celle
+   * ou la boite passe au travers — et il faut pouvoir s'y arreter, regarder,
+   * puis avancer d'un pas.
+   *
+   * Pendant la pause, l'animation d'image s'arrete : rien ne redessine, et
+   * c'est ce qui permet a l'editeur de poser ses surcouches par-dessus
+   * l'instant fige sans qu'elles soient effacees a l'image suivante.
+   */
+  private enPause = false
   /** Numero du pas courant, depuis le demarrage. Utile aux bancs. */
   pas = 0
 
@@ -90,11 +106,53 @@ export class Boucle {
 
   arreter(): void {
     this.enMarche = false
+    this.enPause = false
     if (this.id) cancelAnimationFrame(this.id)
     this.id = 0
   }
 
-  get tourne(): boolean { return this.enMarche }
+  /** Fige : l'horloge s'arrete, l'etat reste. */
+  pause(): void {
+    if (!this.enMarche) return
+    this.enMarche = false
+    this.enPause = true
+    if (this.id) cancelAnimationFrame(this.id)
+    this.id = 0
+  }
+
+  /**
+   * Repart. Le temps accumule est JETE : il vaudrait le temps passe en pause,
+   * et la simulation rattraperait d'un coup les cinq pas du plafond — un bond
+   * a la reprise, exactement ce qu'on ne veut pas apres avoir regarde une
+   * image de pres.
+   */
+  reprendre(): void {
+    if (!this.enPause) return
+    this.enPause = false
+    this.demarrer()
+  }
+
+  /**
+   * Un pas, un seul. N'a de sens qu'en pause : hors pause, l'horloge en
+   * ferait soixante par seconde par-dessus.
+   */
+  unPas(): boolean {
+    if (!this.enPause) return false
+    this.avancer(this.pasMs)
+    this.pas++
+    this.dessiner(0)
+    return true
+  }
+
+  /**
+   * Vrai tant que la partie VIT — pause comprise.
+   *
+   * L'editeur s'en sert pour savoir s'il a le droit de peindre : la reponse
+   * est non pendant la pause aussi, sinon on peindrait dans une carte que la
+   * reprise raccrocherait a un etat d'avant.
+   */
+  get tourne(): boolean { return this.enMarche || this.enPause }
+  get enPauseMaintenant(): boolean { return this.enPause }
 
   /**
    * Fait avancer la boucle a la main, sans horloge. Pour les bancs.

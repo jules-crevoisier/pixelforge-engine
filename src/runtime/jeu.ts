@@ -403,6 +403,20 @@ export class Jeu {
     this.entrees.debrancher()
   }
 
+  /**
+   * Figer et reprendre, sans perdre l'instant.
+   *
+   * Les entrees restent BRANCHEES pendant la pause : sans cela, une touche
+   * maintenue au moment ou l'on fige serait relachee sans que personne le
+   * voie, et le pas d'apres — celui qu'on veut justement examiner — ne
+   * serait plus celui qui allait avoir lieu.
+   */
+  pause(): void { this.boucle.pause() }
+  reprendre(): void { this.boucle.reprendre() }
+  /** Avance d'un seul pas. N'a de sens qu'en pause. */
+  unPas(): boolean { return this.boucle.unPas() }
+  get enPause(): boolean { return this.boucle.enPauseMaintenant }
+
   get tourne(): boolean { return this.boucle.tourne }
   get pas(): number { return this.boucle.pas }
 

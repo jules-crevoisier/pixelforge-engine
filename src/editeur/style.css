@@ -295,6 +295,10 @@ button.lien:hover { color: var(--accent); }
 .champs input[type="checkbox"] { width: 14px; height: 14px; justify-self: start; }
 .champs input:disabled { color: var(--dim); background: transparent; }
 
+/* Une partie FIGEE : un lisere ambre dit qu'on regarde un instant arrete, et
+   non un jeu qui tourne. Sans lui, on croit que le jeu a planté. */
+#vue.fige { outline: 2px solid #ffd479; outline-offset: -2px; }
+
 /* L'arbre de scene : la ligne qu'on survole en glissant est la FUTURE mere.
    Sans ce lisere, on lache au jugé et l'on se trompe d'une ligne. */
 .ligne.cible { border-color: var(--accent); background: rgba(127, 212, 168, .10); }

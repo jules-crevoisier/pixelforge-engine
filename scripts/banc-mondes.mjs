@@ -5374,6 +5374,67 @@ console.log('\n--- renommer SUIT les references ---')
     scriptsQuiNomment(avecScript, 'introuvable').length === 0)
 }
 
+console.log('\n--- figer une image, et l\'avancer d\'un pas ---')
+
+{
+  /*
+   * L'horloge du navigateur, tenue a la main.
+   *
+   * Node n'a pas de `requestAnimationFrame`. On en pose un qui GARDE l'image
+   * demandee au lieu de l'appeler : le banc decide alors quand une image a
+   * lieu. Ce n'est pas un double complaisant — c'est ce qui permet de
+   * verifier la chose meme qu'on veut prouver : qu'apres une pause, une image
+   * qui arrive quand meme ne fait rien avancer.
+   */
+  const images = []
+  globalThis.requestAnimationFrame = (f) => { images.push(f); return images.length }
+  globalThis.cancelAnimationFrame = () => {}
+
+  const { Boucle } = await import('../src/runtime/boucle.ts')
+  let pas = 0
+  let dessins = 0
+  const b = new Boucle(() => { pas++ }, () => { dessins++ }, { pasMs: 10 })
+
+  b.avancerDe(30)
+  check('la boucle avance', pas === 3, `${pas} pas`)
+
+  // La pause ne peut pas etre prise sur une boucle arretee : il n'y a rien a
+  // figer, et se dire « en pause » ferait croire a une partie qui existe.
+  b.pause()
+  check('on ne met pas en pause ce qui ne tourne pas', !b.enPauseMaintenant && !b.tourne)
+
+  // On simule le demarrage sans requestAnimationFrame : le banc n'a pas
+  // d'ecran. `demarrer` pose l'etat, et `pause` le fige.
+  b.demarrer()
+  check('une boucle demarree tourne', b.tourne)
+  b.pause()
+  check('une boucle en pause TOURNE toujours, au sens de l\'editeur',
+    b.tourne && b.enPauseMaintenant,
+    'sinon l\'editeur croirait la partie finie et se remettrait a peindre dedans')
+
+  // L'image qui arrive malgre tout : elle ne doit RIEN avancer.
+  const avantImage = pas
+  images[images.length - 1](performance.now() + 5000)
+  check('une image qui arrive apres la pause n\'avance rien',
+    pas === avantImage,
+    'cinq secondes de retard rattrapees apres une pause feraient un bond')
+
+  const avant = pas
+  const avantDessins = dessins
+  check('un pas a la main avance d\'UN pas', b.unPas() && pas === avant + 1, `${pas}`)
+  check('et redessine : figer sert a REGARDER', dessins === avantDessins + 1)
+  check('et le numero de pas suit', b.pas >= 1)
+
+  b.reprendre()
+  check('reprendre sort de la pause', b.tourne && !b.enPauseMaintenant)
+  check('et hors pause, le pas a la main ne fait rien',
+    b.unPas() === false && pas === avant + 1,
+    'l\'horloge en ferait soixante par seconde par-dessus')
+
+  b.arreter()
+  check('arreter efface aussi la pause', !b.tourne && !b.enPauseMaintenant)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

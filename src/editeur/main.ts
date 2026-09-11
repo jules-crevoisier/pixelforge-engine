@@ -53,6 +53,8 @@ import {
 const canevas = document.getElementById('vue') as HTMLCanvasElement
 const boutonJouer = document.getElementById('jouer') as HTMLButtonElement
 const boutonArreter = document.getElementById('arreter') as HTMLButtonElement
+const boutonPause = document.getElementById('pause') as HTMLButtonElement
+const boutonUnPas = document.getElementById('unPas') as HTMLButtonElement
 const info = document.getElementById('info') as HTMLElement
 const verdict = document.getElementById('verdict') as HTMLElement
 const mesure = document.getElementById('mesure') as HTMLElement
@@ -1254,7 +1256,7 @@ let caseSurvolee: { cx: number; cy: number } | null = null
  */
 let noeudDesigne = ''
 function dessinerCadreEdition(): void {
-  if (jeu.tourne) return
+  if (jeu.tourne && !jeu.enPause) return
   const ctx = jeu.ecran.ctx
   const t = monde.carte.tuile
   const ox = -Math.round(jeu.camera.x)
@@ -1304,7 +1306,7 @@ function dessinerCadreEdition(): void {
  * traits pour trois choses differentes.
  */
 function dessinerSelection(): void {
-  if (jeu.tourne || !noeudDesigne) return
+  if ((jeu.tourne && !jeu.enPause) || !noeudDesigne) return
   const n = trouverEntite(monde.racine, noeudDesigne)
   if (!n) return
   const ou = positionMonde(monde.racine, n.id)
@@ -1594,7 +1596,9 @@ window.addEventListener('keydown', (e) => {
  * ajoute apres coup.
  */
 function dessinerCollision(): void {
-  if (!edition.etat.montrerCollision || jeu.tourne) return
+  // En PAUSE, elle revient : c'est tout l'interet de figer une image — voir
+  // ce que le decor fait, la ou le heros vient de passer au travers.
+  if (!edition.etat.montrerCollision || (jeu.tourne && !jeu.enPause)) return
   const ctx = jeu.ecran.ctx
   const ox = -Math.round(jeu.camera.x)
   const oy = -Math.round(jeu.camera.y)
@@ -1622,7 +1626,7 @@ function dessinerCollision(): void {
  * d'un pixel de jeu doit faire un pixel de jeu.
  */
 function dessinerSalles(): void {
-  if (jeu.tourne) return
+  if (jeu.tourne && !jeu.enPause) return
   const ctx = jeu.ecran.ctx
   const t = monde.carte.tuile
   const ox = -Math.round(jeu.camera.x)
@@ -1869,7 +1873,12 @@ gestes, pour qu'on sache où l'on retombe avant d'appuyer.</p>
 
 <h4>Essayer</h4>
 <p><b>Jouer</b> lance le jeu dans le cadre réel, celui que le joueur verra.
-<b>Arrêter</b> remet tout le monde à sa place. Les boutons <b>−</b> et <b>+</b>
+<b>⏸</b> le <b>fige</b> sans le perdre, et <b>⏭</b> l’avance d’<i>un seul pas
+de simulation</i> : c’est ainsi qu’on voit un saut qui accroche ou une boîte
+qui passe au travers — cela se produit sur une image, à soixante par seconde.
+Pendant la pause, les surcouches de l’éditeur reviennent par-dessus l’instant
+figé : cochez <b>Collisions</b> et vous voyez ce que le décor <i>fait</i>, là
+où le héros vient de passer. <b>Arrêter</b> remet tout le monde à sa place. Les boutons <b>−</b> et <b>+</b>
 changent seulement le cadre d’<i>édition</i> : voir plus de carte, ou de plus
 près.</p>
 
@@ -2005,14 +2014,63 @@ async function jouerMaintenant(): Promise<void> {
   jeu.demarrer()
   boutonJouer.disabled = true
   boutonArreter.disabled = false
+  majPause()
   canevas.classList.add('jeu')
   canevas.focus()
 }
+
+/**
+ * Figer, et avancer d'un pas.
+ *
+ * ## Pourquoi un moteur de jeu de precision en a besoin
+ *
+ * Un saut qui accroche, une boite qui passe au travers, une creature qui
+ * traverse un mur : cela se produit sur UNE image, a soixante par seconde. On
+ * ne le voit pas ; on le devine, et l'on modifie au hasard. Figer la partie
+ * puis l'avancer d'un pas montre exactement ce qui se passe, image par image.
+ *
+ * Pendant la pause, les surcouches de l'editeur reviennent — la grille de
+ * collision par-dessus l'instant fige. C'est la reunion des deux moities :
+ * l'etat vivant du jeu, et ce que l'editeur sait en dire.
+ */
+function majPause(): void {
+  const vit = jeu.tourne
+  boutonPause.disabled = !vit
+  boutonUnPas.disabled = !vit || !jeu.enPause
+  boutonPause.textContent = jeu.enPause ? '▶▶' : '⏸'
+  boutonPause.title = jeu.enPause
+    ? 'Reprendre la partie là où elle est figée'
+    : 'Figer la partie sans la perdre — puis l’avancer d’un pas'
+  canevas.classList.toggle('fige', jeu.enPause)
+}
+
+boutonPause.addEventListener('click', () => {
+  if (!jeu.tourne) return
+  if (jeu.enPause) {
+    jeu.reprendre()
+    verdict.textContent = 'partie reprise'
+  } else {
+    jeu.pause()
+    // Le dessin ET les surcouches : on fige pour REGARDER, et ce qu'il y a a
+    // regarder est en partie ce que l'editeur sait montrer.
+    jeu.dessiner()
+    redessinerEdition()
+    verdict.textContent = `figé au pas ${jeu.pas} — ⏭ avance d’une image`
+  }
+  majPause()
+})
+
+boutonUnPas.addEventListener('click', () => {
+  if (!jeu.unPas()) return
+  redessinerEdition()
+  verdict.textContent = `pas ${jeu.pas}`
+})
 
 function arreter(): void {
   jeu.arreter()
   boutonJouer.disabled = false
   boutonArreter.disabled = true
+  majPause()
   canevas.classList.remove('jeu')
   // On repose le heros a son depart : essayer une salle puis la modifier avec
   // le personnage coince dans un mur qu'on vient de peindre serait absurde.
@@ -2178,9 +2236,11 @@ let derniere = performance.now()
 let images = 0
 let fps = 0
 function majMesure(): void {
-  mesure.textContent = jeu.tourne
-    ? `${fps} img/s · pas ${jeu.pas} · ×${jeu.ecran.echelle} · ${monde.etat()}`
-    : `arrêté · ×${jeu.ecran.echelle} · ${monde.etat()}`
+  mesure.textContent = jeu.enPause
+    ? `figé · pas ${jeu.pas} · ×${jeu.ecran.echelle} · ${monde.etat()}`
+    : (jeu.tourne
+      ? `${fps} img/s · pas ${jeu.pas} · ×${jeu.ecran.echelle} · ${monde.etat()}`
+      : `arrêté · ×${jeu.ecran.echelle} · ${monde.etat()}`)
 }
 const rafraichirMesure = (): void => {
   images++

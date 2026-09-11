@@ -2649,6 +2649,60 @@ ok('Enregistrer telecharge le projet faute de dossier',
     (await especes()).join(', '))
 }
 
+/*
+ * FIGER UNE IMAGE, ET L'AVANCER D'UN PAS.
+ *
+ * Un saut qui accroche se produit sur UNE image, a soixante par seconde. On
+ * ne le voit pas : on le devine, et l'on modifie au hasard.
+ */
+{
+  await p.click('#jouer')
+  await p.waitForTimeout(500)
+  const pas = () => p.evaluate(() => window.pfe.jeu.pas)
+  const enPause = () => p.evaluate(() => window.pfe.jeu.enPause)
+  const a1 = await pas()
+  await p.waitForTimeout(300)
+  ok('le jeu avance', (await pas()) > a1, `pas ${a1} → ${await pas()}`)
+
+  await p.click('#pause')
+  await p.waitForTimeout(400)
+  const fige = await pas()
+  await p.waitForTimeout(400)
+  ok('⏸ fige la partie : le compteur de pas s’arrête',
+    (await enPause()) && (await pas()) === fige, `pas ${fige} → ${await pas()}`)
+  ok('et la mesure du pied le DIT, au lieu d’afficher zéro image par seconde',
+    (await p.textContent('#mesure')).includes('figé'), await p.textContent('#mesure'))
+
+  await p.click('#unPas')
+  await p.waitForTimeout(250)
+  ok('⏭ avance d’UN pas, exactement', (await pas()) === fige + 1, `pas ${await pas()}`)
+  await p.click('#unPas')
+  await p.click('#unPas')
+  await p.waitForTimeout(250)
+  ok('et trois clics font trois pas', (await pas()) === fige + 3, `pas ${await pas()}`)
+
+  // Les surcouches de l'editeur reviennent PAR-DESSUS l'instant fige.
+  await p.check('#voirCollision')
+  await p.waitForTimeout(250)
+  ok('les collisions se voient par-dessus l’instant figé',
+    await p.evaluate(() => window.pfe.edition.etat.montrerCollision))
+  await p.uncheck('#voirCollision')
+
+  await p.click('#pause')
+  await p.waitForTimeout(400)
+  const repris = await pas()
+  await p.waitForTimeout(300)
+  ok('▶▶ reprend là où c’était figé, sans bond de rattrapage',
+    !(await enPause()) && (await pas()) > repris && (await pas()) - repris < 40,
+    `pas ${repris} → ${await pas()} en 300 ms`)
+
+  await p.click('#arreter')
+  await p.waitForTimeout(300)
+  ok('et Arrêter rend la main à l’édition',
+    !(await p.evaluate(() => window.pfe.jeu.tourne))
+    && await p.isDisabled('#pause'))
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

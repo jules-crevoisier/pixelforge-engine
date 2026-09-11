@@ -689,6 +689,31 @@ identifiant, et la fumée fait le tour complet dans le navigateur sur le
 Gouffre entier — renommer une gelée, la cacher, la retirer, viser une
 lanterne, la dupliquer.
 
+## Figer une image, et l'avancer d'un pas
+
+Un saut qui accroche, une boîte qui passe au travers, une créature qui traverse
+un mur : cela se produit sur **une** image, à soixante par seconde. On ne le
+voit pas — on le devine, et l'on modifie au hasard.
+
+**⏸** fige la partie sans la perdre ; **⏭** l'avance d'un seul pas de
+simulation. Ce n'est pas « Arrêter » : arrêter rend la main à l'éditeur, qui
+repose tout le monde à son départ — on perd l'instant qu'on voulait justement
+regarder.
+
+Deux détails font la différence entre un bouton pause et un outil :
+
+- Les surcouches de l'éditeur **reviennent** par-dessus l'instant figé. Cochez
+  *Collisions* et vous voyez ce que le décor *fait*, là où le héros vient de
+  passer au travers. C'est la réunion des deux moitiés : l'état vivant du jeu,
+  et ce que l'éditeur sait en dire.
+- Reprendre **jette le temps accumulé**. Il vaudrait le temps passé en pause, et
+  la simulation rattraperait d'un coup les cinq pas du plafond : un bond à la
+  reprise, exactement ce qu'on ne veut pas après avoir regardé une image de
+  près.
+
+Une partie figée **tourne toujours**, au sens de l'éditeur : on ne peut pas y
+peindre — sinon la reprise raccrocherait une carte modifiée à un état d'avant.
+
 ## La console : ce que l'éditeur savait et ne disait pas
 
 ![La console, en bas : un avertissement, un refus, des traces](docs/console.png)
