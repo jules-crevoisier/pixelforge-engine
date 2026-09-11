@@ -115,8 +115,10 @@ script = ExtResource("1_pf")
 }
 
 function scriptGodot(p: ProjetSerialise): string {
-  const carte = p.cartes[0]
-  const plancheCarte = p.planches.find((t) => t.nom === carte?.nom) ?? p.planches[0]
+  // La carte de DEPART suit le deroule : c'est lui qui dit ou un jeu
+  // commence. Sans deroule, la premiere carte — ce que faisaient tous les
+  // projets d'une seule carte.
+  const depart = p.deroule?.ordre?.[0] ?? p.cartes[0]?.nom ?? ''
   return `extends Node2D
 ## Charge un projet PixelForge et le construit a l'execution.
 ##
@@ -128,28 +130,59 @@ function scriptGodot(p: ProjetSerialise): string {
 const Chargeur := preload("res://projet_charge.gd")
 
 @export var chemin_projet: String = "res://projet.json"
-@export var nom_carte: String = "${carte?.nom ?? ''}"
-@export var planche_carte: String = "${plancheCarte?.nom ?? ''}"
+## La carte de depart. Vide : la premiere du deroule.
+@export var nom_carte: String = "${depart}"
 
 var projet: Chargeur
+## La carte qui se joue en ce moment, par son nom.
+var carte_courante: String = ""
 
 func _ready() -> void:
 	projet = Chargeur.charger(chemin_projet)
 	if projet == null:
 		push_error("PixelForge : projet illisible")
 		return
-	var carte := _carte(nom_carte)
+	var depart := nom_carte
+	if depart == "" and projet.cartes.size() > 0:
+		var ordre: Array = projet.deroule.get("ordre", [])
+		depart = ordre[0] if ordre.size() > 0 else projet.cartes[0].get("nom", "")
+	charger_carte(depart)
+
+## Change de carte : le decor ET la scene du meme nom, d'un seul geste.
+## C'est le pendant du c.aller de l'editeur — un jeu a plusieurs niveaux
+## s'exporte entier, pas seulement sa premiere carte.
+func charger_carte(nom: String) -> void:
+	var carte := _carte(nom)
 	if carte.is_empty():
-		push_error("PixelForge : carte introuvable")
+		push_error("PixelForge : carte introuvable : %s" % nom)
 		return
+	for enfant in get_children():
+		enfant.queue_free()
+	carte_courante = carte.get("nom", "")
 	_batir_decor(carte)
-	_batir_entites()
+	_batir_entites(_scene_de(carte_courante))
+
+## La carte suivante du deroule, chargee. Rend faux au bout.
+func niveau_suivant() -> bool:
+	var suivante := projet.carte_suivante(carte_courante)
+	if suivante == "":
+		return false
+	charger_carte(suivante)
+	return true
 
 func _carte(nom: String) -> Dictionary:
 	for c in projet.cartes:
 		if c.get("nom", "") == nom:
 			return c
 	return projet.cartes[0] if projet.cartes.size() > 0 else {}
+
+## La scene APPARIEE a une carte : celle du meme nom. Les projets d'avant la
+## version 12 n'ont qu'une scene, « principale » — elle sert a tout le monde.
+func _scene_de(nom: String) -> Dictionary:
+	for s in projet.scenes:
+		if s.get("nom", "") == nom:
+			return s
+	return projet.scenes[0] if projet.scenes.size() > 0 else {}
 
 ## Le TileSet, construit depuis la planche. Une tuile par case de la planche,
 ## dans le meme ordre : c'est ce qui fait que l'index d'une tuile veut dire la
@@ -171,9 +204,13 @@ func _tileset(planche: Dictionary) -> TileSet:
 	return ts
 
 func _batir_decor(carte: Dictionary) -> void:
-	var planche := projet.planche(planche_carte)
+	# La planche du MEME NOM que la carte, sinon la premiere : la meme regle
+	# que l'editeur, pour que l'export dessine ce que l'editeur montrait.
+	var planche := projet.planche(carte.get("nom", ""))
+	if planche.is_empty() and projet.planches.size() > 0:
+		planche = projet.planches[0]
 	if planche.is_empty():
-		push_error("PixelForge : planche de carte introuvable")
+		push_error("PixelForge : aucune planche pour la carte")
 		return
 	var colonnes: int = planche.get("colonnes", 8)
 	var ts := _tileset(planche)
@@ -196,10 +233,10 @@ func _batir_decor(carte: Dictionary) -> void:
 ## Les entites : un Sprite2D par noeud qui porte une espece. La region de la
 ## texture se calcule depuis l'index de son image — c'est la meme arithmetique
 ## que la planche, et elle doit tomber juste des deux cotes.
-func _batir_entites() -> void:
-	if projet.scenes.is_empty():
+func _batir_entites(scene: Dictionary) -> void:
+	if scene.is_empty():
 		return
-	_parcourir(projet.scenes[0].get("racine", {}))
+	_parcourir(scene.get("racine", {}))
 
 func _parcourir(noeud: Dictionary) -> void:
 	var id_espece = noeud.get("espece", "")
@@ -292,6 +329,7 @@ export function paquetGodot(p: ProjetSerialise): Entree[] {
 
 function scriptUnity(p: ProjetSerialise): string {
   const carte = p.cartes[0]
+  const depart = p.deroule?.ordre?.[0] ?? carte?.nom ?? ''
   return `using System.Collections.Generic;
 using UnityEngine;
 using PixelForge;
@@ -315,7 +353,12 @@ public class PixelForgeChargeur : MonoBehaviour
     [Tooltip("Pixels par unite. Prenez la taille de vos tuiles.")]
     public int pixelsParUnite = ${carte?.tuile ?? 16};
 
+    [Tooltip("La carte de depart. Vide : la premiere du deroule.")]
+    public string nomCarte = "${depart}";
+
     private Projet projet;
+    /// <summary>La carte qui se joue en ce moment, par son nom.</summary>
+    public string carteCourante = "";
 
     void Start()
     {
@@ -325,8 +368,56 @@ public class PixelForgeChargeur : MonoBehaviour
             return;
         }
         projet = JsonUtility.FromJson<Projet>(projetJson.text);
-        BatirDecor();
-        BatirEntites();
+        var depart = nomCarte;
+        if (string.IsNullOrEmpty(depart) && projet.cartes.Count > 0)
+        {
+            depart = (projet.deroule != null && projet.deroule.ordre != null
+                && projet.deroule.ordre.Count > 0)
+                ? projet.deroule.ordre[0] : projet.cartes[0].nom;
+        }
+        ChargerCarte(depart);
+    }
+
+    /// <summary>
+    /// Change de carte : le decor ET la scene du meme nom, d'un seul geste —
+    /// le pendant du c.aller de l'editeur. Un jeu a plusieurs niveaux
+    /// s'exporte entier, pas seulement sa premiere carte.
+    /// </summary>
+    public void ChargerCarte(string nom)
+    {
+        var carte = CarteNommee(nom);
+        if (carte == null)
+        {
+            Debug.LogError("PixelForge : carte introuvable : " + nom);
+            return;
+        }
+        for (int i = transform.childCount - 1; i >= 0; i--)
+            Destroy(transform.GetChild(i).gameObject);
+        carteCourante = carte.nom;
+        BatirDecor(carte);
+        BatirEntites(SceneDe(carteCourante));
+    }
+
+    /// <summary>La carte suivante du deroule, chargee. Faux au bout.</summary>
+    public bool NiveauSuivant()
+    {
+        var suivante = projet.CarteSuivante(carteCourante);
+        if (string.IsNullOrEmpty(suivante)) return false;
+        ChargerCarte(suivante);
+        return true;
+    }
+
+    private Carte CarteNommee(string nom)
+    {
+        foreach (var c in projet.cartes) if (c.nom == nom) return c;
+        return projet.cartes.Count > 0 ? projet.cartes[0] : null;
+    }
+
+    /// <summary>La scene appariee : celle du meme nom, sinon la premiere.</summary>
+    private Scene SceneDe(string nom)
+    {
+        foreach (var s in projet.scenes) if (s.nom == nom) return s;
+        return projet.scenes.Count > 0 ? projet.scenes[0] : null;
     }
 
     private Texture2D TexturePour(string nom)
@@ -349,10 +440,9 @@ public class PixelForgeChargeur : MonoBehaviour
         return Sprite.Create(texture, rect, new Vector2(0f, 0f), pixelsParUnite);
     }
 
-    private void BatirDecor()
+    private void BatirDecor(Carte carte)
     {
-        if (projet.cartes.Count == 0) return;
-        var carte = projet.cartes[0];
+        if (carte == null) return;
         var planche = projet.Planche(carte.nom) ?? projet.planches[0];
         for (int c = 0; c < carte.calques.Count; c++)
         {
@@ -377,10 +467,10 @@ public class PixelForgeChargeur : MonoBehaviour
         }
     }
 
-    private void BatirEntites()
+    private void BatirEntites(Scene scene)
     {
-        if (projet.scenes.Count == 0) return;
-        Parcourir(projet.scenes[0].racine);
+        if (scene == null) return;
+        Parcourir(scene.racine);
     }
 
     private void Parcourir(Noeud n)

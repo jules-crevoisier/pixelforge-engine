@@ -788,7 +788,7 @@ npm run dev      # l'éditeur
 npm run banc            #  83 vérifications du moteur
 npm run banc:plateforme #  68 vérifications du contrôleur, des pentes et des plateformes
 npm run banc:mondes     # 406 vérifications : mondes, animations, combat, étages, déclencheurs, lumière, jeu-témoin
-npm run banc:langages   #  96 vérifications : chargeurs, accord entre langages, paquets
+npm run banc:langages   # 100 vérifications : chargeurs, accord entre langages, paquets
 npm run banc:reseau     #  33 vérifications : instantanés, rembobinage, perte de paquets
 npm run banc:habillage  # 112 vérifications : fonte, son, musique, WAV, traduction, menus, sauvegarde
 npm run banc:charge     #  13 mesures de cadence — mesurées, pas promises

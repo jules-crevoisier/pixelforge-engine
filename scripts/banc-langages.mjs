@@ -773,6 +773,26 @@ check('chaque cible annoncee produit un chargeur non vide',
 
 console.log('\n--- les paquets Godot et Unity ---')
 
+/*
+ * Le paquet d'un JEU ENTIER : le Gouffre, trois niveaux, trois scenes.
+ * C'est le cas qui a revele le trou — un paquet ne portait qu'une carte.
+ */
+{
+  const { paquetGodot } = await import('../src/export/moteurs.ts')
+  const { projetGouffre } = await import('../src/demo/exemple-gouffre.ts')
+  const texte = new TextDecoder()
+  const entrees = paquetGodot(projetGouffre())
+  const lu = JSON.parse(texte.decode(entrees.find((e) => e.chemin === 'projet.json').contenu))
+  const gd = texte.decode(entrees.find((e) => e.chemin === 'pixelforge.gd').contenu)
+  check('le paquet Godot du Gouffre emporte ses trois niveaux et leurs scenes',
+    lu.cartes.length === 3 && lu.scenes.length === 3
+    && lu.deroule.ordre.join(',') === 'clairiere,caverne,gouffre',
+    `${lu.cartes.map((c) => c.nom).join(', ')}`)
+  check('et son script d\'accueil demarre sur la premiere carte du deroule',
+    gd.includes('nom_carte: String = "clairiere"'),
+    'le deroule decide ou un jeu commence, dans l\'editeur comme dans le paquet')
+}
+
 {
   const { paquetGodot, paquetUnity, PAQUETS } = await import('../src/export/moteurs.ts')
   const { zipper, crc32, versOctets } = await import('../src/export/paquet.ts')
@@ -878,6 +898,26 @@ console.log('\n--- les paquets Godot et Unity ---')
     check(`${nom} : son projet.json se relit`,
       lu !== null && lu.version === projet.version && lu.especes.length === projet.especes.length,
       lu ? `version ${lu.version}, ${lu.especes.length} espèces` : 'illisible')
+
+    /*
+     * L'export porte le MULTI-CARTES. Un jeu a trois niveaux fait dans
+     * l'editeur doit sortir entier : le script d'accueil demarre sur la
+     * premiere carte du deroule, charge la scene DU MEME NOM, et offre
+     * charger_carte / niveau_suivant — le pendant du c.aller de l'editeur.
+     * Avant, il batissait cartes[0] et scenes[0], en dur : deux niveaux sur
+     * trois n'existaient simplement pas dans le paquet.
+     */
+    const scriptMoteur = texte.decode(
+      (entrees.find((e) => e.chemin === 'pixelforge.gd')
+        ?? entrees.find((e) => e.chemin.endsWith('PixelForgeChargeur.cs'))).contenu)
+    const verbesFlux = nom === 'Godot'
+      ? ['func charger_carte(', 'func niveau_suivant(', '_scene_de(', 'carte_courante']
+      : ['public void ChargerCarte(', 'public bool NiveauSuivant(', 'SceneDe(', 'carteCourante']
+    const absents = verbesFlux.filter((a) => !scriptMoteur.includes(a))
+    check(`${nom} : le script d'accueil sait changer de carte, scene comprise`,
+      absents.length === 0,
+      absents.length ? `manque : ${absents.join(', ')}`
+        : 'charger la carte, la scene du meme nom, et suivre le deroule')
 
     // Le chemin « planches/%s.png » se complete a l'execution avec le nom de
     // la planche. On verifie donc que chaque nom du projet a bien son fichier :
