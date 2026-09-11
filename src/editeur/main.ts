@@ -1,6 +1,6 @@
 import { Jeu } from '../runtime/jeu.ts'
 import { Palette, depuisHex } from '../noyau/palette.ts'
-import { atlasDepuisLettres } from '../runtime/atlas.ts'
+import { atlasDepuisLettres, rectDeTuile } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil, type Trace } from './edition.ts'
 import { Historique, type TableauCarte, type Geste } from './historique.ts'
@@ -1536,8 +1536,71 @@ function dessinerCadreEdition(): void {
   if (caseSurvolee && edition.etat.outil !== 'main') {
     ctx.strokeStyle = '#e8ecf4'
     ctx.strokeRect(caseSurvolee.cx * t + ox + 0.5, caseSurvolee.cy * t + oy + 0.5, t - 1, t - 1)
+    dessinerFantome(caseSurvolee.cx, caseSurvolee.cy, ox, oy)
   }
   jeu.ecran.presenter()
+}
+
+/**
+ * CE QU'ON S'APPRETE A POSER, en transparence, a l'endroit ou cela tombera.
+ *
+ * ## Pourquoi un fantome et pas seulement un lisere
+ *
+ * L'outil Entite montrait le contour de la case visee, et rien d'autre : on
+ * savait OU l'on allait cliquer, jamais CE QU'ON allait poser. Avec douze
+ * especes dans la palette, on pose, on regarde, on defait. Le dessin lui-meme,
+ * a demi transparent, supprime l'aller-retour — et il montre en meme temps la
+ * taille reelle de la creature, qui deborde souvent de sa case.
+ *
+ * L'ancre est celle du moteur : les pieds au bas de la case. C'est la meme
+ * convention que la pose, sinon le fantome mentirait d'une demi-case.
+ */
+function dessinerFantome(cx: number, cy: number, ox: number, oy: number): void {
+  if (edition.etat.outil !== 'entite') return
+  const t = monde.carte.tuile
+  const ctx = jeu.ecran.ctx
+  const dessiner = (planche: string, image: number, ancreX: number, ancreY: number): void => {
+    const atlas = jeu.sprites.get(planche)
+    if (!atlas) return
+    const { sx, sy } = rectDeTuile(atlas, image)
+    ctx.save()
+    ctx.globalAlpha = 0.55
+    ctx.drawImage(atlas.canevas as CanvasImageSource, sx, sy, atlas.largeur, atlas.hauteur,
+      cx * t + t / 2 - ancreX + ox, cy * t + t - ancreY + oy, atlas.largeur, atlas.hauteur)
+    ctx.restore()
+  }
+  if (edition.etat.assemblage) {
+    // Un assemblage porte plusieurs noeuds : on montre ceux qui se dessinent,
+    // chacun a sa place relative. C'est la seule facon de voir qu'un
+    // lampadaire fait trois cases de haut avant de le poser.
+    const modele = (monde.assemblages ?? []).find((a2) => a2.nom === edition.etat.assemblage)
+    if (!modele) return
+    const parcourir = (n: { proprietes?: Record<string, unknown>; image?: number; x: number; y: number; enfants: unknown[] }, ax: number, ay: number): void => {
+      const x = ax + n.x
+      const y = ay + n.y
+      const source = typeof n.proprietes?.source === 'string' ? n.proprietes.source : ''
+      if (source) {
+        const atlas = jeu.sprites.get(source)
+        if (atlas) {
+          const { sx, sy } = rectDeTuile(atlas, n.image ?? 0)
+          ctx.save()
+          ctx.globalAlpha = 0.55
+          ctx.drawImage(atlas.canevas as CanvasImageSource, sx, sy, atlas.largeur, atlas.hauteur,
+            cx * t + t / 2 + x - (Number(n.proprietes?.ancreX) || 0) + ox,
+            cy * t + t + y - (Number(n.proprietes?.ancreY) || 0) + oy,
+            atlas.largeur, atlas.hauteur)
+          ctx.restore()
+        }
+      }
+      for (const e of n.enfants) parcourir(e as never, x, y)
+    }
+    parcourir(modele.racine as never, -modele.racine.x, -modele.racine.y)
+    return
+  }
+  const espece = monde.especes.find((e) => e.id === edition.etat.espece)
+  if (!espece) return
+  const image = monde.peuplement?.premiereImage(espece) ?? 0
+  dessiner(espece.planche, image, espece.ancreX ?? 0, espece.ancreY ?? 0)
 }
 
 /**
@@ -1588,6 +1651,16 @@ function entourer(id: string, principal: boolean): void {
   ctx.moveTo(x0, y1 - c); ctx.lineTo(x0, y1); ctx.lineTo(x0 + c, y1)
   ctx.moveTo(x1 - c, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1 - c)
   ctx.stroke()
+  /*
+   * Le NOM, sous le cadre, pour le principal seulement.
+   *
+   * Quatre gardiens identiques a l'ecran se ressemblent ; savoir lequel
+   * l'inspecteur regle demandait d'aller lire l'arbre. Le nom s'ecrit dans la
+   * FONTE DU JEU, comme les salles : un pixel de texte doit faire un pixel de
+   * jeu, sinon il flotte a une autre echelle que tout le reste.
+   */
+  if (!principal) return
+  ecrire(jeu.ecran, n.nom, x, y + t + 2, { couleur: '#ffd479', ombre: '#12101c' })
 }
 
 /** Les surcouches de l'editeur, dans l'ordre ou elles se posent. */

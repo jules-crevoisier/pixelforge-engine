@@ -3225,6 +3225,48 @@ ok('Enregistrer telecharge le projet faute de dossier',
 }
 
 /*
+ * VOIR CE QU'ON S'APPRETE A POSER.
+ *
+ * L'outil Entite montrait le contour de la case visee, et rien d'autre : on
+ * savait OU l'on allait cliquer, jamais CE QU'ON allait poser.
+ */
+{
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(800)
+  await p.click('#accueilGouffre')
+  await p.waitForTimeout(1200)
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(400)
+  const boutons = await p.$$('#paletteGrille button')
+  await boutons[Math.min(3, boutons.length - 1)].click()
+  await p.waitForTimeout(200)
+
+  const c = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  // Deux captures du MEME point de la vue : une avec le curseur dessus, une
+  // sans. Si le fantome existe, les pixels different.
+  await p.mouse.move(c[0] + c[2] * 0.5, c[1] + c[3] * 0.62)
+  await p.waitForTimeout(250)
+  const avec = await p.locator('#vue').screenshot()
+  await p.mouse.move(c[0] + c[2] * 0.5, c[1] + c[3] * 0.05)
+  await p.waitForTimeout(250)
+  const sans = await p.locator('#vue').screenshot()
+  ok('le curseur montre un aperçu de ce qu’on va poser, là où ça tombera',
+    Buffer.compare(avec, sans) !== 0,
+    `${avec.length} vs ${sans.length} octets — le dessin de la créature, à demi transparent`)
+
+  // Le NOM du nœud choisi, écrit sous son cadre dans la fonte du jeu.
+  await p.mouse.click(c[0] + c[2] * 0.4, c[1] + c[3] * 0.62)
+  await p.waitForTimeout(300)
+  await p.mouse.down()
+  await p.mouse.move(c[0] + c[2] * 0.42, c[1] + c[3] * 0.62)
+  await p.mouse.up()
+  await p.waitForTimeout(300)
+  const choisi = await p.evaluate(() => window.pfe.selection())
+  ok('saisir une entité la choisit', choisi.length === 1, choisi.join(','))
+  await p.screenshot({ path: 'docs/apercu.png' })
+}
+
+/*
  * LES CAPTURES DE LA VITRINE.
  *
  * Le README montre des images de l'editeur, et ce sont elles qu'on regarde

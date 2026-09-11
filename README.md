@@ -614,6 +614,24 @@ le nœud — fini de chercher une entité à la souris —, **⧉** la duplique 
 des identifiants neufs, une case à côté ; et saisir une entité dans la vue
 la **surligne** dans l'arbre. La vue et l'arbre parlent du même nœud.
 
+### Voir ce qu'on s'apprête à poser
+
+![L'aperçu fantôme sous le curseur, et le nom du nœud choisi](docs/apercu.png)
+
+L'outil Entité montrait le contour de la case visée, et rien d'autre : on savait
+**où** l'on allait cliquer, jamais **ce qu'on** allait poser. Avec douze espèces
+dans la palette, on pose, on regarde, on défait.
+
+Le dessin de la créature s'affiche maintenant sous le curseur, à demi
+transparent, **là où elle tombera** — pieds au bas de la case, la convention du
+moteur, sinon l'aperçu mentirait d'une demi-case. Un assemblage montre tous ses
+nœuds à leur place relative : on voit qu'un lampadaire fait trois cases de haut
+avant de le poser.
+
+Et le nœud choisi porte son **nom**, écrit sous son cadre dans la fonte du jeu —
+quatre gardiens identiques à l'écran se ressemblent, et savoir lequel
+l'inspecteur règle demandait d'aller lire l'arbre.
+
 ### L'arbre compose : créer un nœud, changer son parent
 
 ![L'arbre : « + Nœud », et une ligne qu'on glisse sur une autre](docs/arbre-compose.png)
