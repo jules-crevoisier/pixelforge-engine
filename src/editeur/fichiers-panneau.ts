@@ -49,6 +49,10 @@ export interface CrochetsFichiers {
   /** Met la carte nommee sous le pinceau. */
   editerCarte(nom: string): void
   dire(m: string): void
+  /** Les brouillons gardes par ce navigateur, du plus ancien au plus recent. */
+  brouillons(): { nom: string; quand: number; texte: string }[]
+  /** Oublie tous les brouillons — un geste explicite. */
+  oublierBrouillons(): void
 }
 
 /** Les extensions d'image que l'import sait decouper en planche. */
@@ -124,7 +128,63 @@ export class PanneauFichiers {
     if (!this.ouvert) return
     this.corps.textContent = ''
     this.blocDossier()
+    this.blocBrouillons()
     this.blocProjet()
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Les brouillons                                                    */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Ce que l'editeur a garde tout seul.
+   *
+   * Ils se proposent a l'accueil, ou l'on tombe en rouvrant la page. Ici, on
+   * les voit pendant la seance : ce qui existe, de quand, et de quoi s'en
+   * defaire. Un filet qu'on ne peut pas inspecter est un filet auquel on ne
+   * croit pas.
+   *
+   * Le bloc ne s'affiche pas quand il n'y a rien : une ligne « aucun
+   * brouillon » serait une ligne a lire chaque fois, pour rien.
+   */
+  private blocBrouillons(): void {
+    const liste = this.crochets.brouillons()
+    if (!liste.length) return
+    const d = this.bloc('Brouillons')
+    const note = document.createElement('p')
+    note.className = 'ligne menu'
+    note.textContent = 'Gardés par CE navigateur toutes les 45 secondes, quand vous avez '
+      + 'fait quelque chose. Ce n’est pas un enregistrement : vider les données du site '
+      + 'les emporte. Enregistrez dans un dossier.'
+    d.appendChild(note)
+    const l = document.createElement('div')
+    l.className = 'liste'
+    // Le plus recent en HAUT : c'est celui qu'on veut reprendre.
+    for (const b of [...liste].reverse()) {
+      const ligne = document.createElement('div')
+      ligne.className = 'ligne'
+      const etiquette = document.createElement('span')
+      etiquette.className = 'nom'
+      const minutes = Math.max(0, Math.round((Date.now() - b.quand) / 60000))
+      etiquette.textContent = `⏳ ${b.nom} · ${minutes ? `il y a ${minutes} min` : 'à l’instant'}`
+      etiquette.title = new Date(b.quand).toLocaleString()
+      const taille = document.createElement('span')
+      taille.className = 'menu'
+      taille.textContent = `${Math.round(b.texte.length / 1024)} Ko`
+      ligne.append(etiquette, taille,
+        this.bouton('Ouvrir', 'Reprendre ce brouillon dans l’éditeur',
+          () => this.crochets.ouvrirProjet(b.texte, b.nom)))
+      l.appendChild(ligne)
+    }
+    d.appendChild(l)
+    const actions = document.createElement('div')
+    actions.className = 'bloc-actions'
+    actions.append(this.bouton('Tout oublier', 'Effacer les brouillons de ce navigateur', () => {
+      if (!window.confirm('Oublier tous les brouillons ? Ce qui n’est pas enregistré sera perdu.')) return
+      this.crochets.oublierBrouillons()
+      this.montrer()
+    }))
+    d.appendChild(actions)
   }
 
   /* ---------------------------------------------------------------- */

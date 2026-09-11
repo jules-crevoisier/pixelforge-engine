@@ -510,6 +510,8 @@ function installer(nouveau: Monde): void {
   panneauProjet?.montrer()
   ;(window as unknown as { pfe: unknown }).pfe = {
     jeu, monde, palette, edition, journal, console: consolePanneau,
+    // Le banc a besoin de declencher un brouillon sans attendre 45 secondes.
+    brouillon: () => deposerBrouillon(),
   }
 }
 
@@ -907,6 +909,11 @@ const panneauFichiers = new PanneauFichiers(
     lireFichier: (nom) => (travail ? dossier.lireFichier(travail, nom) : Promise.resolve(null)),
     lireTexte: (nom) => (travail ? dossier.lire(travail, nom) : Promise.resolve(null)),
     ouvrirProjet: (texte, nom) => relire(texte, nom),
+    brouillons: () => brouillonsConnus,
+    oublierBrouillons: () => {
+      brouillonsConnus = []
+      void dossier.oublierBrouillons()
+    },
     importerAsset: (f) => routerFichier(f),
     ouvrirProjetPanneau: (onglet, cible) => panneauProjet.ouvrirSur(onglet, cible),
     editerCarte: (nom) => {
@@ -1000,6 +1007,75 @@ function ecouterSon(s: Parameters<typeof rendreSon>[0]): void {
   source.start()
 }
 
+/* ------------------------------------------------------------------ */
+/* Le brouillon : le filet, pas le plancher                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * L'editeur garde un etat du projet toutes les quarante-cinq secondes.
+ *
+ * ## Pourquoi c'est un filet et non un enregistrement
+ *
+ * Un enregistrement va dans un fichier, dans un dossier a soi, et survit a
+ * tout. Un brouillon vit dans la base locale de ce navigateur, et l'editeur
+ * ne le rouvre JAMAIS tout seul — il le propose a l'accueil, et on decide.
+ * Le presenter comme une sauvegarde ferait qu'on cesserait d'enregistrer, et
+ * le jour ou quelqu'un vide les donnees du site, le projet de trois semaines
+ * part avec.
+ *
+ * ## Pourquoi seulement quand on a fait quelque chose
+ *
+ * Le journal compte les gestes. Sans geste, il n'y a rien a sauver — et
+ * proposer « reprendre le brouillon du monde de demonstration » a quelqu'un
+ * qui vient d'ouvrir la page serait une porte de plus a refermer.
+ */
+const BROUILLON_MS = 45_000
+let dernierBrouillon = ''
+/**
+ * Les brouillons connus, en memoire.
+ *
+ * Le panneau des fichiers se dessine d'un coup et sans attendre ; lui faire
+ * lire la base a chaque affichage l'obligerait a etre asynchrone pour une
+ * liste de trois lignes. On garde donc la liste ici, et on la rafraichit
+ * quand elle change.
+ */
+let brouillonsConnus: dossier.Brouillon[] = []
+
+async function deposerBrouillon(): Promise<void> {
+  if (!monde || !jeu || jeu.tourne) return
+  // Rien fait : rien a garder. Voir plus haut.
+  if (journal.taille === 0) return
+  let texte = ''
+  try {
+    texte = versTexte(projetCourant())
+  } catch {
+    return
+  }
+  // Inchange depuis le dernier : on ne recopie pas un mega-octet pour rien.
+  if (texte === dernierBrouillon) return
+  dernierBrouillon = texte
+  const nom = monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id
+  const b = { nom, quand: Date.now(), texte }
+  brouillonsConnus = [...brouillonsConnus, b].slice(-dossier.BROUILLONS_GARDES)
+  const pose = await dossier.poserBrouillon(b)
+  if (!pose) {
+    signaler('avertissement',
+      'Le brouillon n’a pas pu être gardé : la base locale du navigateur refuse d’écrire. '
+      + 'Enregistrez dans un dossier — c’est de toute façon le seul vrai filet.', 'brouillon')
+  }
+}
+
+setInterval(() => { void deposerBrouillon() }, BROUILLON_MS)
+
+/** Depuis combien de temps, en clair. */
+function ilYA(quand: number): string {
+  const s = Math.max(0, Math.round((Date.now() - quand) / 1000))
+  if (s < 90) return `il y a ${s} s`
+  const m = Math.round(s / 60)
+  if (m < 90) return `il y a ${m} min`
+  return `il y a ${Math.round(m / 60)} h`
+}
+
 /*
  * L'ACCUEIL. On lancait l'editeur sur un monde de demonstration, sans un mot :
  * la premiere impression etait « je ne comprends rien ». Trois choix, une
@@ -1038,6 +1114,37 @@ document.getElementById('accueilGouffre')?.addEventListener('click', () => {
     .catch(() => { verdict.textContent = 'L’exemple n’a pas pu être chargé.' })
 })
 document.getElementById('accueilExemples')?.addEventListener('click', fermerAccueil)
+
+/*
+ * Le brouillon PROPOSE, a l'accueil, et nulle part ailleurs.
+ *
+ * La carte n'apparait que s'il y a quelque chose a reprendre : une carte
+ * grisee « aucun brouillon » serait une ligne de plus a lire chaque fois.
+ */
+void (async () => {
+  brouillonsConnus = await dossier.listerBrouillons()
+  const dernier = brouillonsConnus[brouillonsConnus.length - 1]
+  if (!dernier) return
+  const carte = document.createElement('button')
+  carte.className = 'accueil-carte'
+  carte.id = 'accueilBrouillon'
+  const icone = document.createElement('span')
+  icone.className = 'accueil-icone'
+  icone.textContent = '⏳'
+  const titre = document.createElement('b')
+  titre.textContent = 'Reprendre'
+  const note = document.createElement('span')
+  note.innerHTML = `« ${dernier.nom} », ${ilYA(dernier.quand)}.<br/>`
+    + 'Un brouillon gardé par ce navigateur.'
+  carte.append(icone, titre, note)
+  carte.addEventListener('click', () => {
+    fermerAccueil()
+    relire(dernier.texte, dernier.nom)
+    verdict.textContent = `Brouillon repris : « ${dernier.nom} », ${ilYA(dernier.quand)}. `
+      + 'Enregistrez-le dans un dossier — un brouillon ne vit que dans ce navigateur.'
+  })
+  document.querySelector('.accueil-cartes')?.appendChild(carte)
+})()
 accueil.addEventListener('click', (e) => { if (e.target === accueil) fermerAccueil() })
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !accueil.hidden) fermerAccueil() })
 // Il se montre au demarrage, et seulement la : le rouvrir a chaque geste

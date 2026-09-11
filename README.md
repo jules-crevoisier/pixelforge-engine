@@ -714,6 +714,26 @@ Deux détails font la différence entre un bouton pause et un outil :
 Une partie figée **tourne toujours**, au sens de l'éditeur : on ne peut pas y
 peindre — sinon la reprise raccrocherait une carte modifiée à un état d'avant.
 
+## Le brouillon : le filet, pas le plancher
+
+Un onglet qui se ferme, une page qui se recharge, une machine qui s'éteint ne
+doivent pas coûter l'heure qu'on vient de passer. L'éditeur garde donc un état
+du projet toutes les **45 secondes** — et seulement quand on a fait quelque
+chose : le journal compte les gestes, et sans geste il n'y a rien à sauver.
+
+Il en garde **trois**, le plus vieux part, et il ne les rouvre **jamais** tout
+seul : l'accueil propose une carte *Reprendre — « mon-jeu », il y a 3 min*, et
+l'on décide. Le panneau **Fichiers** les montre pendant la séance, avec leur
+taille et leur heure, et un bouton pour tout oublier.
+
+Ce n'est **pas** un enregistrement, et l'éditeur le dit à chaque fois qu'il en
+parle. Un enregistrement va dans un fichier, dans un dossier à soi, et survit à
+tout — un autre navigateur, une autre machine, une sauvegarde de disque. Un
+brouillon vit dans la base locale de *ce* navigateur : vider les données du site
+l'emporte. Le présenter comme une sauvegarde ferait qu'on cesserait
+d'enregistrer, et le jour où quelqu'un vide son cache, le projet de trois
+semaines part avec.
+
 ## La console : ce que l'éditeur savait et ne disait pas
 
 ![La console, en bas : un avertissement, un refus, des traces](docs/console.png)

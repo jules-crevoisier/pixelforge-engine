@@ -216,6 +216,90 @@ export async function rappeler(): Promise<PoigneeDossier | null> {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Les brouillons : ne pas perdre une heure parce qu'un onglet se ferme */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Un etat du projet, garde par l'editeur sans qu'on le lui demande.
+ *
+ * ## Ce que c'est, et ce que ce n'est SURTOUT pas
+ *
+ * Ce n'est pas un enregistrement. Un enregistrement va dans un fichier, dans
+ * un dossier a soi, et survit a tout — un autre navigateur, une autre
+ * machine, une sauvegarde de disque. Un brouillon vit dans la base locale de
+ * CE navigateur : vider les donnees du site l'emporte, un autre navigateur ne
+ * le voit pas.
+ *
+ * Il existe pour une seule chose, et il faut la dire telle quelle : un onglet
+ * qui se ferme, une page qui se recharge, une machine qui s'eteint ne doivent
+ * pas coûter l'heure qu'on vient de passer. C'est un filet, pas un plancher —
+ * et l'editeur ne rouvre jamais un brouillon tout seul : il PROPOSE.
+ */
+export interface Brouillon {
+  /** Le nom du projet, tel qu'il s'appellera s'il est repris. */
+  nom: string
+  /** Quand, en millisecondes depuis l'epoque. */
+  quand: number
+  /** Le projet, sous sa forme de texte — celle qui ne tient rien de vivant. */
+  texte: string
+}
+
+const CLEF_BROUILLONS = 'brouillons'
+/** Combien on en garde. Trois : celui d'il y a une minute, et deux filets. */
+export const BROUILLONS_GARDES = 3
+
+async function lireClef<T>(clef: string, defaut: T): Promise<T> {
+  try {
+    const base = await ouvrirBase()
+    const v = await new Promise<T>((resoudre) => {
+      const t = base.transaction(MAGASIN, 'readonly')
+      const r = t.objectStore(MAGASIN).get(clef)
+      r.onsuccess = () => resoudre((r.result as T) ?? defaut)
+      r.onerror = () => resoudre(defaut)
+    })
+    base.close()
+    return v
+  } catch {
+    return defaut
+  }
+}
+
+async function ecrireClef(clef: string, valeur: unknown): Promise<boolean> {
+  try {
+    const base = await ouvrirBase()
+    await new Promise<void>((resoudre, rejeter) => {
+      const t = base.transaction(MAGASIN, 'readwrite')
+      t.objectStore(MAGASIN).put(valeur, clef)
+      t.oncomplete = () => resoudre()
+      t.onerror = () => rejeter(t.error)
+    })
+    base.close()
+    return true
+  } catch {
+    // Une base pleine ou refusee ne doit pas faire tomber l'editeur : on
+    // perd le filet, pas la seance.
+    return false
+  }
+}
+
+/** Depose un brouillon. Le plus vieux part quand il y en a trop. */
+export async function poserBrouillon(b: Brouillon): Promise<boolean> {
+  const gardes = [...(await listerBrouillons()), b].slice(-BROUILLONS_GARDES)
+  return ecrireClef(CLEF_BROUILLONS, gardes)
+}
+
+/** Les brouillons, du plus ancien au plus recent. */
+export async function listerBrouillons(): Promise<Brouillon[]> {
+  const brut = await lireClef<Brouillon[]>(CLEF_BROUILLONS, [])
+  return Array.isArray(brut) ? brut.filter((b) => b && typeof b.texte === 'string') : []
+}
+
+/** Oublie tout. C'est un geste explicite : rien ne s'efface tout seul. */
+export async function oublierBrouillons(): Promise<boolean> {
+  return ecrireClef(CLEF_BROUILLONS, [])
+}
+
 /** Telecharge un fichier : le recours quand il n'y a pas de dossier. */
 export function telecharger(nom: string, contenu: string, type = 'application/json'): void {
   const url = URL.createObjectURL(new Blob([contenu], { type }))

@@ -1381,9 +1381,13 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.goto(`http://127.0.0.1:${PORT}/`)
   await p.waitForTimeout(900)
   const cartes = await p.$$eval('.accueil-carte', (l) => l.map((e) => e.querySelector('b')?.textContent))
+  // Les quatre departs sont là. On ne compte PAS les cartes : l'accueil en
+  // gagne une cinquieme — « Reprendre » — des qu'un brouillon existe, et ce
+  // banc en fabrique un en peignant plus haut. Un banc qui compte les
+  // elements mesure la mise en page, pas ce qu'elle offre.
   ok('le premier lancement s’ouvre sur l’accueil : deux départs, ouvrir, et un jeu fini à voir',
-    cartes.length === 4 && cartes.join('|').includes('plateforme')
-    && cartes.join('|').includes('jeu fini'),
+    ['plateforme', 'dessus', 'Ouvrir un projet', 'jeu fini']
+      .every((q) => cartes.join('|').toLowerCase().includes(q.toLowerCase())),
     cartes.join(' · '))
   await p.click('#accueilPlateforme')
   await p.waitForTimeout(800)
@@ -2701,6 +2705,119 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('et Arrêter rend la main à l’édition',
     !(await p.evaluate(() => window.pfe.jeu.tourne))
     && await p.isDisabled('#pause'))
+}
+
+/*
+ * LE BROUILLON : ne pas perdre une heure parce qu'un onglet se ferme.
+ *
+ * Ce n'est pas un enregistrement, et le banc le verifie aussi : il vit dans
+ * la base locale de CE navigateur, et l'editeur ne le rouvre jamais tout
+ * seul — il le propose a l'accueil.
+ */
+{
+  // Un geste, pour qu'il y ait quelque chose a garder.
+  await p.click('[data-outil="terrain"]')
+  const c = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  await p.mouse.click(c[0] + c[2] * 0.5, c[1] + c[3] * 0.5)
+  await p.waitForTimeout(250)
+
+  const pose = await p.evaluate(() => window.pfe.brouillon().then(() => true))
+  ok('l’éditeur dépose un brouillon', pose)
+  const gardes = await p.evaluate(async () => {
+    const d = await import('/src/io/dossier.ts')
+    return (await d.listerBrouillons()).map((b) => `${b.nom}|${b.texte.length > 100}`)
+  })
+  ok('et il est dans la base locale du navigateur, en entier',
+    gardes.length >= 1 && gardes[gardes.length - 1].endsWith('|true'),
+    gardes.join(', '))
+
+  // Deux fois de suite sans rien changer : on ne recopie pas un mega-octet.
+  await p.evaluate(() => window.pfe.brouillon())
+  const apres = await p.evaluate(async () => {
+    const d = await import('/src/io/dossier.ts')
+    return (await d.listerBrouillons()).length
+  })
+  ok('un projet inchangé ne fait pas un deuxième brouillon',
+    apres === gardes.length, `${gardes.length} → ${apres}`)
+
+  // Le panneau des fichiers les montre.
+  if (!(await p.isVisible('#fichiersCorps'))) await p.click('#basculeFichiers')
+  await p.waitForTimeout(400)
+  const titres = await p.$$eval('#fichiersCorps h3', (h) => h.map((e) => e.textContent))
+  ok('le panneau Fichiers montre les brouillons', titres.includes('Brouillons'), titres.join(' · '))
+  const dit = await p.textContent('#fichiersCorps')
+  ok('et dit que ce N’EST PAS un enregistrement',
+    dit.includes('pas un enregistrement') && dit.includes('dossier'),
+    'le présenter comme une sauvegarde ferait cesser d’enregistrer')
+
+  // On en garde trois, pas trente.
+  const combien = await p.evaluate(async () => {
+    const d = await import('/src/io/dossier.ts')
+    for (let i = 0; i < 6; i++) {
+      await d.poserBrouillon({ nom: `essai${i}`, quand: Date.now(), texte: `{"n":${i}}` })
+    }
+    const l = await d.listerBrouillons()
+    return { n: l.length, max: d.BROUILLONS_GARDES, dernier: l[l.length - 1].nom }
+  })
+  ok('le plus vieux part quand il y en a trop',
+    combien.n === combien.max && combien.dernier === 'essai5',
+    `${combien.n} gardés sur 6 posés, le dernier est « ${combien.dernier} »`)
+
+  /*
+   * LE PARCOURS REEL : l'onglet se ferme, on revient. Le brouillon doit
+   * attendre a l'accueil — et ne s'ouvrir que si on le demande.
+   */
+  await p.evaluate(async () => {
+    const d = await import('/src/io/dossier.ts')
+    await d.oublierBrouillons()
+    await d.poserBrouillon({
+      nom: 'projet-perdu',
+      quand: Date.now() - 120000,
+      texte: JSON.stringify({
+        version: 1, nom: 'projet-perdu', vue: { largeur: 320, hauteur: 180 },
+        palette: { nom: 'p', couleurs: ['#000000', '#ffffff'] },
+        cartes: [{
+          nom: 'carte', largeur: 8, hauteur: 6, tuile: 16, ambiante: 1,
+          calques: [{ nom: 'decor', terrain: true, parallaxe: 1, parallaxeY: 1, repete: false,
+            cases: ['0,0,0,0,0,0,0,0'], presence: ['00000000'] }],
+          solides: ['0,0,0,0,0,0,0,0'],
+        }],
+        scenes: [{ nom: 'carte', racine: {
+          id: 'r', nom: 'scene', type: 'noeud', x: 0, y: 0, visible: true,
+          script: null, espece: null, image: 0, proprietes: {}, enfants: [],
+        } }],
+        animations: [], planches: [], especes: [],
+        projection: { mode: 'orthogonale', regard: 'cote', largeurTuile: 16, hauteurTuile: 16 },
+      }),
+    })
+  })
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(900)
+  const cartesAccueil = await p.$$eval('.accueil-carte',
+    (l) => l.map((e) => e.textContent))
+  ok('après un rechargement, l’accueil PROPOSE le brouillon — il ne l’ouvre pas',
+    cartesAccueil.some((t) => t.includes('Reprendre') && t.includes('projet-perdu'))
+    && !(await p.evaluate(() => window.pfe.monde.id)).includes('projet-perdu'),
+    cartesAccueil.find((t) => t.includes('Reprendre')) ?? cartesAccueil.join(' · '))
+  ok('et il dit de QUAND il date',
+    (cartesAccueil.find((t) => t.includes('Reprendre')) ?? '').includes('il y a'),
+    'un brouillon sans heure ne se choisit pas')
+
+  await p.click('#accueilBrouillon')
+  await p.waitForTimeout(700)
+  ok('le reprendre ouvre le projet perdu',
+    (await p.evaluate(() => window.pfe.monde.id)).includes('projet-perdu'),
+    await p.evaluate(() => window.pfe.monde.id))
+  ok('et l’éditeur rappelle qu’un brouillon n’est pas un enregistrement',
+    (await p.textContent('#verdict')).includes('dossier'),
+    await p.textContent('#verdict'))
+
+  const vide = await p.evaluate(async () => {
+    const d = await import('/src/io/dossier.ts')
+    await d.oublierBrouillons()
+    return (await d.listerBrouillons()).length
+  })
+  ok('et « Tout oublier » les oublie', vide === 0)
 }
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
