@@ -997,6 +997,42 @@ export class PanneauProjet {
     })
     d.appendChild(g)
 
+    /*
+     * La bande de VIGNETTES : chaque case de la planche, en vrai, cliquable.
+     *
+     * On naviguait par un champ « Case : 7 » — un numero pour designer un
+     * DESSIN, a la personne qui justement dessine. La bande montre les cases
+     * telles qu'elles sont ; le champ reste pour sauter loin d'un coup.
+     */
+    const bande = document.createElement('div')
+    bande.className = 'vignettes'
+    planche.dessins.forEach((cases, i) => {
+      const b = document.createElement('button')
+      b.className = i === this.caseEditee ? 'actif' : ''
+      b.title = `case ${i}`
+      const c = document.createElement('canvas')
+      const h2 = cases.length
+      const l2 = cases[0]?.length ?? 0
+      const z = Math.max(1, Math.floor(26 / Math.max(1, Math.max(l2, h2))))
+      c.width = l2 * z
+      c.height = h2 * z
+      const cx2 = c.getContext('2d')
+      if (cx2) {
+        for (let y = 0; y < h2; y++) {
+          for (let x = 0; x < l2; x++) {
+            const lettre = cases[y][x]
+            if (lettre === '.') continue
+            cx2.fillStyle = planche.cle[lettre] ?? '#000'
+            cx2.fillRect(x * z, y * z, z, z)
+          }
+        }
+      }
+      b.appendChild(c)
+      b.addEventListener('click', () => { this.caseEditee = i; this.montrer() })
+      bande.appendChild(b)
+    })
+    d.appendChild(bande)
+
     // Les couleurs de la planche. Le point est toujours le vide, et il figure
     // en premier : c'est la gomme, et une gomme qu'on cherche est une gomme
     // qu'on n'emploie pas.
