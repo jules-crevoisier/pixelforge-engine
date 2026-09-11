@@ -2442,6 +2442,90 @@ ok('Enregistrer telecharge le projet faute de dossier',
     camB[0] === camA[0] + 16, `${camA} → ${camB}`)
 }
 
+/*
+ * LA CONSOLE : ce que l'editeur savait et ne disait a personne.
+ *
+ * Le compte « 3 script(s) refuse(s) » ne disait ni lesquels ni pourquoi ; une
+ * exception levee pendant que le jeu tourne s'ecrivait dans un bandeau
+ * qu'il fallait avoir ouvert, sur le noeud qu'on y avait choisi.
+ */
+{
+  await p.click('#basculeConsole')
+  await p.waitForTimeout(250)
+  ok('la console s’ouvre', await p.isVisible('#consoleCorps'))
+  const lignes = () => p.evaluate(() => window.pfe.console.contenu.map(
+    (m) => `${m.genre}|${m.source}|${m.texte}|${m.compte}`))
+
+  // UN SCRIPT QUI ECHOUE, pendant que le jeu tourne.
+  await p.click('#basculeAtelier')
+  await p.waitForTimeout(250)
+  await p.fill('#scriptSource', 'n.etat.rien.du.tout = 1')
+  await p.click('#appliquerScript')
+  await p.waitForTimeout(200)
+  await p.click('#jouer')
+  await p.waitForTimeout(600)
+  await p.click('#arreter')
+  await p.waitForTimeout(300)
+  const apresFaute = await lignes()
+  const faute = apresFaute.find((l) => l.startsWith('faute|script|'))
+  ok('une exception levée pendant que le jeu tourne arrive dans la console',
+    !!faute, faute ?? apresFaute.slice(-3).join(' / '))
+  ok('et le compte du bouton dit les fautes non lues',
+    /Console/.test(await p.textContent('#basculeConsole')),
+    await p.textContent('#basculeConsole'))
+
+  // La REPETITION se compte : un script echoue soixante fois par seconde.
+  const repete = await p.evaluate(() => {
+    const c = window.pfe.console
+    c.dire('faute', 'la même faute', 'script')
+    c.dire('faute', 'la même faute', 'script')
+    c.dire('faute', 'la même faute', 'script')
+    return c.contenu[c.contenu.length - 1].compte
+  })
+  ok('un message identique se COMPTE au lieu de s’empiler', repete === 3,
+    `×${repete} — soixante lignes par seconde rendraient la console illisible`)
+
+  // c.tracer : le verbe portable qui remplace console.log.
+  await p.fill('#scriptSource', "c.tracer('pas', c.pas, n.etat)")
+  await p.click('#appliquerScript')
+  await p.waitForTimeout(200)
+  await p.click('#jouer')
+  await p.waitForTimeout(500)
+  await p.click('#arreter')
+  await p.waitForTimeout(300)
+  const trace = (await lignes()).find((l) => l.startsWith('note|script|pas '))
+  ok('c.tracer(…) écrit dans la console — le verbe qui traverse l’export',
+    !!trace, trace ?? (await lignes()).slice(-2).join(' / '))
+
+  // console.log, lui, est refuse — et l'on dit par quoi le remplacer.
+  await p.fill('#scriptSource', "console.log('essai')")
+  await p.click('#appliquerScript')
+  await p.waitForTimeout(300)
+  const refus = await p.textContent('#scriptMessage')
+  ok('console.log est refusé, et le refus dit par quoi le remplacer',
+    refus.includes('console') && refus.includes('c.tracer'),
+    refus.slice(0, 120))
+
+  // Un fichier qu'on ne sait pas lire : l'avertissement RESTE.
+  await p.evaluate(() => {
+    const dt = new DataTransfer()
+    dt.items.add(new File(['rien'], 'note.txt', { type: 'text/plain' }))
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true }))
+  })
+  await p.waitForTimeout(400)
+  const fichier = (await lignes()).find((l) => l.startsWith('avertissement|fichier|'))
+  ok('un fichier qu’on ne sait pas lire laisse une trace, au lieu d’un message qui s’efface',
+    !!fichier, fichier ?? 'rien')
+
+  await p.screenshot({ path: 'docs/console.png' })
+  const combien = (await lignes()).length
+  await p.click('#viderConsole')
+  await p.waitForTimeout(200)
+  ok('« Vider » l’oublie', (await lignes()).length === 0, `${combien} → 0`)
+  await p.click('#fermerConsole')
+  await p.waitForTimeout(150)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

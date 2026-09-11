@@ -21,6 +21,7 @@
       <button id="basculeAtelier" title="Écrire le script d’un nœud">Script</button>
       <button id="basculeProjet" title="Cartes, dessins, sons, textes, espèces">Projet</button>
       <button id="basculeFichiers" title="Le dossier de travail, et tout ce que le projet contient">Fichiers</button>
+      <button id="basculeConsole" title="Ce que l’éditeur a à dire : scripts refusés, exceptions, traces">Console</button>
       <span class="sep"></span>
       <button id="nouveau" title="Créer un nouveau jeu">Nouveau…</button>
       <button id="ouvrir" title="Relire un projet enregistré">Ouvrir…</button>
@@ -144,6 +145,18 @@
         <button class="lien accueil-exemples" id="accueilExemples">…ou explorer les mondes d’exemple</button>
       </div>
     </div>
+    <!-- La console : EN BAS, sur toute la largeur. C'est sa place dans tous
+         les moteurs — et elle ne dispute pas la colonne de droite aux
+         panneaux Projet et Fichiers, qu'on lit souvent en même temps qu'elle. -->
+    <section class="console-bas" id="console" hidden>
+      <div class="atelier-tete">
+        <b>Console</b>
+        <span class="pousse"></span>
+        <button id="viderConsole" title="Oublier tout ce qui est écrit ici">Vider</button>
+        <button id="fermerConsole" title="Fermer">✕</button>
+      </div>
+      <div class="panneau-corps" id="consoleCorps"></div>
+    </section>
     <footer class="pied">
       <button id="basculeAide" class="lien" title="Ce que fait chaque outil">?</button>
       <span id="aide"></span>

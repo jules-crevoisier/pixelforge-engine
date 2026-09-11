@@ -33,6 +33,12 @@ export const INTERDITS = [
   'eval', 'Function', 'import', 'require', 'process',
   'localStorage', 'sessionStorage', 'indexedDB', 'navigator', 'location',
   'alert', 'confirm', 'prompt',
+  // `console` est entre dans la liste le jour ou `c.tracer` a existe.
+  // L'interdire sans rien offrir aurait ete refuser sans alternative — la
+  // meilleure facon de faire cesser de croire la regle ; maintenant il y a
+  // un verbe portable qui fait la meme chose, et qui va dans la console de
+  // l'editeur.
+  'console',
 ]
 
 export interface Compilation {
@@ -137,7 +143,11 @@ export function compiler(source: string, surErreur?: (r: Rapport) => void): Comp
       script: null,
       erreur: `Ce script emploie ${interdits.join(', ')}. Un script ne parle qu'à `
         + `« c » (le contexte) et « n » (son nœud) : c'est ce qui lui permet d'être `
-        + `exporté vers un autre langage. Ce qui touche à la page ne passerait pas la frontière.`,
+        + `exporté vers un autre langage. Ce qui touche à la page ne passerait pas la frontière.`
+        + (interdits.includes('console')
+          ? ' Pour tracer, employez c.tracer(…) : la console de l\'éditeur l\'affiche, '
+            + 'et le verbe traverse l\'export.'
+          : ''),
       avertissements,
     }
   }
@@ -202,6 +212,7 @@ c.dire('accueil') ouvre une suite de répliques
 c.secouer(3, 200) secousse de caméra (pixels, ms)
 c.geler(50)       gèle la simulation (hit-stop)
 c.salle           le nom du tableau où l'on est
+c.tracer(x, n.etat)          une ligne dans la console
 c.poser('slime', x, y)       une entité du catalogue
 c.retirer(noeud)  l'enlève de la scène
 c.aller('grotte') change de carte, de scène, de créatures

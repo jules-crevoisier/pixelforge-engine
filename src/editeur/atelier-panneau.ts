@@ -48,15 +48,25 @@ export class Atelier {
   /** Les scripts d'origine, pour pouvoir revenir en arriere. */
   private origines = new Map<string, Script | undefined>()
   private surChangement: () => void
+  /**
+   * Ou vont les messages, en plus du bandeau de l'atelier.
+   *
+   * Le bandeau ne se voit que si le panneau est ouvert, et seulement pour le
+   * noeud qu'on y a choisi : une exception levee soixante fois par seconde
+   * par un autre noeud n'y paraissait jamais. La console, elle, garde.
+   */
+  private surMessage: (genre: string, texte: string) => void
 
   constructor(
     attaches: AttachesAtelier, jeu: () => Jeu, racine: () => Noeud,
     surChangement: () => void = () => {},
+    surMessage: (genre: string, texte: string) => void = () => {},
   ) {
     this.a = attaches
     this.jeu = jeu
     this.racine = racine
     this.surChangement = surChangement
+    this.surMessage = surMessage
     this.a.aide.textContent = AIDE_SCRIPT
 
     this.a.bascule.addEventListener('click', () => this.basculer())
@@ -199,5 +209,6 @@ export class Atelier {
   private dire(texte: string, genre: string): void {
     this.a.message.textContent = texte
     this.a.message.className = `atelier-message ${genre}`
+    if (texte) this.surMessage(genre, texte)
   }
 }

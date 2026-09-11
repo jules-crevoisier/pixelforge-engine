@@ -18,9 +18,23 @@ body {
    l'editeur de cote — commandes de gauche et mesures de droite disparaissent
    ensemble sans que rien ne le laisse prevoir. */
 .app {
-  display: grid; grid-template-rows: auto 1fr 30px;
+  display: grid; grid-template-rows: auto 1fr auto 30px;
+  /* UNE colonne, large comme l'ecran et pas comme son contenu. Sans ce
+     `minmax(0, …)`, une longue ligne de console — un message d'erreur de
+     trois cents caracteres — elargissait la colonne de la grille, et toute
+     l'application debordait a droite : le panneau de droite se retrouvait
+     coupe par le bord de la fenetre. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh; height: 100dvh; overflow: hidden;
 }
+/* Chaque rangee est NOMMEE par son element, et non deduite de l'ordre des
+   enfants. La console s'ouvre et se ferme ; en placement automatique, la
+   fermer faisait remonter le pied dans la rangee de la console et l'ouvrir le
+   poussait dans une rangee implicite, hors de l'ecran. */
+.app > .barre { grid-row: 1; }
+.app > .corps { grid-row: 2; }
+.app > .console-bas { grid-row: 3; }
+.app > .pied { grid-row: 4; }
 
 /* La barre se replie, et la rangee GRANDIT avec elle.
    Elle defilait : c'etait le bon choix tant qu'elle tenait presque sur une
@@ -280,6 +294,27 @@ button.lien:hover { color: var(--accent); }
 .ligne.actif .nom { color: var(--accent); }
 .champs input[type="checkbox"] { width: 14px; height: 14px; justify-self: start; }
 .champs input:disabled { color: var(--dim); background: transparent; }
+
+/* La console vit EN BAS, sur toute la largeur : c'est sa place dans les
+   moteurs, et la colonne de droite reste aux panneaux qu'on lit en meme
+   temps qu'elle. Une hauteur fixe et non extensible : une console qui grandit
+   avec ses messages mangerait la scene sans qu'on le demande. */
+.console-bas {
+  display: flex; flex-direction: column; height: 200px; min-height: 200px;
+  min-width: 0; overflow: hidden;
+  border-top: 1px solid var(--line); background: var(--bg-1);
+}
+.console-bas .ligne { min-width: 0; }
+.console-bas[hidden] { display: none; }
+.console-bas .panneau-corps { overflow: auto; padding: 8px 12px; }
+
+/* La console : le genre du message se lit au lisere, pas au mot. */
+.ligne.console-faute { border-color: #ff8a8a; }
+.ligne.console-avertissement { border-color: #ffd479; }
+.ligne.console-note { border-color: var(--line); }
+.console-compte { color: var(--dim); font-variant-numeric: tabular-nums; }
+/* Un bouton qui compte des erreurs doit se voir sans qu'on le cherche. */
+button.alerte { border-color: #ff8a8a; color: #ff8a8a; }
 
 /* Une salle qui en recouvre une autre : la caméra ne saurait pas laquelle
    choisir. Le liseré le dit sur la ligne, là où l'on peut corriger. */

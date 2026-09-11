@@ -118,6 +118,8 @@ export function mondeDepuisProjet(
    */
   const scriptsEspeces = new Map<string, NonNullable<ReturnType<typeof compiler>['script']>>()
   const fautesEspeces: string[] = []
+  /** Les scripts que le monde a refuses, en clair. L'editeur les publie. */
+  const fautesScripts: string[] = []
   for (const e of p.especes ?? []) {
     if (e.comportement !== 'script' || !e.script) continue
     const c = compiler(e.script)
@@ -271,6 +273,7 @@ export function mondeDepuisProjet(
     lumiere: p.lumiere ?? { ambiante: 1 },
     regles: p.regles ?? { epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1 },
     peuplement,
+    fautesScripts,
     planches: p.planches,
     tuilePinceau: 0,
     installer(jeu) {
@@ -470,6 +473,15 @@ export function mondeDepuisProjet(
       }
       fautes.push(...fautesEspeces)
       notes = fautes.length ? ` · ${fautes.length} script(s) refusé(s)` : ''
+      /*
+       * Les refus partent aussi a la CONSOLE.
+       *
+       * Le compte dans la barre d'etat disait « 3 script(s) refuse(s) » et
+       * rien d'autre : ni lesquels, ni pourquoi. On garde donc la liste, et
+       * l'editeur la lit apres avoir installe le monde — voir `signaler`.
+       */
+      fautesScripts.length = 0
+      fautesScripts.push(...fautes)
       if (dirige) jeu.suivreNoeud(dirige.nom)
 
       // Les entites : un seul script, pose sur la racine, qui les fait toutes

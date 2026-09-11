@@ -90,6 +90,24 @@ export interface ContexteJeu {
   geler(ms: number): void
   /** Le nom du tableau ou l'on est, ou vide si le monde est continu. */
   readonly salle: string
+  /**
+   * Ecrire une ligne dans la console de l'editeur.
+   *
+   * ## Pourquoi ce verbe existe, et pourquoi il ne fait rien en jeu
+   *
+   * Un script qu'on ecrit se debogue en regardant ce qu'il croit. Sans un
+   * verbe pour cela, la seule facon de savoir ce que vaut `n.etat.saut` est
+   * de l'ecrire dans le NOM du noeud, ou de le deviner. Les scripts n'ont pas
+   * le droit de nommer `console` — ce mot est dans les interdits, et il doit
+   * y rester : un script qui parle au navigateur ne s'exporte plus.
+   *
+   * Le verbe est donc dans le contexte, comme `jouer` ou `dire`. Dans
+   * l'editeur, il ecrit dans la console ; dans le jeu livre, personne n'ecoute
+   * et il ne coute rien. Un portage vers un autre langage peut le faire
+   * ecrire dans SA console, ou ne rien faire : c'est le meme contrat que les
+   * autres verbes.
+   */
+  tracer(...valeurs: unknown[]): void
   /** Pose une entite d'une espece du catalogue. Espece inconnue : null. */
   poser(espece: string, x: number, y: number): Noeud | null
   /** Retire un noeud de la scene, ou qu'il soit. */
@@ -295,6 +313,10 @@ export class Jeu {
   musicien: Musicien | null = null
   /** Ouvre une suite de repliques par son nom. C'est le monde qui la branche. */
   ouvrirDialogue: ((nom: string) => boolean) | null = null
+  /**
+   * Qui ecoute `c.tracer`. Nul dans un jeu livre : la trace ne coute rien.
+   */
+  surTrace: ((ligne: string) => void) | null = null
   /** Pose une entite du catalogue. C'est le peuplement qui le branche. */
   poserEntite: ((espece: string, x: number, y: number) => Noeud | null) | null = null
   /**
@@ -555,6 +577,17 @@ export class Jeu {
       secouer: (amplitude, ms) => this.secouer(amplitude, ms),
       geler: (ms) => this.geler(ms),
       salle: this.salles?.nom ?? '',
+      tracer: (...valeurs) => {
+        if (!this.surTrace) return
+        // La mise en forme se fait ICI et non chez l'ecouteur : un objet
+        // passe tel quel serait mute par le script juste apres, et la console
+        // montrerait l'etat d'une seconde plus tard au lieu de celui qu'on a
+        // voulu voir.
+        this.surTrace(valeurs.map((v) => {
+          if (typeof v === 'string') return v
+          try { return JSON.stringify(v) ?? String(v) } catch { return String(v) }
+        }).join(' '))
+      },
       poser: (espece, x, y) => this.poserEntite ? this.poserEntite(espece, x, y) : null,
       retirer: (noeud) => retirerDe(this.racine, noeud),
       aller: (carte) => this.allerCarte ? this.allerCarte(carte) : false,

@@ -94,6 +94,14 @@ export interface Monde {
   readonly musiques?: MusiqueJeu[]
   /** Les assemblages — modeles d'editeur. Ils repassent a l'enregistrement. */
   readonly assemblages?: { nom: string; racine: import('../export/format.ts').NoeudSerialise }[]
+  /**
+   * Les scripts que ce monde a refuses a la compilation, en clair.
+   *
+   * Le compte seul — « 3 script(s) refuse(s) » — ne dit ni lesquels ni
+   * pourquoi. La liste part a la console de l'editeur. Absente : le monde n'a
+   * rien refuse, ou ne compile rien.
+   */
+  readonly fautesScripts?: string[]
   /** Un geste d'edition retient ce depart : l'entite survivra aux arrets. */
   retenirDepart?(n: Noeud, parent: Noeud): void
   /** Et le retrait d'une entite oublie le sien — sinon elle reviendrait. */

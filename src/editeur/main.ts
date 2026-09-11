@@ -24,6 +24,7 @@ import { scriptsVersFichiers, appliquerFichiersScripts } from './scripts-dossier
 import { depuisTiled, estDuTiled } from '../export/tiled.ts'
 import { depuisLdtk, estDuLdtk } from '../export/ldtk.ts'
 import { PanneauFichiers, genreDe } from './fichiers-panneau.ts'
+import { PanneauConsole, type GenreMessage } from './console-panneau.ts'
 import { rendre as rendreSon, dechiffrerWav, base64DepuisOctets } from '../runtime/son.ts'
 import { rendreMusique } from '../runtime/musique.ts'
 import type { ProjetSerialise } from '../export/format.ts'
@@ -66,6 +67,56 @@ for (const m of MONDES) {
   o.textContent = m.nom
   selectMonde.appendChild(o)
 }
+
+/* ------------------------------------------------------------------ */
+/* La console : ce que l'editeur a a dire                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Elle nait AVANT tout le reste.
+ *
+ * La premiere faute est souvent celle du premier chargement — un projet dont
+ * un script ne compile pas, un monde d'exemple casse par une modification.
+ * Une console construite apres le chargement ne l'aurait pas entendue.
+ */
+const consolePanneau = new PanneauConsole({
+  panneau: document.getElementById('console') as HTMLElement,
+  corps: document.getElementById('consoleCorps') as HTMLElement,
+  bascule: document.getElementById('basculeConsole') as HTMLButtonElement,
+  fermer: document.getElementById('fermerConsole') as HTMLButtonElement,
+  vider: document.getElementById('viderConsole') as HTMLButtonElement,
+})
+
+/** Ecrit une ligne dans la console. Rend vrai si la ligne est neuve. */
+function signaler(genre: GenreMessage, texte: string, source = ''): boolean {
+  return consolePanneau.dire(genre, texte, source)
+}
+
+/**
+ * Dit quelque chose qui ne va pas : dans la barre d'etat ET dans la console.
+ *
+ * La barre d'etat ne garde qu'un message a la fois — le suivant efface le
+ * precedent, et l'on n'a souvent pas le temps de lire. Ce qui s'y dit de
+ * grave doit donc rester quelque part.
+ */
+function avertir(texte: string, source = ''): void {
+  verdict.textContent = texte
+  signaler('avertissement', texte, source)
+}
+
+/*
+ * LES EXCEPTIONS DU MOTEUR LUI-MEME.
+ *
+ * Elles partaient dans la console du navigateur, que personne n'ouvre — et
+ * l'editeur continuait comme si de rien n'etait, l'air cassé sans dire un
+ * mot. Elles arrivent maintenant la ou l'on regarde.
+ */
+window.addEventListener('error', (e) => {
+  signaler('faute', e.message || String(e.error), 'moteur')
+})
+window.addEventListener('unhandledrejection', (e) => {
+  signaler('faute', `promesse rejetée : ${String(e.reason)}`, 'moteur')
+})
 
 let monde: Monde
 let jeu: Jeu
@@ -138,6 +189,13 @@ const atelier = new Atelier(
   () => jeu,
   () => monde.racine,
   () => { if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() } },
+  // Ce que l'atelier dit, la console le garde : une exception levee soixante
+  // fois par seconde par un noeud qu'on ne regarde pas ne paraissait nulle
+  // part.
+  (genre, texte) => {
+    signaler(genre === 'faute' ? 'faute' : (genre === 'avertissement' ? 'avertissement' : 'note'),
+      texte, 'script')
+  },
 )
 
 /**
@@ -430,6 +488,15 @@ function installer(nouveau: Monde): void {
   jeu.dessiner()
   redessinerEdition()
 
+  /*
+   * Ce qu'un script ecrit avec `c.tracer` arrive dans la console. Le crochet
+   * se rebranche a chaque monde : le jeu est neuf, le sien serait nul.
+   */
+  jeu.surTrace = (ligne) => { signaler('note', ligne, 'script') }
+  // Et ce que le monde a REFUSE de compiler, en clair — le compte de la barre
+  // d'etat ne disait ni lesquels ni pourquoi.
+  for (const f of monde.fautesScripts ?? []) signaler('faute', f, 'projet')
+
   atelier.reinitialiser()
   // L'aide du pied montre L'OUTIL courant, pas la fiche du monde : c'est la
   // question qu'on se pose en editant. La fiche du monde vit derriere « ? ».
@@ -439,7 +506,9 @@ function installer(nouveau: Monde): void {
   majMesure()
   appliquerCadre()
   panneauProjet?.montrer()
-  ;(window as unknown as { pfe: unknown }).pfe = { jeu, monde, palette, edition }
+  ;(window as unknown as { pfe: unknown }).pfe = {
+    jeu, monde, palette, edition, journal, console: consolePanneau,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -530,7 +599,7 @@ async function enregistrer(): Promise<void> {
         + (combien ? ` · scripts/ : ${combien} fichier(s) à éditer avec votre éditeur` : '')
       return
     } catch (e) {
-      verdict.textContent = e instanceof Error ? e.message : String(e)
+      avertir(e instanceof Error ? e.message : String(e), 'fichier')
       return
     }
   }
@@ -543,12 +612,12 @@ function relire(texte: string, nomFichier: string): void {
   try {
     brut = JSON.parse(texte)
   } catch (e) {
-    verdict.textContent = `« ${nomFichier} » n’est pas du JSON valide : ${e instanceof Error ? e.message : e}`
+    avertir(`« ${nomFichier} » n’est pas du JSON valide : ${e instanceof Error ? e.message : e}`, 'fichier')
     return
   }
   const p = brut as ReturnType<typeof projetCourant>
   if (!p || typeof p.version !== 'number' || !Array.isArray(p.cartes)) {
-    verdict.textContent = `« ${nomFichier} » n’a pas la forme d’un projet PixelForge.`
+    avertir(`« ${nomFichier} » n’a pas la forme d’un projet PixelForge.`, 'fichier')
     return
   }
   // On lit une version plus recente sans faire semblant de la comprendre.
@@ -773,7 +842,7 @@ async function routerFichier(f: File): Promise<void> {
     if (estDuLdtk(brut)) {
       const r = depuisLdtk(brut)
       if (!r.cartes.length) {
-        verdict.textContent = `« ${f.name} » : ${r.avertissements.join(' · ') || 'aucun niveau'}`
+        avertir(`« ${f.name} » : ${r.avertissements.join(' · ') || 'aucun niveau'}`, 'fichier')
         return
       }
       let p2 = projetCourant()
@@ -800,8 +869,8 @@ async function routerFichier(f: File): Promise<void> {
     const octets = new Uint8Array(await f.arrayBuffer())
     const brut = dechiffrerWav(octets)
     if (!brut) {
-      verdict.textContent = `« ${f.name} » n’est pas un WAV PCM 16 bits. `
-        + 'Exportez-le sans compression — c’est le seul format que tout moteur lit.'
+      avertir(`« ${f.name} » n’est pas un WAV PCM 16 bits. `
+        + 'Exportez-le sans compression — c’est le seul format que tout moteur lit.', 'fichier')
       return
     }
     const dureeMs = (brut.echantillons.length / brut.taux) * 1000
@@ -815,9 +884,9 @@ async function routerFichier(f: File): Promise<void> {
       + 'Un script le joue par c.jouer, une animation par son événement.'
     return
   }
-  verdict.textContent = `« ${f.name} » : rien à en faire ici. `
+  avertir(`« ${f.name} » : rien à en faire ici. `
     + 'Une image devient une planche, un .json s’ouvre comme projet, un .wav devient un son, '
-    + 'un niveau Tiled ou LDtk devient une carte.'
+    + 'un niveau Tiled ou LDtk devient une carte.', 'fichier')
 }
 
 const panneauFichiers = new PanneauFichiers(
@@ -1593,6 +1662,9 @@ function dessinerSalles(): void {
   jeu.ecran.presenter()
 }
 
+/** Le dernier etat de recouvrement signale : voir `majEtat`. */
+let dernierCroisement = ''
+
 function majEtat(): void {
   const c = edition.compter()
   const entites = compterEntites(monde.racine)
@@ -1606,6 +1678,20 @@ function majEtat(): void {
    * l'annoncerait une fois, a quelqu'un qui regarde ailleurs.
    */
   const croise = salles.length ? chevauchements(salles) : []
+  /*
+   * Le recouvrement part AUSSI a la console, et une seule fois par etat :
+   * `majEtat` passe a chaque mouvement de souris, et signaler a chaque fois
+   * ferait un compteur a quatre chiffres pour une seule faute.
+   */
+  const signature = croise.map((c) => c.join('+')).join(' ')
+  if (signature !== dernierCroisement) {
+    dernierCroisement = signature
+    if (signature) {
+      signaler('avertissement',
+        `Salles qui se recouvrent : ${croise.map((c) => `« ${c[0]} » et « ${c[1]} »`).join(', ')}`
+        + ' — la caméra ne saurait pas laquelle choisir.', 'projet')
+    }
+  }
   verdict.textContent = `${palette.taille} couleurs · ${c.terrain} posées`
     + ` · ${c.solides} solides${entites ? ` · ${entites} entité(s)` : ''}`
     + (salles.length ? ` · ${salles.length} salle(s)` : '')
@@ -1788,6 +1874,13 @@ changent seulement le cadre d’<i>édition</i> : voir plus de carte, ou de plus
 près.</p>
 
 <h4>Écrire</h4>
+<p>La <b>Console</b> garde ce que l’éditeur a à dire : les scripts refusés et
+<i>pourquoi</i>, les exceptions levées pendant que le jeu tourne, les fichiers
+qu’on n’a pas su lire, et ce qu’un script écrit avec <code>c.tracer(…)</code>.
+Un message identique se compte au lieu de s’empiler — une erreur levée soixante
+fois par seconde reste une ligne. Le compte sur le bouton dit les fautes qu’on
+n’a pas encore lues.</p>
+
 <p><b>Script</b> ouvre l’atelier : on choisit un nœud, on écrit son
 comportement, <kbd>Ctrl</kbd>+<kbd>Entrée</kbd>, et ça tourne pendant que le jeu
 joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
@@ -2000,12 +2093,12 @@ async function exporter(): Promise<void> {
      */
     const r = await fetch('jeu/gabarit.html')
     if (!r.ok) {
-      verdict.textContent = 'Le gabarit du jeu web manque : lancez `npm run joueur` et redéployez.'
+      avertir('Le gabarit du jeu web manque : lancez `npm run joueur` et redéployez.', 'export')
       return
     }
     const page = pageDeJeu(await r.text(), p)
     if (page === null) {
-      verdict.textContent = 'Le gabarit n’a pas l’emplacement du projet : refaites `npm run joueur`.'
+      avertir('Le gabarit n’a pas l’emplacement du projet : refaites `npm run joueur`.', 'export')
       return
     }
     if (choix === 'paquet:bureau') {
@@ -2019,7 +2112,7 @@ async function exporter(): Promise<void> {
             + 'npm run construire : les binaires Linux/Windows/macOS sortent chez vous.'
           return
         } catch (e) {
-          verdict.textContent = e instanceof Error ? e.message : String(e)
+          avertir(e instanceof Error ? e.message : String(e), 'fichier')
           return
         }
       }
@@ -2038,7 +2131,7 @@ async function exporter(): Promise<void> {
           + `(${Math.round(page.length / 1024)} Ko). Double-clic, ou itch.io.`
         return
       } catch (e) {
-        verdict.textContent = e instanceof Error ? e.message : String(e)
+        avertir(e instanceof Error ? e.message : String(e), 'fichier')
         return
       }
     }
@@ -2060,7 +2153,7 @@ async function exporter(): Promise<void> {
           + ` ${Math.round(octets.length / 1024)} Ko`
         return
       } catch (e) {
-        verdict.textContent = e instanceof Error ? e.message : String(e)
+        avertir(e instanceof Error ? e.message : String(e), 'fichier')
         return
       }
     }

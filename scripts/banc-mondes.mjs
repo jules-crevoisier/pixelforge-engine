@@ -5187,6 +5187,32 @@ console.log('\n--- l\'inspecteur : regler ce qu\'un noeud porte ---')
     chercher(image.scenes[0].racine, (n) => n.id === heros.id).image === 7)
 }
 
+console.log('\n--- le verbe qui trace, et celui qui est refuse ---')
+
+{
+  const { compiler, INTERDITS, AIDE_SCRIPT } = await import('../src/script/atelier.ts')
+
+  check('« console » est dans les interdits : il ne passerait pas la frontiere',
+    INTERDITS.includes('console'))
+  const refus = compiler("console.log('essai')")
+  check('un script qui l\'emploie est refuse', !refus.ok)
+  check('et le refus dit PAR QUOI le remplacer',
+    (refus.erreur ?? '').includes('c.tracer'),
+    'refuser sans alternative est la meilleure facon de faire cesser de croire la regle')
+  check('c.tracer figure dans le pense-bete de l\'atelier',
+    AIDE_SCRIPT.includes('c.tracer'))
+
+  // Le verbe lui-meme : il met en forme ICI, pas chez l'ecouteur.
+  const bon = compiler("c.tracer('x', n.etat)")
+  check('un script qui trace, lui, compile', bon.ok && !!bon.script)
+  const vues = []
+  const faux = {
+    tracer: (...v) => vues.push(v.map((q) => (typeof q === 'string' ? q : JSON.stringify(q))).join(' ')),
+  }
+  bon.script(faux, { etat: { pv: 3 } })
+  check('et ce qu\'il trace arrive mis en forme', vues[0] === 'x {"pv":3}', vues[0])
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

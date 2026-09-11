@@ -634,6 +634,50 @@ identifiant, et la fumée fait le tour complet dans le navigateur sur le
 Gouffre entier — renommer une gelée, la cacher, la retirer, viser une
 lanterne, la dupliquer.
 
+## La console : ce que l'éditeur savait et ne disait pas
+
+![La console, en bas : un avertissement, un refus, des traces](docs/console.png)
+
+Un projet dont trois scripts sont refusés affichait « 3 script(s) refusé(s) »
+dans un coin de la barre d'état. Pas lesquels, pas pourquoi. Une exception
+levée pendant que le jeu tourne s'écrivait dans le bandeau de l'atelier —
+visible seulement s'il était ouvert, et sur le nœud qu'on y avait choisi. Une
+erreur du moteur lui-même partait dans la console du navigateur, que personne
+n'ouvre. Et tout le reste — un import refusé, deux salles qui se recouvrent, un
+fichier qu'on ne sait pas lire — passait par la barre d'état, qui ne garde
+qu'un message à la fois : le suivant efface le précédent, et on n'a jamais le
+temps de lire.
+
+La console est **en bas, sur toute la largeur** — sa place dans les moteurs, et
+elle ne dispute pas la colonne de droite aux panneaux qu'on lit en même temps
+qu'elle. Elle reçoit :
+
+- les **scripts refusés**, un par un, avec la raison ;
+- les **exceptions** levées pendant que le jeu tourne, avec le nom du nœud ;
+- les **erreurs du moteur** lui-même, et les promesses rejetées ;
+- les fichiers **qu'on n'a pas su lire**, les salles qui se recouvrent ;
+- ce qu'un script écrit avec **`c.tracer(…)`**.
+
+Un message identique **se compte** au lieu de s'empiler : un script qui échoue
+échoue soixante fois par seconde, et soixante lignes par seconde rendent la
+console illisible en trois secondes — en poussant hors de l'écran la seule
+ligne qui explique. Le bouton porte le nombre de fautes **non lues**, parce
+qu'une console fermée qui se remplit d'erreurs sans rien dire ne vaut pas mieux
+que pas de console.
+
+### `c.tracer`, et pourquoi `console.log` est refusé
+
+Un script se débogue en regardant ce qu'il croit. Il n'y avait aucun moyen de
+le faire : `n.etat.saut` se devinait. `c.tracer(x, n.etat)` écrit une ligne
+dans la console, et — comme tous les verbes du contexte — il **traverse
+l'export** : dans le jeu livré personne n'écoute et il ne coûte rien, un
+portage vers un autre langage peut l'envoyer dans *sa* console.
+
+Du même coup, `console` est entré dans la liste des mots qu'un script n'a pas
+le droit de nommer. L'interdire sans rien offrir aurait été refuser sans
+alternative — la meilleure façon de faire cesser de croire la règle. Le refus
+**dit par quoi le remplacer**.
+
 ## Le scripting, dans l'éditeur
 
 ![L'atelier de scripts](docs/atelier.png)
