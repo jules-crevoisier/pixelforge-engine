@@ -414,6 +414,8 @@ la version 16 garde l'épée et les cœurs : les défauts sont ceux d'avant.
 
 ### La feuille blanche
 
+![La feuille blanche : tuiles neutres, héros neutre, rien de la démo](docs/feuille-blanche.png)
+
 Le départ **vierge** ne transporte *aucun* asset de démonstration : des tuiles
 neutres générées depuis les masques de l'autotiling (un aplat, un liseré
 d'encre du seul côté sans voisin), un héros en deux couleurs qu'on redessine
@@ -429,6 +431,8 @@ case vide à dessiner sur place. Ces boutons manquaient, et leur absence
 fermait des portes que rien ne signalait.
 
 ## Les fichiers, comme dans un moteur
+
+![Le panneau Fichiers : le dossier de travail, et l'inventaire du projet](docs/fichiers.png)
 
 Le retour : *« comparé à Godot, il me manque tout le système de fichiers,
 l'importation des assets »*. Et c'était vrai — non parce que ça manquait,
@@ -491,6 +495,8 @@ s'affiche au lieu de laisser croire qu'on a tout compris. L'export vers
 Tiled et LDtk existait déjà : l'aller-retour est complet.
 
 ## L'arbre de scène
+
+![L'onglet Scène : l'arbre du Gouffre, nœud par nœud](docs/scene.png)
 
 L'outil Entité pose et déplace ; il ne répond pas à « qu'y a-t-il dans cette
 scène ? ». Dès qu'un niveau dépasse dix entités, on en perd une derrière un
