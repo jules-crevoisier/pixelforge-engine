@@ -3,6 +3,7 @@ import type { Son } from '../runtime/son.ts'
 import { FORMES, rendre as rendreSon } from '../runtime/son.ts'
 import type { AnimationSerialisee } from '../export/format.ts'
 import { COMPORTEMENTS, type Comportement, type Espece } from '../runtime/entites.ts'
+import { REGLAGES_DEFAUT, type ReglagesPlateforme } from '../runtime/plateforme.ts'
 import {
   PROJECTIONS, projetNeuf, redimensionnerProjet, ajouterCalqueProjet,
   retirerCalqueProjet, modifierCalqueProjet, poserEspeceProjet, retirerEspeceProjet,
@@ -14,6 +15,8 @@ import {
   reglerAmbianteCarteProjet,
   ajouterDialogueProjet, reglerDialogueProjet, retirerDialogueProjet,
   ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet,
+  ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet, retirerAnimationProjet,
+  reglerReglesProjet,
 } from './projet-neuf.ts'
 import { compiler } from '../script/atelier.ts'
 import { chevauchements } from '../niveau/salles.ts'
@@ -203,7 +206,7 @@ export class PanneauProjet {
       // Le JEU : ce qui fait d'une liste de cartes une partie — le titre et
       // l'ordre, les declencheurs, la lumiere. Empile sous « Carte », tout
       // cela noyait la taille de la carte sous sept blocs.
-      this.blocDeroule(p); this.blocDeclencheurs(p); this.blocLumiere(p)
+      this.blocDeroule(p); this.blocRegles(p); this.blocDeclencheurs(p); this.blocLumiere(p)
     }
     else if (this.onglet === 'especes') this.blocEspeces(p)
     else if (this.onglet === 'dessin') this.blocDessin()
@@ -365,6 +368,53 @@ export class PanneauProjet {
    * description porte un rayon de lueur, et elle se pose avec l'outil Entite
    * comme tout le reste.
    */
+  /**
+   * Les regles du jeu : ce que le moteur OFFRAIT, et qu'on peut refuser.
+   *
+   * L'epee et les coeurs etaient cables — un jeu de plateforme pur avait
+   * quand meme une frappe sur Espace, un die-and-retry affichait une jauge.
+   * Un moteur qui decide a la place du createur n'est pas un moteur : ces
+   * quatre reglages sont des donnees du projet, format 16.
+   */
+  private blocRegles(p: ProjetSerialise): void {
+    const d = bloc(this.corps, 'Règles')
+    const r = p.regles ?? { epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1 }
+    const g = document.createElement('div')
+    g.className = 'champs'
+    const caseACocher = (etiquette: string, valeur: boolean, titre: string,
+      surChangement: (v: boolean) => void): void => {
+      const l = document.createElement('label')
+      l.textContent = etiquette
+      const i = document.createElement('input')
+      i.type = 'checkbox'
+      i.checked = valeur
+      i.title = titre
+      i.addEventListener('change', () => surChangement(i.checked))
+      g.append(l, i)
+    }
+    caseACocher('Épée', r.epee,
+      'La frappe sur la touche action. Décochée : la touche reste entière pour vos scripts.',
+      (v) => this.appliquer(reglerReglesProjet(this.frais(), { epee: v }),
+        v ? 'L’épée est au héros' : 'Pas d’épée — la touche action est à vous'))
+    caseACocher('Cœurs à l’écran', r.coeurs,
+      'La jauge de vie dessinée pendant le jeu. Un die-and-retry n’en veut pas.',
+      (v) => this.appliquer(reglerReglesProjet(this.frais(), { coeurs: v }),
+        v ? 'Les cœurs s’affichent' : 'Pas de jauge à l’écran'))
+    const reprise = champ(g, 'Réapparition (ms)', r.reapparitionMs, 'number')
+    reprise.title = 'Le délai avant de reprendre après la mort. Celeste : presque zéro.'
+    reprise.addEventListener('change', () => {
+      this.appliquer(reglerReglesProjet(this.frais(), { reapparitionMs: Number(reprise.value) }),
+        `Réapparition : ${reprise.value} ms`)
+    })
+    const pointes = champ(g, 'Dégâts des pointes', r.degatsPointes, 'number')
+    pointes.title = 'Ce qu’une case blessante retire. Zéro : les pointes deviennent du décor.'
+    pointes.addEventListener('change', () => {
+      this.appliquer(reglerReglesProjet(this.frais(), { degatsPointes: Number(pointes.value) }),
+        `Pointes : ${pointes.value} dégât(s)`)
+    })
+    d.appendChild(g)
+  }
+
   private blocLumiere(p: ProjetSerialise): void {
     const d = bloc(this.corps, 'Lumière')
     const g = document.createElement('div')
@@ -844,6 +894,81 @@ export class PanneauProjet {
     lueur.title = 'Rayon de la lumière qu’elle émet quand la nuit tombe. Zéro : elle n’éclaire pas.'
     d.appendChild(g)
 
+    /*
+     * Le script de l'espece : l'intention qui appartient a la personne.
+     *
+     * Les huit intentions de la liste sont un DEPART ; « script » est la
+     * sortie du plafond — on ecrit ce que la creature fait, chaque pas, avec
+     * le meme « c » et le meme « n » que l'atelier. Il se verifie EN TAPANT,
+     * comme les declencheurs, et pour la meme raison : un refus silencieux
+     * donnerait une creature immobile sans explication.
+     */
+    const scriptEspece = document.createElement('textarea')
+    scriptEspece.value = source?.script ?? ''
+    scriptEspece.rows = 4
+    scriptEspece.style.width = '100%'
+    scriptEspece.spellcheck = false
+    scriptEspece.placeholder = "Intention « script » : écrivez ce qu'elle fait, chaque pas.\n"
+      + "Ex. : n.etat.t = (n.etat.t ?? 0) + c.dt\n"
+      + 'const corps = n.enfants.find((e) => e.type === \'corps\')\n'
+      + 'c.bouger(corps, Math.sin(n.etat.t * 3) * 40 * c.dt, 0)'
+    scriptEspece.title = 'Le script de l’espèce, exécuté chaque pas pour chaque créature qui la porte. « n » est SA créature.'
+    const fauteEspece = document.createElement('p')
+    fauteEspece.className = 'dos-vide'
+    const verifierEspece = (): void => {
+      if (!scriptEspece.value.trim()) { fauteEspece.textContent = ''; return }
+      const r = compiler(scriptEspece.value)
+      fauteEspece.textContent = r.ok ? '' : (r.erreur ?? 'refusé')
+    }
+    verifierEspece()
+    scriptEspece.addEventListener('input', verifierEspece)
+    const majVisibiliteScript = (): void => {
+      const visible = comportement.value === 'script'
+      scriptEspece.style.display = visible ? '' : 'none'
+      fauteEspece.style.display = visible ? '' : 'none'
+    }
+    majVisibiliteScript()
+    comportement.addEventListener('change', majVisibiliteScript)
+    d.append(scriptEspece, fauteEspece)
+
+    /*
+     * LA PHYSIQUE A SOI. Le controleur de plateforme — saut, coyote, dash —
+     * tournait sur ses reglages d'usine : le « game feel » d'un jeu, la
+     * seule chose qu'un createur regle cent fois, n'etait pas reglable. Ces
+     * champs ecrivent le Partial<ReglagesPlateforme> que le format porte
+     * depuis toujours ; vide, le reglage d'usine — et le champ MONTRE cette
+     * valeur d'usine, pour qu'on regle en connaissance.
+     */
+    const physique = document.createElement('details')
+    const resume = document.createElement('summary')
+    resume.textContent = 'Physique de plateforme (vue de côté)'
+    resume.style.cursor = 'pointer'
+    resume.style.color = 'var(--dim)'
+    resume.style.fontSize = '12px'
+    resume.style.padding = '6px 0'
+    physique.appendChild(resume)
+    const gp = document.createElement('div')
+    gp.className = 'champs'
+    const REGLAGES_EXPOSES: [keyof ReglagesPlateforme, string, string][] = [
+      ['vitesse', 'Vitesse (px/s)', 'La pointe horizontale.'],
+      ['hauteurSaut', 'Saut (px)', 'La hauteur au sommet. La gravité s’en déduit.'],
+      ['tempsMontee', 'Montée (s)', 'Le temps pour atteindre le sommet du saut.'],
+      ['controleEnLair', 'Contrôle en l’air (0-1)', 'La part du contrôle gardée en vol.'],
+      ['coyote', 'Coyote (s)', 'Sauter encore, juste après le bord.'],
+      ['tampon', 'Tampon de saut (s)', 'Appuyer un peu trop tôt compte quand même.'],
+      ['chuteMax', 'Chute max (px/s)', 'La vitesse de chute plafonnée.'],
+      ['vitesseDash', 'Dash (px/s)', 'La vitesse du dash. Zéro : pas de dash.'],
+    ]
+    const champsPhysique = REGLAGES_EXPOSES.map(([cle, etiquette, titre]) => {
+      const i = champ(gp, etiquette, source?.plateforme?.[cle] ?? '', 'number')
+      i.placeholder = String(REGLAGES_DEFAUT[cle])
+      i.title = `${titre} Vide : le réglage d’usine (${REGLAGES_DEFAUT[cle]}).`
+      i.step = 'any'
+      return [cle, i] as const
+    })
+    physique.appendChild(gp)
+    d.appendChild(physique)
+
     const actions = document.createElement('div')
     actions.className = 'bloc-actions'
     actions.appendChild(bouton(source ? 'Enregistrer l’espèce' : 'Créer l’espèce',
@@ -875,6 +1000,12 @@ export class PanneauProjet {
           degatsPietinement: Math.max(0, Math.round(Number(pietinable.value) || 0)),
           rebondPietinement: Number(pietinable.value) > 0 ? 30 : 0,
           lueur: Math.max(0, Math.round(Number(lueur.value) || 0)),
+          script: scriptEspece.value,
+          // Seuls les reglages REMPLIS partent : le fichier ne porte que ce
+          // qu'on a decide, et l'usine reste l'usine pour le reste.
+          plateforme: Object.fromEntries(champsPhysique
+            .filter(([, i]) => i.value.trim() !== '' && Number.isFinite(Number(i.value)))
+            .map(([cle, i]) => [cle, Number(i.value)])),
         }
         this.especeEditee = identifiant
         this.appliquer(poserEspeceProjet(this.frais(), identifiant, champs),
@@ -1169,6 +1300,17 @@ export class PanneauProjet {
       liste.appendChild(ligne)
     }
     d.appendChild(liste)
+
+    // Comme « + Son » : sans ce bouton, un projet parti en feuille blanche
+    // ne pouvait pas avoir d'animation a lui.
+    const naissance = document.createElement('div')
+    naissance.className = 'bloc-actions'
+    naissance.appendChild(bouton('+ Animation', 'Un clip neuf : deux images, un rythme lent', () => {
+      this.appliquer(ajouterAnimationProjet(this.frais()),
+        'Animation ajoutée — ✎ pour choisir ses images')
+    }))
+    d.appendChild(naissance)
+
     const clip = clips.find((c) => c.nom === this.clipEdite)
     if (!clip) {
       const note = document.createElement('p')
@@ -1250,6 +1392,12 @@ export class PanneauProjet {
           decalageX: 0, decalageY: 0,
         })
         this.montrer()
+      }),
+      bouton('Retirer', 'Une espèce qui le joue gardera sa dernière image', () => {
+        if (!window.confirm(`Retirer l’animation « ${clip.nom} » ?`)) return
+        this.clipEdite = ''
+        this.appliquer(retirerAnimationProjet(this.frais(), clip.nom),
+          `Animation « ${clip.nom} » retirée`)
       }),
     )
     d.appendChild(actions)
@@ -1430,6 +1578,16 @@ export class PanneauProjet {
     }
     d.appendChild(liste)
 
+    // « + Son » manquait, et son absence fermait une porte : un projet parti
+    // en feuille blanche n'avait AUCUN moyen d'avoir un son a soi.
+    const naissance = document.createElement('div')
+    naissance.className = 'bloc-actions'
+    naissance.appendChild(bouton('+ Son', 'Un son neuf, qui s’entend déjà', () => {
+      this.appliquer(ajouterSonProjet(this.frais()),
+        'Son ajouté — ▶ pour l’entendre, ✎ pour le régler')
+    }))
+    d.appendChild(naissance)
+
     const s = sons.find((q) => q.nom === this.sonEdite)
     if (!s) {
       const note = document.createElement('p')
@@ -1478,6 +1636,11 @@ export class PanneauProjet {
         this.dire(`« ${s.nom} » · ${e.length} échantillons · pointe `
           + `${Math.max(...e).toFixed(2)}`)
       }),
+      bouton('Retirer', 'Un script qui le joue jouera le silence', () => {
+        if (!window.confirm(`Retirer le son « ${s.nom} » ?`)) return
+        this.sonEdite = ''
+        this.appliquer(retirerSonProjet(this.frais(), s.nom), `Son « ${s.nom} » retiré`)
+      }),
     )
     d.appendChild(actions)
   }
@@ -1492,6 +1655,13 @@ export class PanneauProjet {
     const t = champ(g, 'Case (px)', 16, 'number')
     const proj = choix(g, 'Projection',
       PROJECTIONS.map((q) => ({ valeur: q.id, nom: q.nom })), 'dessus')
+    // La feuille blanche d'abord : celui qui vient creer SON jeu ne veut pas
+    // repartir du donjon de demonstration. La demo reste a un clic, pour
+    // ceux qui veulent des creatures toutes faites a etudier.
+    const depart = choix(g, 'Départ', [
+      { valeur: 'vierge', nom: 'Feuille blanche — vos dessins' },
+      { valeur: 'demo', nom: 'Avec les assets de la démo' },
+    ], 'vierge')
     d.appendChild(g)
     const actions = document.createElement('div')
     actions.className = 'bloc-actions'
@@ -1501,6 +1671,7 @@ export class PanneauProjet {
       this.appliquer(projetNeuf({
         nom: nom.value, largeur: Number(l.value), hauteur: Number(h.value),
         tuile: Number(t.value), projection: proj.value,
+        depart: depart.value as 'demo' | 'vierge',
       }), `Projet « ${nom.value || 'projet'} » créé`)
     }))
     d.appendChild(actions)

@@ -39,6 +39,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **16** — les regles du jeu. L'epee sur la touche action, les coeurs a
+ * l'ecran, la duree de reapparition, ce qu'une pointe retire : tout cela
+ * etait OFFERT — c'est-a-dire impose. Un jeu de plateforme pur n'a pas
+ * d'epee ; un die-and-retry n'affiche pas de coeurs ; un moteur qui decide a
+ * la place du createur n'est pas un moteur. Ces quatre reglages deviennent
+ * des donnees du projet. Un fichier d'avant se relit : epee et coeurs, comme
+ * avant — ce que faisaient tous les projets.
+ *
  * **15** — la carte partout ou des cases sont nommees. Les salles gagnent
  * leur carte, comme les declencheurs a la version 14, et pour la meme
  * raison : le decoupage du niveau un s'appliquait aussi au niveau deux, aux
@@ -152,7 +160,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 15
+export const VERSION_FORMAT = 16
 
 export interface ProjetSerialise {
   version: number
@@ -245,6 +253,26 @@ export interface ProjetSerialise {
    * cercles de lumiere — avec les couleurs de la palette, jamais d'autres.
    */
   lumiere: { ambiante: number }
+  /**
+   * Les regles du jeu : ce que le moteur OFFRAIT et qu'on peut refuser.
+   *
+   * `epee` — la frappe sur la touche action. `coeurs` — la jauge de vie a
+   * l'ecran. `reapparitionMs` — le delai avant de reprendre apres la mort.
+   * `degatsPointes` — ce qu'une case blessante retire ; zero, et les pointes
+   * deviennent du decor.
+   */
+  regles: ReglesJeu
+}
+
+export interface ReglesJeu {
+  epee: boolean
+  coeurs: boolean
+  reapparitionMs: number
+  degatsPointes: number
+}
+
+export const REGLES_DEFAUT: ReglesJeu = {
+  epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1,
 }
 
 export interface DeclencheurSerialise {
@@ -484,6 +512,7 @@ export function serialiserProjet(
   declencheurs: DeclencheurSerialise[] = [],
   deroule: { titre: string; ordre: string[] } = { titre: '', ordre: [] },
   lumiere: { ambiante: number } = { ambiante: 1 },
+  regles: ReglesJeu = { ...REGLES_DEFAUT },
 ): ProjetSerialise {
   return {
     version: VERSION_FORMAT,
@@ -522,6 +551,12 @@ export function serialiserProjet(
     // L'ambiante est BORNEE a l'ecriture : une valeur negative ou au-dela de
     // un n'a pas de sens, et chaque chargeur ne doit pas avoir a la borner.
     lumiere: { ambiante: Math.max(0, Math.min(1, lumiere.ambiante ?? 1)) },
+    regles: {
+      epee: regles.epee ?? true,
+      coeurs: regles.coeurs ?? true,
+      reapparitionMs: Math.max(0, Math.round(regles.reapparitionMs ?? 700)),
+      degatsPointes: Math.max(0, Math.round(regles.degatsPointes ?? 1)),
+    },
   }
 }
 

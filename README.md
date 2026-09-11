@@ -307,7 +307,10 @@ autre, et tout ce qui y renvoyait pointerait dans le vide.
 
 **Nouveau…** — ou l'accueil — donne un projet **né jouable** : une carte au
 sol déjà peint, deux calques, un héros posé dessus et le catalogue des
-espèces. En vue de côté, le sol du bas naît solide : un projet plateforme qui
+espèces. Il y a **deux départs** : la *feuille blanche* — des tuiles neutres,
+un héros neutre, rien de la démo (voir « La liberté » ci-dessous) — et le
+départ *avec les assets de la démo*, pour étudier des créatures toutes
+faites. En vue de côté, le sol du bas naît solide : un projet plateforme qui
 s'ouvrirait sur une chute libre dans le noir ne dirait pas « éditeur », il
 dirait « cassé ». Ce qui manque, c'est *votre* décor, et c'est justement ce
 qu'on vient
@@ -371,6 +374,58 @@ redimensionnait — et les dix cases disparaissaient, parce que le
 redimensionnement s'appliquait à l'état d'avant. Aucun banc ne pouvait le dire :
 ils appellent la fonction sur un projet qu'ils viennent de fabriquer, où la
 question du « quand » ne se pose pas.
+
+## La liberté : rien n'est précodé
+
+Le retour qui a déclenché ce chantier : *« j'ai l'impression que tout est
+précodé et que je n'ai pas de liberté »*. Il était juste. Les comportements
+étaient une liste fermée, la physique était celle d'usine, l'épée et les
+cœurs étaient imposés, et un projet neuf arrivait avec le donjon et les
+gelées de quelqu'un d'autre. Quatre réponses, chacune vérifiée au banc dans
+les deux sens — la liberté nouvelle marche, ET les projets d'avant jouent
+comme avant.
+
+### L'espèce scriptée
+
+Le comportement d'une espèce n'est plus limité au catalogue (`poursuite`,
+`patrouille`, `fuite`…) : le comportement **`script`** donne le pas de
+l'espèce à *votre* code, dans le même atelier que les déclencheurs — `c` le
+contexte, `n` le nœud. La source vit dans le fichier de projet et traverse
+l'export ; ce qui toucherait au DOM est refusé à la compilation, parce que ça
+ne passerait pas la frontière d'un export Godot ou Python. Une espèce
+scriptée dont le script a une faute reste **immobile** au lieu de casser la
+boucle : l'oubli se voit, il ne jette pas.
+
+### La physique à soi
+
+Les réglages du contrôleur plateforme — hauteur et durée du saut, coyote,
+dash, glissade de mur, huit boutons dans l'onglet Espèces — se règlent **par
+espèce**. Un champ vide laisse l'usine, et le fichier ne porte que ce qu'on a
+décidé. Le banc mesure le saut au sommet : 48 px d'usine, 96 px réglé — pas
+promis, mesuré.
+
+### Les règles du jeu se débrayent
+
+L'épée, les cœurs à l'écran, le délai de réapparition, les dégâts des pointes :
+quatre règles dans l'onglet **Jeu**, plus aucune imposée. Sans épée, la touche
+action n'est **pas consommée** — elle reste entière pour vos leviers et vos
+dialogues. À zéro dégât, les pointes deviennent du décor. Un fichier d'avant
+la version 16 garde l'épée et les cœurs : les défauts sont ceux d'avant.
+
+### La feuille blanche
+
+Le départ **vierge** ne transporte *aucun* asset de démonstration : des tuiles
+neutres générées depuis les masques de l'autotiling (un aplat, un liseré
+d'encre du seul côté sans voisin), un héros en deux couleurs qu'on redessine
+en cinq minutes, aucun son, aucun dialogue, aucun clip, pas d'épée. Et il
+reste **jouable à la première seconde** — sol pré-peint et solide, héros
+posé — parce qu'un départ cassé ne donne pas envie de dessiner. C'est le
+départ des cartes d'accueil ; la démo reste à un clic.
+
+Partir de rien n'est pas une impasse : **+ Son** fabrique un son qui s'entend
+déjà (une descente de 440 à 220 Hz — chaque réglage du panneau s'entendra),
+**+ Animation** un clip de deux images. Ces deux boutons manquaient, et leur
+absence fermait une porte que rien ne signalait.
 
 ## Le scripting, dans l'éditeur
 

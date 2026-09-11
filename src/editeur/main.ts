@@ -337,6 +337,7 @@ function projetCourant() {
     monde.declencheurs ?? [],
     monde.deroule ?? { titre: '', ordre: [] },
     monde.lumiere ?? { ambiante: 1 },
+    monde.regles ?? { epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1 },
   )
 }
 
@@ -518,11 +519,16 @@ const accueil = document.getElementById('accueil') as HTMLElement
 const fermerAccueil = (): void => { accueil.hidden = true }
 const demarrerProjet = (projection: 'cote' | 'dessus'): void => {
   fermerAccueil()
-  const pj = projetNeuf({ nom: 'mon-jeu', projection })
+  // La FEUILLE BLANCHE : des tuiles neutres, un heros neutre, rien de la
+  // demonstration. Celui qui clique ici vient creer SON jeu — lui donner le
+  // donjon et les gelees de la demo ferait croire que le moteur impose son
+  // univers. La demo reste a un clic : « un jeu fini » et les mondes
+  // d'exemple.
+  const pj = projetNeuf({ nom: 'mon-jeu', projection, depart: 'vierge' })
   installerProjet(pj, pj.nom)
   verdict.textContent = projection === 'cote'
-    ? 'Votre jeu de plateforme. Peignez du mur (1), posez des entités (5), appuyez sur ▶ Jouer.'
-    : 'Votre monde vu de dessus. Peignez du mur (1), posez des entités (5), appuyez sur ▶ Jouer.'
+    ? 'Feuille blanche. Peignez du mur (1), redessinez le héros (onglet Dessin), ▶ Jouer.'
+    : 'Feuille blanche, vue de dessus. Peignez du mur (1), redessinez le héros (onglet Dessin), ▶ Jouer.'
 }
 document.getElementById('accueilPlateforme')?.addEventListener('click', () => demarrerProjet('cote'))
 document.getElementById('accueilDessus')?.addEventListener('click', () => demarrerProjet('dessus'))

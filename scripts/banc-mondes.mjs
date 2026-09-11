@@ -4389,6 +4389,318 @@ console.log('\n--- les dialogues et les musiques, au panneau ---')
   }
 }
 
+/*
+ * L'ESPECE SCRIPTEE : l'intention qui appartient a la personne.
+ *
+ * Huit intentions en liste fermee font un bon depart et un mauvais plafond :
+ * on choisissait ce que le moteur sait faire, on ne programmait pas SA
+ * creature. L'intention « script » renverse le rapport — et ces
+ * verifications tiennent les deux bouts : le script agit, son absence ne
+ * casse rien, et la source traverse le fichier.
+ */
+console.log('\n--- l\'espece scriptee ---')
+{
+  const { Peuplement, espece, COMPORTEMENTS } = await import('../src/runtime/entites.ts')
+  const { Combat } = await import('../src/runtime/combat.ts')
+  const { Carte } = await import('../src/tuiles/tilemap.ts')
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+  const { ORTHO_DESSUS } = await import('../src/noyau/projection.ts')
+  const { Entrees } = await import('../src/runtime/entree.ts')
+
+  check('« script » est une intention du catalogue, au meme titre que les autres',
+    COMPORTEMENTS.includes('script'),
+    'une liste courte reste le bon depart ; elle cesse d\'etre un plafond')
+  check('et la source vit dans l\'espece, vide par defaut',
+    espece('x').script === '' && espece('x', { script: 'n.x += 1' }).script === 'n.x += 1')
+
+  const bac = () => {
+    const carte = new Carte(20, 15, 16)
+    carte.ajouterCalque('sol')
+    const racine = creerNoeud('noeud', 'scene')
+    const cible = creerNoeud('sprite', 'heros')
+    cible.x = 300; cible.y = 100
+    const bestiole = creerNoeud('sprite', 'bestiole')
+    bestiole.espece = 'tournesol'
+    bestiole.x = 160; bestiole.y = 120
+    racine.enfants.push(cible, bestiole)
+    const combat = new Combat()
+    const peu = new Peuplement(racine, combat,
+      [espece('tournesol', { comportement: 'script', script: 'peu importe ici' })],
+      [], ORTHO_DESSUS(16), 16)
+    peu.synchroniser()
+    const entrees = new Entrees()
+    const ctx = {
+      dt: 1 / 60, entrees, racine, carte, grille: carte,
+      corps: { poser() {}, retirer() {}, bouger() { return { dx: 0, dy: 0, bloque: false } } },
+      pas: 0, trouver: () => null, bouger: () => ({ dx: 0, dy: 0, bloque: false }),
+    }
+    return { peu, combat, bestiole, cible, ctx }
+  }
+
+  {
+    const { peu, bestiole, cible, ctx } = bac()
+    // Le banc met une fonction NUE : le peuplement ne compile rien, c'est
+    // l'hote qui decide ce qui est un script acceptable.
+    peu.scriptsEspeces.set('tournesol', (c, n) => { n.x += 2; n.etat.vu = (n.etat.vu ?? 0) + 1 })
+    for (let i = 0; i < 5; i++) peu.avancer(ctx, cible, 1000 / 60)
+    check('une espece scriptee fait ce que SON script dit, chaque pas',
+      bestiole.x === 170 && bestiole.etat.vu === 5,
+      `x=160 → ${bestiole.x} en cinq pas, et n.etat lui appartient`)
+  }
+
+  {
+    const { peu, bestiole, cible, ctx } = bac()
+    // Pas d'entree dans la carte des scripts : l'oubli se VOIT — creature
+    // immobile — il ne casse pas la boucle.
+    for (let i = 0; i < 5; i++) peu.avancer(ctx, cible, 1000 / 60)
+    check('sans script compile, elle reste immobile au lieu de casser',
+      bestiole.x === 160, 'l\'oubli se voit, il ne jette pas')
+  }
+
+  {
+    // La frontiere : la source traverse l'enregistrement, et l'editeur la
+    // recompile dans la carte des scripts du peuplement.
+    const { projetNeuf, poserEspeceProjet } = await import('../src/editeur/projet-neuf.ts')
+    const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+    let pj = poserEspeceProjet(projetNeuf(), 'tournesol', {
+      comportement: 'script', script: 'n.x += 1',
+    })
+    pj = poserEspeceProjet(pj, 'casse', {
+      comportement: 'script', script: 'document.title = 1',
+    })
+    const relu = JSON.parse(JSON.stringify(pj))
+    check('la source du script d\'espece traverse l\'enregistrement',
+      relu.especes.find((e) => e.id === 'tournesol')?.script === 'n.x += 1')
+    const m = mondeDepuisProjet(pj, 'x')
+    check('l\'editeur la recompile, et refuse ce qui ne passerait pas la frontiere',
+      m.peuplement.scriptsEspeces.has('tournesol')
+      && !m.peuplement.scriptsEspeces.has('casse'),
+      'le script au DOM est refuse par l\'atelier, comme partout')
+  }
+}
+
+/*
+ * LA PHYSIQUE A SOI : les reglages du controleur par espece.
+ *
+ * Le « game feel » — la seule chose qu'un createur regle cent fois — tournait
+ * sur les reglages d'usine. Le format portait Partial<ReglagesPlateforme>
+ * depuis toujours ; on verifie qu'un reglage pose CHANGE le jeu, et qu'un
+ * champ vide laisse l'usine.
+ */
+console.log('\n--- la physique a soi ---')
+{
+  const { Plateformeur, REGLAGES_DEFAUT } = await import('../src/runtime/plateforme.ts')
+  const { Carte, SOLIDE } = await import('../src/tuiles/tilemap.ts')
+  const { espece } = await import('../src/runtime/entites.ts')
+
+  const carte = new Carte(30, 20, 16)
+  carte.ajouterCalque('sol')
+  for (let x = 0; x < 30; x++) carte.solides[18 * 30 + x] = SOLIDE
+
+  const sommetDe = (reglages) => {
+    const ctrl = new Plateformeur(reglages)
+    const corps = { x: 100, y: 18 * 16, boite: { x: -4, y: -14, l: 8, h: 14 } }
+    let plusHaut = corps.y
+    for (let i = 0; i < 120; i++) {
+      ctrl.avancer(carte, corps, 1 / 60, 0, ctrl.diagnostic().auSol, true)
+      plusHaut = Math.min(plusHaut, corps.y)
+    }
+    return 18 * 16 - plusHaut
+  }
+  const usine = sommetDe({})
+  const haut = sommetDe({ hauteurSaut: REGLAGES_DEFAUT.hauteurSaut * 2 })
+  check('regler la hauteur de saut d\'une espece change VRAIMENT son saut',
+    haut > usine * 1.6,
+    `${usine} px d'usine, ${haut} px regle — mesure au sommet, pas promis`)
+  check('et un reglage vide laisse l\'usine',
+    Math.abs(sommetDe({}) - usine) < 1,
+    'le fichier ne porte que ce qu\'on a decide')
+
+  const { poserEspeceProjet, projetNeuf } = await import('../src/editeur/projet-neuf.ts')
+  const pj = poserEspeceProjet(projetNeuf(), 'heros-cote', {
+    plateforme: { hauteurSaut: 64, coyote: 0.2 },
+  })
+  const relu = JSON.parse(JSON.stringify(pj))
+  const e = relu.especes.find((q) => q.id === 'heros-cote')
+  check('les reglages poses traversent l\'enregistrement, et eux seuls',
+    e.plateforme.hauteurSaut === 64 && e.plateforme.coyote === 0.2
+    && !('vitesse' in e.plateforme),
+    'l\'usine reste l\'usine pour le reste')
+  void espece
+}
+
+/*
+ * LES REGLES DU JEU : ce que le moteur offrait, un projet peut le refuser.
+ *
+ * L'epee, les coeurs, la reprise, les pointes — quatre cadeaux imposes
+ * devenus quatre donnees (format 16). On eprouve les deux sens : la regle
+ * coupee coupe VRAIMENT, et un fichier d'avant garde ses cadeaux.
+ */
+console.log('\n--- les regles du jeu ---')
+{
+  const { Aventure } = await import('../src/demo/aventure.ts')
+  const { creerNoeud } = await import('../src/scene/noeud.ts')
+  const { Entrees } = await import('../src/runtime/entree.ts')
+  const { Carte, BLESSANTE, SOLIDE } = await import('../src/tuiles/tilemap.ts')
+
+  const bac = (opts) => {
+    const racine = creerNoeud('noeud', 'scene')
+    const heros = creerNoeud('sprite', 'heros')
+    heros.x = 100; heros.y = 100
+    racine.enfants.push(heros)
+    const av = new Aventure(racine, heros, opts)
+    const entrees = new Entrees()
+    const carte = new Carte(20, 15, 16)
+    carte.ajouterCalque('sol')
+    const ctx = {
+      dt: 1 / 60, entrees, racine, carte, grille: carte,
+      corps: { poser() {}, retirer() {}, bouger() { return { dx: 0, dy: 0, bloque: false } } },
+      pas: 0, trouver: () => null, bouger: () => ({ dx: 0, dy: 0, bloque: false }),
+    }
+    return { av, entrees, ctx, carte, heros }
+  }
+
+  {
+    const { av, entrees, ctx } = bac({ epee: false })
+    entrees.simulerAppui('Space')
+    av.avancer(ctx, { x: 1, y: 0 })
+    check('sans epee, la touche action ne frappe pas ET reste entiere',
+      av.combat.frappes.length === 0 && entrees.consommer('action') === true,
+      'elle n\'est pas consommee : un levier ou un dialogue du jeu la prendra')
+  }
+  {
+    const { av, entrees, ctx } = bac({})
+    entrees.simulerAppui('Space')
+    av.avancer(ctx, { x: 1, y: 0 })
+    check('avec l\'epee — le defaut —, le meme appui frappe',
+      av.combat.frappes.length === 1, 'un fichier d\'avant garde son epee')
+  }
+
+  {
+    // Les pointes a zero : du decor. La meme carte, la meme creature, seul
+    // le reglage change — c'est lui qu'on mesure.
+    const { Peuplement, espece } = await import('../src/runtime/entites.ts')
+    const { Combat } = await import('../src/runtime/combat.ts')
+    const { ORTHO_DESSUS } = await import('../src/noyau/projection.ts')
+    const piquer = (degats) => {
+      const racine = creerNoeud('noeud', 'scene')
+      const n = creerNoeud('sprite', 'bete')
+      n.espece = 'gelee'
+      n.x = 40; n.y = 40
+      racine.enfants.push(n)
+      const carte = new Carte(10, 10, 16)
+      carte.ajouterCalque('sol')
+      carte.solides[2 * 10 + 2] = BLESSANTE | SOLIDE
+      const combat = new Combat()
+      const peu = new Peuplement(racine, combat,
+        [espece('gelee', { comportement: 'immobile', pv: 5 })], [], ORTHO_DESSUS(16), 16)
+      peu.degatsMatiere = degats
+      peu.synchroniser()
+      const entrees = new Entrees()
+      const ctx = {
+        dt: 1 / 60, entrees, racine, carte, grille: carte,
+        corps: { poser() {}, retirer() {}, bouger() { return { dx: 0, dy: 0, bloque: false } } },
+        pas: 0, trouver: () => null, bouger: () => ({ dx: 0, dy: 0, bloque: false }),
+      }
+      for (let i = 0; i < 60; i++) { peu.avancer(ctx, n, 1000 / 60); combat.avancer(1000 / 60) }
+      return combat.vies.get(n.id)?.pv ?? -1
+    }
+    check('a zero, les pointes deviennent du decor', piquer(0) === 5)
+    check('et a un — le defaut — elles mordent', piquer(1) < 5,
+      'la meme carte, la meme creature : seul le reglage a change')
+  }
+
+  {
+    const { serialiserProjet, versTexte, VERSION_FORMAT, REGLES_DEFAUT } =
+      await import('../src/export/format.ts')
+    const { Palette } = await import('../src/noyau/palette.ts')
+    const pj = serialiserProjet('r', { largeur: 320, hauteur: 180 }, new Palette('p', []),
+      [], [], [], [], undefined, [], [], [], {}, [], {}, [], [],
+      { titre: '', ordre: [] }, { ambiante: 1 },
+      { epee: false, coeurs: false, reapparitionMs: 80, degatsPointes: 0 })
+    const relu = JSON.parse(versTexte(pj))
+    check('les quatre regles traversent l\'enregistrement',
+      relu.version === VERSION_FORMAT && relu.regles.epee === false
+      && relu.regles.coeurs === false && relu.regles.reapparitionMs === 80
+      && relu.regles.degatsPointes === 0, `version ${relu.version}`)
+    check('et leurs defauts sont ceux d\'avant : epee et coeurs',
+      REGLES_DEFAUT.epee === true && REGLES_DEFAUT.coeurs === true,
+      'un fichier d\'avant la version 16 se relit tel qu\'il jouait')
+  }
+}
+
+/*
+ * LA FEUILLE BLANCHE : un depart sans un seul asset de demonstration.
+ *
+ * « J'ai l'impression que tout est precode » — la reponse est un depart ou
+ * RIEN ne vient de la demo : des tuiles neutres generees depuis les masques
+ * de l'autotiling, un heros en deux couleurs, aucun son, aucun dialogue,
+ * aucun clip. Et il reste jouable a la premiere seconde, sans quoi la
+ * liberte commencerait par un ecran casse.
+ */
+console.log('\n--- la feuille blanche ---')
+{
+  const { projetNeuf, ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+  const { MASQUES_BLOB47 } = await import('../src/tuiles/terrain.ts')
+  const { versTexte } = await import('../src/export/format.ts')
+
+  const vierge = projetNeuf({ depart: 'vierge', projection: 'cote' })
+  check('la feuille blanche n\'emporte AUCUN asset de demonstration',
+    vierge.especes.length === 2 && vierge.sons.length === 0
+    && vierge.dialogues.length === 0 && vierge.animations.length === 0
+    && vierge.planches.length === 2,
+    `${vierge.especes.length} espèce(s) — les deux héros — et rien d'autre`)
+  check('mais le depart de demonstration, lui, n\'a pas bouge',
+    projetNeuf().especes.length >= 8 && projetNeuf().sons.length > 0
+    && projetNeuf().animations.length > 0,
+    'les deux departs coexistent ; la demo reste une ecole')
+
+  // La planche neutre suit les MEMES masques que l'autotiling : la tuile
+  // entierement entouree n'a pas de lisere, la tuile isolee en a quatre.
+  const murs = vierge.planches[0].dessins
+  const pleine = murs[MASQUES_BLOB47.indexOf(255)]
+  const isolee = murs[MASQUES_BLOB47.indexOf(0)]
+  check('la planche neutre a les 47 murs et le sol, dans l\'ordre des masques',
+    murs.length === 48 && !pleine.some((l) => l.includes('o'))
+    && isolee[0].split('').every((q) => q === 'o'),
+    'entouree : aucun lisere ; isolee : bordee des quatre cotes')
+
+  check('le heros neutre tient en deux couleurs, remplacables en cinq minutes',
+    new Set(vierge.planches[1].dessins[0].join('').replace(/\./g, '')).size === 2)
+
+  check('l\'epee est coupee d\'usine en feuille blanche — la regle la plus typee',
+    vierge.regles.epee === false && projetNeuf().regles.epee === true,
+    'un plateformer ou un jeu d\'enigmes n\'a pas d\'epee a renier')
+
+  // Jouable a la premiere seconde : sol pre-peint, solide, heros pose.
+  const derniereLigne = vierge.cartes[0].calques[0].cases.at(-1)
+  check('et elle reste JOUABLE : sol pre-peint et solide, heros pose',
+    derniereLigne.split(',').every((q) => q === '47')
+    && vierge.cartes[0].solides.at(-1).split('').every((q) => q !== '0')
+    && JSON.stringify(vierge.scenes[0].racine).includes('heros-cote'))
+
+  const m = mondeDepuisProjet(JSON.parse(versTexte(vierge)), 'x')
+  check('elle traverse l\'enregistrement et se construit sans une faute',
+    m.carte.largeur === 40 && !m.etat().includes('refus'),
+    m.etat())
+
+  // Sans « + Son » et « + Animation », la feuille blanche serait une
+  // impasse : aucun moyen d'avoir un son ou un clip a soi.
+  let avecSon = ajouterSonProjet(vierge)
+  avecSon = ajouterSonProjet(avecSon)
+  check('« + Son » fabrique des sons nommes, qui s\'entendent deja',
+    avecSon.sons.length === 2 && avecSon.sons[0].nom === 'son1'
+    && avecSon.sons[1].nom === 'son2' && avecSon.sons[0].frequence !== avecSon.sons[0].frequenceFin,
+    'une descente de 440 a 220 Hz : chaque reglage du panneau s\'entendra')
+  check('et « Retirer » le retire',
+    retirerSonProjet(avecSon, 'son1').sons.length === 1)
+  const avecClip = ajouterAnimationProjet(vierge)
+  check('« + Animation » fabrique un clip de deux images — une seule ne bougerait pas',
+    avecClip.animations.length === 1 && avecClip.animations[0].images.length === 2)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

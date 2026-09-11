@@ -1405,6 +1405,18 @@ ok('Enregistrer telecharge le projet faute de dossier',
     `${naissance.solides} cases solides, héros les pieds sur la case ${Math.floor((naissance.heros?.y ?? 0) / 16)}`)
   ok('et le pied de page explique l’outil courant, sans qu’on demande',
     naissance.aide.includes('Mur'), `« ${naissance.aide.slice(0, 60)}… »`)
+  // La FEUILLE BLANCHE : ce depart-la ne transporte rien de la demonstration.
+  // « J'ai l'impression que tout est precode » — la reponse se verifie ici.
+  const blanche = await p.evaluate(() => ({
+    especes: window.pfe.monde.especes.map((e) => e.id).join(','),
+    sons: window.pfe.monde.sons.length,
+    dialogues: window.pfe.monde.dialogues.length,
+    clips: window.pfe.monde.animations.length,
+  }))
+  ok('la feuille blanche : les deux héros, et RIEN de la démo',
+    blanche.especes === 'heros,heros-cote' && blanche.sons === 0
+    && blanche.dialogues === 0 && blanche.clips === 0,
+    `espèces « ${blanche.especes} » · ${blanche.sons} son · ${blanche.dialogues} dialogue · ${blanche.clips} clip`)
   // On peint une plateforme au-dessus du heros, on joue, on saute dessus.
   const cadre = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
   await p.mouse.move(cadre[0] + cadre[2] * 0.56, cadre[1] + cadre[3] * 0.62)
@@ -1434,6 +1446,37 @@ ok('Enregistrer telecharge le projet faute de dossier',
     apresSaut.x > avantSaut.x && apresSaut.y < avantSaut.y,
     `de ${Math.round(avantSaut.x)},${Math.round(avantSaut.y)} à ${Math.round(apresSaut.x)},${Math.round(apresSaut.y)} — le parcours entier d’un premier lancement`)
   await p.click('#arreter')
+  await p.waitForTimeout(200)
+
+  /*
+   * PARTIR DE RIEN N'EST PAS UNE IMPASSE : « + Son » et « + Animation »
+   * existent, par la vraie porte du panneau. Sans eux, la feuille blanche
+   * serait un projet a jamais muet et fige.
+   */
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(250)
+  const cliquerDansBloc = (titreBloc, nomBouton) => p.evaluate(({ titre, nom }) => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b) => b.querySelector('h3')?.textContent === titre)
+    const bouton = bloc && [...bloc.querySelectorAll('button')].find((q) => q.textContent === nom)
+    if (bouton) bouton.click()
+    return !!bouton
+  }, { titre: titreBloc, nom: nomBouton })
+  await p.getByRole('button', { name: 'Sons', exact: true }).click()
+  await p.waitForTimeout(200)
+  await cliquerDansBloc('Sons', '+ Son')
+  await p.waitForTimeout(250)
+  const sonNe = await p.evaluate(() => window.pfe.monde.sons.map((q) => q.nom).join(','))
+  ok('« + Son » donne un premier son au projet parti de rien', sonNe === 'son1',
+    `sons du projet : « ${sonNe} »`)
+  await p.getByRole('button', { name: 'Animations', exact: true }).click()
+  await p.waitForTimeout(200)
+  await cliquerDansBloc('Animations', '+ Animation')
+  await p.waitForTimeout(250)
+  const clipNe = await p.evaluate(() => window.pfe.monde.animations.map((q) => q.nom).join(','))
+  ok('et « + Animation » son premier clip', clipNe === 'clip1',
+    `clips du projet : « ${clipNe} »`)
+  await p.click('#fermerProjet')
 }
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')

@@ -278,6 +278,32 @@ const OBJECTIFS = [
         symboles: ['aideBoite'], indices: ['aide'], preuves: 2 },
       { nom: 'Export vers un moteur du commerce',
         symboles: ['paquetGodot', 'paquetUnity'], indices: ['godot', 'unity', 'archive'], preuves: 2 },
+      /*
+       * LA LIBERTE. « J'ai l'impression que tout est precode » : les quatre
+       * criteres qui suivent sont la reponse, et chacun tomberait si la
+       * liberte redevenait une promesse — le comportement a soi, la physique
+       * a soi, les regles debrayables, le depart sans un asset de demo.
+       */
+      { nom: 'Le comportement d’une espèce peut être un script à soi',
+        symboles: ['scriptsEspeces', "'script'"],
+        indices: ['espece scriptee', 'intention du catalogue', 'reste immobile',
+          'source du script'],
+        preuves: 4 },
+      { nom: 'La physique du contrôleur se règle par espèce, et ça se mesure',
+        symboles: ['REGLAGES_EXPOSES', 'REGLAGES_DEFAUT'],
+        indices: ['hauteur de saut', 'reglage vide', 'reglages poses traversent'],
+        preuves: 3 },
+      { nom: 'L’épée, les cœurs, la réapparition et les pointes se débrayent',
+        symboles: ['ReglesJeu', 'REGLES_DEFAUT', 'reglerReglesProjet'],
+        indices: ['sans epee', 'pointes deviennent du decor', 'quatre regles traversent',
+          'defauts sont ceux'],
+        preuves: 4 },
+      { nom: 'La feuille blanche : partir sans un seul asset de démonstration',
+        symboles: ['CLE_NEUTRE', 'PLANCHE_NEUTRE', 'HEROS_NEUTRE',
+          'ajouterSonProjet', 'ajouterAnimationProjet'],
+        indices: ['feuille blanche', 'planche neutre', 'heros neutre',
+          'depart de demonstration', 'premier son', 'premier clip'],
+        preuves: 5 },
     ],
   },
   {

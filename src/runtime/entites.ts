@@ -51,11 +51,11 @@ import {
  */
 export type Comportement =
   | 'immobile' | 'patrouille' | 'poursuite' | 'bond' | 'joueur' | 'plateformeur'
-  | 'projectile' | 'porteur'
+  | 'projectile' | 'porteur' | 'script'
 
 export const COMPORTEMENTS: Comportement[] = [
   'immobile', 'patrouille', 'poursuite', 'bond', 'joueur', 'plateformeur',
-  'projectile', 'porteur',
+  'projectile', 'porteur', 'script',
 ]
 
 /**
@@ -233,6 +233,22 @@ export interface Espece {
    */
   pesante: boolean
   /**
+   * La SOURCE du script de l'espece, pour l'intention « script ».
+   *
+   * ## Pourquoi c'est la vraie liberte du moteur
+   *
+   * Les huit autres intentions sont une liste FERMEE : on choisit dans ce que
+   * le moteur sait faire. « script » renverse le rapport — on ECRIT ce que la
+   * creature fait, avec le meme « c » et le meme « n » que l'atelier, et la
+   * source part dans le fichier comme tout le reste. La liste courte reste le
+   * bon depart ; elle cesse d'etre un plafond.
+   *
+   * C'est une source et non une fonction : un fichier ne transporte pas de
+   * code compile, et c'est l'hote qui compile — l'editeur par l'atelier, un
+   * portage par ce qu'il voudra.
+   */
+  script: string
+  /**
    * Rayon de la lumiere qu'elle emet, en pixels. Zero : elle n'eclaire pas.
    *
    * Une torche est une entite comme une autre : ce qui la distingue est une
@@ -271,6 +287,7 @@ export function espece(id: string, p: Partial<Espece> = {}): Espece {
     rebondPietinement: p.rebondPietinement ?? 0,
     pesante: p.pesante ?? false,
     lueur: p.lueur ?? 0,
+    script: p.script ?? '',
   }
 }
 
@@ -386,6 +403,15 @@ export class Peuplement {
    * dans Celeste et retire un demi-coeur dans Isaac.
    */
   degatsMatiere = DEGATS_MATIERE
+  /**
+   * Les scripts d'espece COMPILES, par identifiant d'espece.
+   *
+   * Le peuplement ne compile rien : il ne connait ni l'atelier ni ses
+   * interdits, et c'est voulu — un banc y met une fonction nue, l'editeur y
+   * met ce que l'atelier a verifie. Une espece a l'intention « script » sans
+   * entree ici reste immobile : l'oubli se voit, il ne casse pas.
+   */
+  scriptsEspeces = new Map<string, (c: ContexteJeu, n: Noeud) => void>()
 
   /**
    * Le champ de navigation, recalcule une fois par pas depuis la cible.
@@ -694,13 +720,21 @@ export class Peuplement {
       if (v.restant <= 0) { aRetirer.push(v.noeud.id); continue }
 
       const intentionCourante = v.etat ? v.etat.intention : v.espece.comportement
-      const contournement = peutContourner(intentionCourante, v.espece, this.projection, distance)
-        ? this.direction(v.noeud, cible)
-        : null
-      const fini = agir(
-        v, c, dx, dy, distance, dtMs, this.projection, this.tuile, contournement,
-      )
-      if (fini) { aRetirer.push(v.noeud.id); continue }
+      if (intentionCourante === 'script') {
+        // L'intention qui appartient a la personne : son script decide, le
+        // moteur ne fait que la pesanteur — la meme regle que pour les
+        // autres, une creature pesante obeit au bas du monde.
+        if (v.espece.pesante && this.projection.regard === 'cote') tomber(v, c)
+        this.scriptsEspeces.get(v.espece.id)?.(c, v.noeud)
+      } else {
+        const contournement = peutContourner(intentionCourante, v.espece, this.projection, distance)
+          ? this.direction(v.noeud, cible)
+          : null
+        const fini = agir(
+          v, c, dx, dy, distance, dtMs, this.projection, this.tuile, contournement,
+        )
+        if (fini) { aRetirer.push(v.noeud.id); continue }
+      }
 
       vie.x = v.noeud.x
       vie.y = v.noeud.y

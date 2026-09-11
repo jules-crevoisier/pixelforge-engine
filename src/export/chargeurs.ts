@@ -171,6 +171,7 @@ export interface Boite { x: number; y: number; l: number; h: number }
  * Une espece : ce qu'une entite EST, entierement en donnees.
  *
  * L'intention est un nom — 'immobile', 'patrouille', 'poursuite', 'bond',
+ * 'script' (la source vit dans le champ script de l'espece),
  * 'joueur', 'plateformeur'. Un fichier ne peut pas contenir de fonction ; un
  * nom, si. Un noeud de la scene dont les proprietes portent une espece designe
  * l'une d'elles.
@@ -228,6 +229,8 @@ export interface Espece {
   pesante: boolean
   /** Rayon de la lumiere qu'elle emet, en pixels. Zero : elle n'eclaire pas. */
   lueur: number
+  /** La source du script de l'espece, pour l'intention « script ». */
+  script: string
 }
 
 export interface Son {
@@ -342,6 +345,8 @@ export interface Projet {
   deroule: { titre: string; ordre: string[] }
   /** La lumiere du monde. Ambiante a un : plein jour. */
   lumiere: { ambiante: number }
+  /** Les regles du jeu : epee, coeurs, reapparition, degats des pointes. */
+  regles: { epee: boolean; coeurs: boolean; reapparitionMs: number; degatsPointes: number }
 }
 
 export interface Declencheur {
@@ -813,6 +818,16 @@ namespace PixelForge
         public float ambiante = 1f;
     }
 
+    /// <summary>Les regles du jeu — ce que le moteur offre et qu'un projet peut refuser.</summary>
+    [Serializable]
+    public class Regles
+    {
+        public bool epee = true;
+        public bool coeurs = true;
+        public int reapparitionMs = 700;
+        public int degatsPointes = 1;
+    }
+
     /// <summary>Le deroule du jeu : son titre, et l'ordre de ses cartes.</summary>
     [Serializable]
     public class Deroule
@@ -1129,6 +1144,8 @@ namespace PixelForge
         public bool pesante;
         /// <summary>Rayon de la lumiere emise, en pixels. Zero : n'eclaire pas.</summary>
         public float lueur;
+        /// <summary>La source du script de l'espece, pour l'intention « script ».</summary>
+        public string script;
     }
 
     /// <summary>L'aller-retour d'un corps porteur, en pixels et millisecondes.</summary>
@@ -1327,6 +1344,8 @@ namespace PixelForge
         public Deroule deroule;
         /// <summary>La lumiere du monde. Ambiante a un : plein jour.</summary>
         public Lumiere lumiere;
+        /// <summary>Les regles du jeu : epee, coeurs, reapparition, pointes.</summary>
+        public Regles regles;
 
         /// <summary>Une case vide. Zero est une vraie tuile.</summary>
         public const int VIDE = -1;
@@ -1480,6 +1499,8 @@ var declencheurs: Array = []
 var deroule: Dictionary = {}
 ## La lumiere du monde. Ambiante a un : plein jour.
 var lumiere: Dictionary = { "ambiante": 1.0 }
+## Les regles du jeu : epee, coeurs, reapparition, degats des pointes.
+var regles: Dictionary = { "epee": true, "coeurs": true, "reapparitionMs": 700, "degatsPointes": 1 }
 
 static func charger(chemin: String) -> ProjetPixelForge:
 	var f := FileAccess.open(chemin, FileAccess.READ)
@@ -1510,6 +1531,8 @@ static func charger(chemin: String) -> ProjetPixelForge:
 	p.declencheurs = brut.get("declencheurs", [])
 	p.deroule = brut.get("deroule", {})
 	p.lumiere = brut.get("lumiere", { "ambiante": 1.0 })
+	p.regles = brut.get("regles",
+		{ "epee": true, "coeurs": true, "reapparitionMs": 700, "degatsPointes": 1 })
 	return p
 
 ## Les bornes d'une salle en pixels du monde.
@@ -2211,6 +2234,9 @@ pub struct Espece {
     /// Rayon de la lumiere emise, en pixels. Zero : n'eclaire pas.
     #[serde(default)]
     pub lueur: f64,
+    /// La source du script de l'espece, pour l'intention « script ».
+    #[serde(default)]
+    pub script: String,
 }
 
 /// L'aller-retour d'un corps porteur, en pixels et millisecondes.
@@ -2365,7 +2391,34 @@ pub struct Projet {
     /// La lumiere du monde. Ambiante a un : plein jour.
     #[serde(default)]
     pub lumiere: Lumiere,
+    /// Les regles du jeu : epee, coeurs, reapparition, degats des pointes.
+    #[serde(default)]
+    pub regles: Regles,
 }
+
+/// Les regles du jeu — ce que le moteur offre et qu'un projet peut refuser.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Regles {
+    #[serde(default = "vrai")]
+    pub epee: bool,
+    #[serde(default = "vrai")]
+    pub coeurs: bool,
+    #[serde(default = "reapparition_defaut")]
+    pub reapparition_ms: i32,
+    #[serde(default = "un")]
+    pub degats_pointes: i32,
+}
+
+impl Default for Regles {
+    fn default() -> Self {
+        Regles { epee: true, coeurs: true, reapparition_ms: 700, degats_pointes: 1 }
+    }
+}
+
+fn vrai() -> bool { true }
+fn un() -> i32 { 1 }
+fn reapparition_defaut() -> i32 { 700 }
 
 /// La lumiere du monde.
 #[derive(Debug, Clone, Deserialize)]
@@ -2596,6 +2649,9 @@ function Projet.depuis(donnees)
   self.deroule = donnees.deroule or { titre = "", ordre = {} }
   -- La lumiere du monde. Ambiante a un : plein jour.
   self.lumiere = donnees.lumiere or { ambiante = 1.0 }
+  -- Les regles du jeu : epee, coeurs, reapparition, degats des pointes.
+  self.regles = donnees.regles
+    or { epee = true, coeurs = true, reapparitionMs = 700, degatsPointes = 1 }
   if self.version ~= Projet.VERSION_ATTENDUE then
     print(("PixelForge : projet en version %d, chargeur en version %d")
       :format(self.version, Projet.VERSION_ATTENDUE))
@@ -3245,6 +3301,8 @@ class Espece:
     pesante: bool = False
     #: Rayon de la lumiere emise, en pixels. Zero : n'eclaire pas.
     lueur: float = 0
+    #: La source du script de l'espece, pour l'intention « script ».
+    script: str = ""
 
     def etat(self, nom: str) -> dict[str, Any] | None:
         """L'etat portant ce nom, ou None."""
@@ -3282,6 +3340,9 @@ class Projet:
     deroule: dict[str, Any] = field(default_factory=dict)
     #: La lumiere du monde. Ambiante a un : plein jour.
     lumiere: dict[str, Any] = field(default_factory=lambda: {"ambiante": 1.0})
+    #: Les regles du jeu : epee, coeurs, reapparition, degats des pointes.
+    regles: dict[str, Any] = field(default_factory=lambda: {
+        "epee": True, "coeurs": True, "reapparitionMs": 700, "degatsPointes": 1})
 
     def clip(self, nom: str) -> Clip | None:
         for a in self.animations:
@@ -3412,6 +3473,8 @@ class Projet:
             declencheurs=d.get("declencheurs", []),
             deroule=d.get("deroule", {}),
             lumiere=d.get("lumiere", {"ambiante": 1.0}),
+            regles=d.get("regles", {"epee": True, "coeurs": True,
+                                    "reapparitionMs": 700, "degatsPointes": 1}),
         )
 #: « la4 » rend 440. Un silence ou une note inconnue rend zero.
 _DEMI_TONS = {

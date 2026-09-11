@@ -8,6 +8,12 @@ import { ORTHO_DESSUS, ORTHO_COTE, ISO, type Projection } from '../noyau/project
 import { espece, type Espece } from '../runtime/entites.ts'
 import { musique as musiqueFabrique, voie as voieFabrique, type Voie } from '../runtime/musique.ts'
 import { TUILE, TUILE_SOL, CLE_DONJON, PLANCHE_DONJON, CLE_HEROS, PLANCHE_HEROS, COLONNES_HEROS } from '../demo/art.ts'
+import {
+  MASQUES_BLOB47, HAUT, BAS, GAUCHE, DROITE,
+  HAUT_DROITE, BAS_DROITE, BAS_GAUCHE, HAUT_GAUCHE,
+} from '../tuiles/terrain.ts'
+import { son as sonFabrique } from '../runtime/son.ts'
+import { clipRegulier } from '../runtime/animation.ts'
 import { PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES } from '../demo/art-creatures.ts'
 import { ESPECES_DEMO, clipsDemo } from '../demo/especes-demo.ts'
 import { SONS_DEMO } from '../demo/sons-demo.ts'
@@ -56,7 +62,144 @@ export interface OptionsProjetNeuf {
   /** Un des identifiants de `PROJECTIONS`. */
   projection?: string
   vue?: { largeur: number; hauteur: number }
+  /**
+   * « demo » : les dessins, especes, sons et dialogues de la demonstration.
+   * « vierge » : la feuille blanche — des tuiles neutres, un heros neutre,
+   * et RIEN d'autre. Voir `projetNeuf`.
+   */
+  depart?: 'demo' | 'vierge'
 }
+
+/* ------------------------------------------------------------------ */
+/* La feuille blanche                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Le depart « vierge » repond a une critique precise : un projet neuf qui
+ * arrive avec le donjon, le heros roux, les gelees et les sons de la
+ * demonstration ne donne pas l'impression de COMMENCER un jeu — il donne
+ * l'impression d'en modifier un. La feuille blanche ne transporte aucun asset
+ * de demonstration : des tuiles neutres generees, un heros en deux couleurs,
+ * pas un son, pas un dialogue, pas un clip. Tout ce qui s'y voit est la pour
+ * etre remplace, et rien n'y raconte une histoire qui n'est pas la votre.
+ *
+ * Elle reste JOUABLE des la premiere seconde — sol pre-peint, heros pose,
+ * murs qui s'autotilent — parce qu'un depart casse ne donne pas envie de
+ * dessiner : les memes raisons que pour le depart de demonstration.
+ */
+
+/**
+ * La cle de couleurs neutre. Des gris bleutes, du sombre au clair : assez de
+ * tons pour que la nuit (l'ambiante) ait de la matiere a eteindre, aucun qui
+ * impose un style. « o » est l'encre des bords, « f » le corps du heros.
+ */
+export const CLE_NEUTRE: Record<string, string> = {
+  o: '#161821',
+  c: '#262a34',
+  C: '#303546',
+  a: '#454c5e',
+  f: '#e8e4d8',
+}
+
+/**
+ * Une tuile de mur neutre : un aplat, et un lisere d'encre du seul cote ou il
+ * n'y a pas de voisin — les memes regles d'angles que la planche de
+ * demonstration, parce que ce sont celles de l'autotiling, pas d'un style.
+ */
+function murNeutre(masque: number): string[] {
+  const n = (bit: number): boolean => (masque & bit) !== 0
+  const g: string[][] = Array.from({ length: TUILE },
+    () => Array.from({ length: TUILE }, () => 'a'))
+  const bord = (x: number, y: number): void => { g[y][x] = 'o' }
+  if (!n(HAUT)) for (let x = 0; x < TUILE; x++) bord(x, 0)
+  if (!n(BAS)) for (let x = 0; x < TUILE; x++) bord(x, TUILE - 1)
+  if (!n(GAUCHE)) for (let y = 0; y < TUILE; y++) bord(0, y)
+  if (!n(DROITE)) for (let y = 0; y < TUILE; y++) bord(TUILE - 1, y)
+  // Les angles rentrants : deux cotes pleins, la diagonale vide.
+  if (n(HAUT) && n(DROITE) && !n(HAUT_DROITE)) bord(TUILE - 1, 0)
+  if (n(BAS) && n(DROITE) && !n(BAS_DROITE)) bord(TUILE - 1, TUILE - 1)
+  if (n(BAS) && n(GAUCHE) && !n(BAS_GAUCHE)) bord(0, TUILE - 1)
+  if (n(HAUT) && n(GAUCHE) && !n(HAUT_GAUCHE)) bord(0, 0)
+  return g.map((l) => l.join(''))
+}
+
+/**
+ * Le sol neutre : presque uni, avec quelques eclats deterministes. Un sol
+ * parfaitement uni ne donne aucun retour de mouvement en vue de dessus — on
+ * ne voit pas qu'on avance. Cinq pixels suffisent, et le tirage est calcule
+ * pour que deux projets vierges soient identiques au banc.
+ */
+const SOL_NEUTRE: string[] = Array.from({ length: TUILE }, (_q, y) =>
+  Array.from({ length: TUILE }, (_r, x) =>
+    ((x * 7 + y * 13) % 53 === 0 ? 'C' : 'c')).join(''))
+
+/**
+ * La planche neutre : les 47 murs dans l'ordre de `MASQUES_BLOB47`, puis le
+ * sol — le meme index `TUILE_SOL` que la planche de demonstration, pour que
+ * le pre-peint et l'autotiling n'aient pas deux cas.
+ */
+export const PLANCHE_NEUTRE: string[][] = [
+  ...MASQUES_BLOB47.map(murNeutre),
+  SOL_NEUTRE,
+]
+
+/**
+ * Le heros neutre : une silhouette en DEUX couleurs, les pieds au bas de la
+ * case — la convention d'ancrage du moteur. Deux couleurs et pas treize :
+ * c'est un heros qu'on remplace en cinq minutes dans l'onglet Dessin, pas un
+ * personnage auquel s'attacher.
+ */
+export const HEROS_NEUTRE: string[] = [
+  '................',
+  '................',
+  '.....oooooo.....',
+  '....offffffo....',
+  '....offffffo....',
+  '....ofoffofo....',
+  '....offffffo....',
+  '.....offffo.....',
+  '....offffffo....',
+  '...offffffffo...',
+  '...offffffffo...',
+  '....offffffo....',
+  '.....offffo.....',
+  '.....of..fo.....',
+  '.....of..fo.....',
+  '.....oo..oo.....',
+]
+
+/**
+ * Le catalogue vierge : les deux heros, et RIEN d'autre. Pas de clip — le
+ * dessin unique de la planche sert tel quel, et un clip introuvable n'efface
+ * jamais l'image. Trois points de vie : assez pour comprendre les degats,
+ * a regler dans l'onglet Especes.
+ */
+const especesVierges = (): Espece[] => [
+  espece('heros', {
+    nom: 'Héros (dessus)',
+    planche: 'heros',
+    clip: '',
+    camp: 'heros',
+    pv: 3,
+    vitesse: 70,
+    degats: 0,
+    comportement: 'joueur',
+    boite: { x: -4, y: -6, l: 8, h: 6 },
+    invulnerabiliteMs: 600,
+  }),
+  espece('heros-cote', {
+    nom: 'Héros (côté)',
+    planche: 'heros',
+    clip: '',
+    camp: 'heros',
+    pv: 3,
+    vitesse: 0,
+    degats: 0,
+    comportement: 'plateformeur',
+    boite: { x: -4, y: -14, l: 8, h: 14 },
+    invulnerabiliteMs: 600,
+  }),
+]
 
 /** Une rangee de cases vides, dans la forme que le format attend. */
 const rangeeVide = (largeur: number): string =>
@@ -83,6 +226,7 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
   const choix = PROJECTIONS.find((p) => p.id === o.projection) ?? PROJECTIONS[0]
   const projection = choix.faire(tuile)
   const vue = o.vue ?? { largeur: 320, hauteur: 180 }
+  const vierge = o.depart === 'vierge'
 
   const carte: CarteSerialisee = {
     nom: 'carte',
@@ -149,16 +293,25 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     }],
   }
 
-  const planches = [
-    decrirePlanche('carte', PLANCHE_DONJON, CLE_DONJON, 8, tuile),
-    decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
-    decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
-  ]
-  const couleurs = [
-    ...new Set([
-      ...Object.values(CLE_DONJON), ...Object.values(CLE_HEROS), ...Object.values(CLE_CREATURES),
-    ]),
-  ]
+  const planches = vierge
+    ? [
+      decrirePlanche('carte', PLANCHE_NEUTRE, CLE_NEUTRE, 8, tuile),
+      decrirePlanche('heros', [HEROS_NEUTRE], CLE_NEUTRE, 1, TUILE),
+    ]
+    : [
+      decrirePlanche('carte', PLANCHE_DONJON, CLE_DONJON, 8, tuile),
+      decrirePlanche('heros', PLANCHE_HEROS, CLE_HEROS, COLONNES_HEROS, TUILE),
+      decrirePlanche('creatures', PLANCHE_CREATURES, CLE_CREATURES, COLONNES_CREATURES, TUILE),
+    ]
+  // La palette vierge ajoute deux clairs que les planches n'emploient pas :
+  // une palette reduite a ce qui est deja peint n'invite pas a peindre.
+  const couleurs = vierge
+    ? [...new Set([...Object.values(CLE_NEUTRE), '#7d8699', '#aeb6c6'])]
+    : [
+      ...new Set([
+        ...Object.values(CLE_DONJON), ...Object.values(CLE_HEROS), ...Object.values(CLE_CREATURES),
+      ]),
+    ]
 
   return {
     version: VERSION_FORMAT,
@@ -181,16 +334,18 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
         ],
       },
     }],
-    animations: clipsDemo().map(serialiserAnimation),
+    animations: vierge ? [] : clipsDemo().map(serialiserAnimation),
     planches,
     projection,
     // Le catalogue de demonstration, et non un catalogue vide : une palette
     // d'entites sans entite ne s'explique pas, et l'on ne saurait pas par ou
-    // commencer. On les remplace ensuite, une par une.
-    especes: ESPECES_DEMO.map((e) => ({ ...e, boite: { ...e.boite } })),
+    // commencer. On les remplace ensuite, une par une. La feuille blanche,
+    // elle, ne garde que les deux heros — le reste est a soi.
+    especes: vierge ? especesVierges() : ESPECES_DEMO.map((e) => ({ ...e, boite: { ...e.boite } })),
     // Les sons partent avec le projet, comme les planches. Un projet neuf
-    // muet ferait croire que le moteur n'a pas de son.
-    sons: SONS_DEMO.map((q) => ({ ...q })),
+    // muet ferait croire que le moteur n'a pas de son. En vierge : aucun,
+    // et le bouton « + Son » du panneau en fabrique.
+    sons: vierge ? [] : SONS_DEMO.map((q) => ({ ...q })),
     // Le plan de touches part avec le projet : un jeu qu'on ne peut pas
     // remapper est injouable pour une partie des gens, en silence.
     touches: new Entrees().planCourant(),
@@ -206,11 +361,15 @@ export function projetNeuf(o: OptionsProjetNeuf = {}): ProjetSerialise {
     deroule: { titre: '', ordre: [] },
     // Plein jour : la nuit est une decision de projet, pas un defaut.
     lumiere: { ambiante: 1 },
+    // Les regles d'usine : epee et coeurs. On les COUPE dans l'onglet Jeu.
+    // La feuille blanche part SANS epee : c'est la regle la plus typee — un
+    // jeu de plateforme ou d'enigmes n'en veut pas, et l'allumer est un clic.
+    regles: { epee: !vierge, coeurs: true, reapparitionMs: 700, degatsPointes: 1 },
     // Une table par langue, vide au depart : ce qui compte est que le CHEMIN
     // existe des le premier jour. Ajouter la traduction apres coup oblige a
     // reprendre chaque texte ecrit en dur entre-temps.
     textes: { fr: {} },
-    dialogues: [{
+    dialogues: vierge ? [] : [{
       nom: 'accueil',
       repliques: [replique(
         'Peignez du mur, posez des créatures, appuyez sur Jouer.',
@@ -800,4 +959,68 @@ export function reglerMusiqueProjet(
 
 export function retirerMusiqueProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
   return { ...p, musiques: (p.musiques ?? []).filter((m) => m.nom !== nom) }
+}
+
+/* ------------------------------------------------------------------ */
+/* Les sons et les animations                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ajoute un son, nomme d'office, qui S'ENTEND deja : une descente de 440 a
+ * 220 hertz. Un son muet ou plat ne donne rien a regler ; celui-ci a une
+ * direction, et chaque champ du panneau la change de facon audible.
+ *
+ * Sans ce bouton, la feuille blanche etait une impasse : un projet parti
+ * sans les sons de la demonstration n'avait AUCUN moyen d'en avoir un.
+ */
+export function ajouterSonProjet(p: ProjetSerialise): ProjetSerialise {
+  const liste = p.sons ?? []
+  let n = liste.length + 1
+  while (liste.some((s) => s.nom === `son${n}`)) n++
+  return {
+    ...p,
+    sons: [...liste, sonFabrique(`son${n}`, { frequence: 440, frequenceFin: 220, duree: 160 })],
+  }
+}
+
+export function retirerSonProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, sons: (p.sons ?? []).filter((s) => s.nom !== nom) }
+}
+
+/**
+ * Ajoute une animation, nommee d'office : deux images de la planche du
+ * heros, un rythme lent. Deux images et non une — une animation d'une image
+ * ne bouge pas, et l'on croirait le lecteur casse. C'est dans le panneau
+ * qu'on choisit ensuite les vraies cases.
+ */
+export function ajouterAnimationProjet(p: ProjetSerialise): ProjetSerialise {
+  const liste = p.animations ?? []
+  let n = liste.length + 1
+  while (liste.some((a) => a.nom === `clip${n}`)) n++
+  return {
+    ...p,
+    animations: [...liste, serialiserAnimation(clipRegulier(`clip${n}`, [0, 1], 200))],
+  }
+}
+
+export function retirerAnimationProjet(p: ProjetSerialise, nom: string): ProjetSerialise {
+  return { ...p, animations: (p.animations ?? []).filter((a) => a.nom !== nom) }
+}
+
+/** Regle les regles du jeu — epee, coeurs, reprise, pointes. Bornees, jamais refusees. */
+export function reglerReglesProjet(
+  p: ProjetSerialise, changements: Partial<import('../export/format.ts').ReglesJeu>,
+): ProjetSerialise {
+  const base = p.regles ?? { epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1 }
+  return {
+    ...p,
+    regles: {
+      epee: changements.epee ?? base.epee,
+      coeurs: changements.coeurs ?? base.coeurs,
+      reapparitionMs: Number.isFinite(changements.reapparitionMs)
+        ? Math.max(0, Math.round(changements.reapparitionMs as number)) : base.reapparitionMs,
+      degatsPointes: Number.isFinite(changements.degatsPointes)
+        ? Math.max(0, Math.round(changements.degatsPointes as number)) : base.degatsPointes,
+    },
+  }
 }

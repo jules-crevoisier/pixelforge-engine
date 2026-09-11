@@ -129,6 +129,8 @@ export interface Monde {
   deroule?: { titre: string; ordre: string[] }
   /** La lumiere du monde. Absente : plein jour. Voir le format v13. */
   lumiere?: { ambiante: number }
+  /** Les regles du jeu — epee, coeurs, reprise, pointes. Voir le format v16. */
+  regles?: import('../export/format.ts').ReglesJeu
   /**
    * Le peuplement, quand le monde en a un.
    *

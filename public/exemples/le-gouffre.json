@@ -1,5 +1,5 @@
 {
-  "version": 15,
+  "version": 16,
   "nom": "le-gouffre",
   "vue": {
     "largeur": 320,
@@ -2907,7 +2907,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "heros-cote",
@@ -2946,7 +2947,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 44
+      "lueur": 44,
+      "script": ""
     },
     {
       "id": "heros-ascension",
@@ -2985,7 +2987,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "gelee",
@@ -3024,7 +3027,8 @@
       "degatsPietinement": 2,
       "rebondPietinement": 30,
       "pesante": true,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "chauve-souris",
@@ -3063,7 +3067,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "tourelle",
@@ -3144,7 +3149,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "larme",
@@ -3183,7 +3189,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "balise",
@@ -3222,7 +3229,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "plateforme-mobile",
@@ -3261,7 +3269,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "ascenseur",
@@ -3300,7 +3309,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "caisse",
@@ -3339,7 +3349,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "coeur",
@@ -3378,7 +3389,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 0
+      "lueur": 0,
+      "script": ""
     },
     {
       "id": "lanterne",
@@ -3417,7 +3429,8 @@
       "degatsPietinement": 0,
       "rebondPietinement": 0,
       "pesante": false,
-      "lueur": 64
+      "lueur": 64,
+      "script": ""
     }
   ],
   "sons": [
@@ -3798,6 +3811,12 @@
   },
   "lumiere": {
     "ambiante": 0.5
+  },
+  "regles": {
+    "epee": true,
+    "coeurs": true,
+    "reapparitionMs": 700,
+    "degatsPointes": 1
   },
   "textes": {
     "fr": {}

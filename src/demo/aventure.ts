@@ -58,6 +58,10 @@ export interface OptionsAventure {
    * supportable que si mourir est bref.
    */
   reapparitionMs?: number
+  /** Faux : pas de frappe sur la touche action. Une regle de JEU. */
+  epee?: boolean
+  /** Faux : pas de jauge de coeurs a l'ecran. */
+  coeurs?: boolean
   /** Le catalogue employe. Par defaut celui de la demonstration. */
   especes?: Espece[]
   /** Les clips. Par defaut tous ceux de la demonstration, heros compris. */
@@ -95,6 +99,9 @@ export class Aventure {
   private taillade: NoeudSprite
   private reposArme = 0
   private pvMax: number
+  /** Les deux offres qu'on peut refuser — voir les regles du format v16. */
+  private epee: boolean
+  private montrerCoeurs: boolean
   private surMort: (() => void) | null
   /** Ce que le joueur a abattu, pour la barre d'etat. */
   abattus = 0
@@ -170,6 +177,8 @@ export class Aventure {
   constructor(racine: Noeud, heros: NoeudSprite, opts: OptionsAventure = {}) {
     this.heros = heros
     this.pvMax = opts.pvHeros ?? 3
+    this.epee = opts.epee ?? true
+    this.montrerCoeurs = opts.coeurs ?? true
     this.surMort = opts.surMort ?? null
     this.delaiReapparition = opts.reapparitionMs ?? 600
     this.reapparition = { x: heros.x, y: heros.y }
@@ -274,7 +283,9 @@ export class Aventure {
     }
 
     this.reposArme = Math.max(0, this.reposArme - dtMs)
-    if (c.entrees.consommer('action') && this.reposArme === 0 && !this.vieHeros.mort) {
+    // Sans epee, on ne CONSOMME pas non plus la touche : elle reste entiere
+    // pour ce que le jeu en fera — un dialogue, un levier, un script.
+    if (this.epee && c.entrees.consommer('action') && this.reposArme === 0 && !this.vieHeros.mort) {
       this.sonneur.evenement(this.pasCourant, this.heros.id, 'coup')
       // Le torse, et non les pieds : c'est la hauteur ou une epee passe, et
       // c'est celle des creatures qu'on veut toucher.
@@ -465,7 +476,7 @@ export class Aventure {
         ctx.fillRect(p.x + ox, p.y + oy, 1, 1)
       }
       const atlas = jeu.sprites.get('creatures') as Atlas | undefined
-      if (!atlas) return
+      if (!atlas || !this.montrerCoeurs) return
       void ecran
       for (let i = 0; i < this.max; i++) {
         const plein = i < this.vieHeros.pv

@@ -108,9 +108,26 @@ export function mondeDepuisProjet(
   }
   const projection = { ...p.projection } as Projection
   const combat = new Combat()
+  /*
+   * Les scripts d'ESPECE, compiles une fois pour tous les niveaux.
+   *
+   * C'est l'intention « script » : la personne ecrit ce que fait sa creature,
+   * la source vit dans l'espece, et l'atelier la recompile ici avec les memes
+   * refus que partout — un script d'espece qui touche au DOM ne passerait pas
+   * plus la frontiere qu'un script de noeud.
+   */
+  const scriptsEspeces = new Map<string, NonNullable<ReturnType<typeof compiler>['script']>>()
+  const fautesEspeces: string[] = []
+  for (const e of p.especes ?? []) {
+    if (e.comportement !== 'script' || !e.script) continue
+    const c = compiler(e.script)
+    if (c.ok && c.script) scriptsEspeces.set(e.id, c.script)
+    else fautesEspeces.push(`espèce ${e.id} : ${c.erreur ?? 'refusé'}`)
+  }
   const peuplement = new Peuplement(
     racine, combat, p.especes ?? [], animations, projection, premiere.tuile,
   )
+  peuplement.scriptsEspeces = scriptsEspeces
   // Le joueur : la premiere entite dont l'intention est de se laisser diriger.
   // C'est elle que la camera suit et que les autres poursuivent.
   const dirigeDans = (liste: NoeudSprite[]): NoeudSprite | null => liste.find((n) => {
@@ -177,12 +194,9 @@ export function mondeDepuisProjet(
     const h = dirigeDans(recenserDans(r))
     if (!h) {
       const c2 = new Combat()
-      return {
-        combat: c2,
-        peuplement: new Peuplement(r, c2, p.especes ?? [], animations, projection, tuile),
-        aventure: null,
-        dessin: null,
-      }
+      const p2 = new Peuplement(r, c2, p.especes ?? [], animations, projection, tuile)
+      p2.scriptsEspeces = scriptsEspeces
+      return { combat: c2, peuplement: p2, aventure: null, dessin: null }
     }
     const heros2 = h
     const av = new Aventure(r, heros2, {
@@ -191,8 +205,15 @@ export function mondeDepuisProjet(
       projection,
       tuile,
       pvHeros: (p.especes ?? []).find((e) => e.id === (h as unknown as { espece?: string }).espece)?.pv ?? 3,
-      reapparitionMs: 700,
+      // Les REGLES du projet : ce que le moteur offrait, le createur peut
+      // maintenant le refuser — pas d'epee dans un jeu de plateforme pur,
+      // pas de coeurs dans un die-and-retry.
+      reapparitionMs: p.regles?.reapparitionMs ?? 700,
+      epee: p.regles?.epee ?? true,
+      coeurs: p.regles?.coeurs ?? true,
     })
+    av.peuplement.degatsMatiere = p.regles?.degatsPointes ?? 1
+    av.peuplement.scriptsEspeces = scriptsEspeces
     return { combat: av.combat, peuplement: av.peuplement, aventure: av, dessin: null, heros: heros2 }
   }
   const pairePour = (nomCarte: string, r: Noeud, tuile: number): Paire => {
@@ -245,6 +266,7 @@ export function mondeDepuisProjet(
     carteActive: nomActif,
     deroule: p.deroule ?? { titre: '', ordre: [] },
     lumiere: p.lumiere ?? { ambiante: 1 },
+    regles: p.regles ?? { epee: true, coeurs: true, reapparitionMs: 700, degatsPointes: 1 },
     peuplement,
     planches: p.planches,
     tuilePinceau: 0,
@@ -443,6 +465,7 @@ export function mondeDepuisProjet(
         jeu.declencheurs = new Declencheurs(vifs, premiere.tuile)
         jeu.declencheurs.carteCourante = () => fluxActif
       }
+      fautes.push(...fautesEspeces)
       notes = fautes.length ? ` · ${fautes.length} script(s) refusé(s)` : ''
       if (dirige) jeu.suivreNoeud(dirige.nom)
 
