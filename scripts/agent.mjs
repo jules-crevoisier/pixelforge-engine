@@ -302,7 +302,7 @@ const OBJECTIFS = [
         symboles: ['CLE_NEUTRE', 'PLANCHE_NEUTRE', 'HEROS_NEUTRE',
           'ajouterSonProjet', 'ajouterAnimationProjet'],
         indices: ['feuille blanche', 'planche neutre', 'heros neutre',
-          'depart de demonstration', 'premier son', 'premier clip'],
+          'depart de demonstration', 'premier son', 'premier clip', 'planche a soi'],
         preuves: 5 },
     ],
   },

@@ -424,8 +424,9 @@ départ des cartes d'accueil ; la démo reste à un clic.
 
 Partir de rien n'est pas une impasse : **+ Son** fabrique un son qui s'entend
 déjà (une descente de 440 à 220 Hz — chaque réglage du panneau s'entendra),
-**+ Animation** un clip de deux images. Ces deux boutons manquaient, et leur
-absence fermait une porte que rien ne signalait.
+**+ Animation** un clip de deux images, **+ Planche** une planche neuve d'une
+case vide à dessiner sur place. Ces boutons manquaient, et leur absence
+fermait des portes que rien ne signalait.
 
 ## Le scripting, dans l'éditeur
 

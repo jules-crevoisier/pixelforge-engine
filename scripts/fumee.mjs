@@ -1476,6 +1476,18 @@ ok('Enregistrer telecharge le projet faute de dossier',
   const clipNe = await p.evaluate(() => window.pfe.monde.animations.map((q) => q.nom).join(','))
   ok('et « + Animation » son premier clip', clipNe === 'clip1',
     `clips du projet : « ${clipNe} »`)
+  await p.getByRole('button', { name: 'Dessin', exact: true }).click()
+  await p.waitForTimeout(200)
+  await cliquerDansBloc('Dessin', '+ Planche')
+  await p.waitForTimeout(250)
+  const plancheNee = await p.evaluate(() => {
+    const q = window.pfe.monde.planches
+    const derniere = q[q.length - 1]
+    return { noms: q.map((r) => r.nom).join(','), cases: derniere.dessins.length }
+  })
+  ok('et « + Planche » une planche à soi, née d’une case vide',
+    plancheNee.noms === 'carte,heros,planche' && plancheNee.cases === 1,
+    `planches : « ${plancheNee.noms} »`)
   await p.click('#fermerProjet')
 }
 

@@ -1069,11 +1069,32 @@ export class PanneauProjet {
       })
       return e
     }
+    // « + Planche » : une planche qui NAIT ici, d'une case vide. Sans ce
+    // bouton, dessiner une creature dans un projet parti de rien obligeait
+    // a entasser ses poses sur la planche du heros, ou a passer par un
+    // fichier image — la meme impasse que « + Son », pour le dessin.
+    const neuve = bouton('+ Planche', 'Une planche neuve d’une case vide, à dessiner ici', () => {
+      const l = Math.max(1, this.tailleImport.x)
+      const h = Math.max(1, this.tailleImport.y)
+      const planches = this.crochets.planches()
+      this.plancheEditee = planches.length
+      this.caseEditee = 0
+      this.appliquer(ajouterPlancheProjet(this.frais(), {
+        nom: 'planche',
+        largeurCase: l,
+        hauteurCase: h,
+        colonnes: 8,
+        // Deux couleurs de depart — l'encre et un clair — parce qu'un
+        // nuancier vide ne laisse rien a poser ; « + Couleur » fait le reste.
+        cle: { o: '#161821', f: '#e8e4d8' },
+        dessins: [Array.from({ length: h }, () => '.'.repeat(l))],
+      }), 'Planche ajoutée — dessinez sa première case')
+    })
     const rangee = document.createElement('div')
     rangee.className = 'bloc-actions'
-    rangee.append(b,
-      taille('x', 'Largeur d’une case de l’image importée, en pixels'),
-      taille('y', 'Hauteur d’une case de l’image importée, en pixels'),
+    rangee.append(b, neuve,
+      taille('x', 'Largeur d’une case de l’image importée ou créée, en pixels'),
+      taille('y', 'Hauteur d’une case de l’image importée ou créée, en pixels'),
       entree)
     d.appendChild(rangee)
   }
