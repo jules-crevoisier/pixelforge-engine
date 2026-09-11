@@ -178,8 +178,8 @@
     {
       "nom": "banc:mondes",
       "code": 0,
-      "reussies": 431,
-      "total": 431,
+      "reussies": 439,
+      "total": 439,
       "noms": [
         "redemander le clip en cours ne le recommence pas",
         "et le forcer, lui, fige bien l'animation",
@@ -611,7 +611,15 @@
         "elle traverse l'enregistrement et se construit sans une faute",
         "« + Son » fabrique des sons nommes, qui s'entendent deja",
         "et « Retirer » le retire",
-        "« + Animation » fabrique un clip de deux images"
+        "« + Animation » fabrique un clip de deux images",
+        "l'encodeur d'export et le dechiffreur parlent le meme WAV",
+        "le base64 fait l'aller-retour octet pour octet",
+        "un son importe se REND depuis le fichier, pas depuis la synthese",
+        "et le volume s'y applique encore",
+        "le reechantillonnage suit le taux demande",
+        "un wav illisible retombe sur la synthese au lieu de se taire",
+        "un son sans wav se synthetise comme avant",
+        "le wav traverse l'enregistrement, nomme d'apres son fichier"
       ]
     },
     {
@@ -966,8 +974,8 @@
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 131,
-      "total": 131,
+      "reussies": 132,
+      "total": 132,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -1099,11 +1107,12 @@
         "le panneau Fichiers inventorie le projet : cartes, planches, espèces, sons…",
         "cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS",
         "déposer une image sur la page en fait une planche, et le voile se retire",
-        "déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait"
+        "déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait",
+        "déposer un .wav en fait un son du projet"
       ]
     }
   ],
-  "verifications": 1014,
+  "verifications": 1023,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -1263,8 +1272,8 @@
     },
     {
       "jeu": "Faire un jeu sans lire le moteur",
-      "tenus": 13,
-      "total": 13,
+      "tenus": 14,
+      "total": 14,
       "criteres": [
         {
           "nom": "Partir d’un projet vide",
@@ -1294,7 +1303,7 @@
         {
           "nom": "Un projet se ferme, se rouvre, se joue",
           "tenu": true,
-          "preuves": 39
+          "preuves": 40
         },
         {
           "nom": "Une aide qui dit dans quel ordre s’y prendre",
@@ -1325,6 +1334,11 @@
           "nom": "Les fichiers se voient, s’ouvrent et se déposent, comme dans un moteur",
           "tenu": true,
           "preuves": 4
+        },
+        {
+          "nom": "L’audio enregistré entre aussi : un .wav devient un son du projet",
+          "tenu": true,
+          "preuves": 5
         },
         {
           "nom": "La feuille blanche : partir sans un seul asset de démonstration",
@@ -1472,7 +1486,7 @@
         {
           "nom": "L’art dessiné ailleurs entre dans le projet",
           "tenu": true,
-          "preuves": 12
+          "preuves": 13
         },
         {
           "nom": "Des déclencheurs : les événements du niveau en données",
@@ -1549,7 +1563,7 @@
         {
           "nom": "Son : décrit en données, attaché aux événements d’animation",
           "tenu": true,
-          "preuves": 86
+          "preuves": 90
         },
         {
           "nom": "Et un son ne se rejoue pas quand le réseau rembobine",
@@ -1589,7 +1603,7 @@
         {
           "nom": "Et l’export la donne en .wav, que tout moteur sait lire",
           "tenu": true,
-          "preuves": 7
+          "preuves": 12
         },
         {
           "nom": "Traduction : une clef par texte, et ce qui manque se VOIT",
@@ -1780,6 +1794,7 @@
     "donjon : une image d'animation valide",
     "douze demi-tons font une octave",
     "déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait",
+    "déposer un .wav en fait un son du projet",
     "déposer une image sur la page en fait une planche, et le voile se retire",
     "elle dit exactement ce qui manque à une langue",
     "elle emporte la graine du monde engendré",
@@ -1915,6 +1930,7 @@
     "et le texte du jeu n’est donc plus dans le code",
     "et le vide n'occupe aucune entree",
     "et le vide n’a pas de sol",
+    "et le volume s'y applique encore",
     "et les champs qu’on n’a pas remplis prennent la valeur du moteur",
     "et les deux durent pourtant exactement le même temps",
     "et les langues du menu ont toutes une table",
@@ -2033,6 +2049,7 @@
     "l'echelle d'affichage est toujours entiere et au moins 1",
     "l'editeur la recompile, et refuse ce qui ne passerait pas la frontiere",
     "l'effet de taillade de l'aventure est ephemere",
+    "l'encodeur d'export et le dechiffreur parlent le meme WAV",
     "l'entree du tableau tire, y rester ne retire pas",
     "l'epee est coupee d'usine en feuille blanche",
     "l'epee touche une gelee a bout de portee",
@@ -2118,6 +2135,7 @@
     "le CRC-32 rend la valeur de reference",
     "le Dockerfile existe",
     "le PNG porte sa signature",
+    "le base64 fait l'aller-retour octet pour octet",
     "le bord droit est exclu : une zone de deux cases en couvre deux",
     "le boss est au cul-de-sac le plus loin du depart",
     "le bras d'une croix ne voit que le bas",
@@ -2187,6 +2205,7 @@
     "le puits se remonte en sautant d'une paroi a l'autre",
     "le rebond du pietinement atteint la hauteur demandee",
     "le rebond rend le dash",
+    "le reechantillonnage suit le taux demande",
     "le remplissage couvre une zone entière d’un clic",
     "le remplissage s’arrête au mur, il ne fuit pas de l’autre côté",
     "le repos n'est aucune des poses de marche",
@@ -2208,6 +2227,7 @@
     "le vide se relit VIDE, et non tuile zero",
     "le vrai jeu joué deux fois donne la même partie",
     "le vrai moteur, à deux, sur un lien qui retarde et qui perd",
+    "le wav traverse l'enregistrement, nomme d'apres son fichier",
     "les bornes d’une salle sont en pixels",
     "les calques se fondent de bas en haut",
     "les cases s'ecrivent une rangee par ligne",
@@ -2494,12 +2514,15 @@
     "un seul coup touche DEUX cibles, une fois chacune",
     "un solide a son sol tout en haut de la case",
     "un son dure ce qu’il annonce",
+    "un son importe se REND depuis le fichier, pas depuis la synthese",
+    "un son sans wav se synthetise comme avant",
     "un son vide donne un en-tête valide et zéro donnée",
     "un sujet introuvable ne tire pas et ne casse rien",
     "un tempo insense est borne, pas accepte",
     "un temps à 120 dure une demi-seconde",
     "un texte volontairement vide reste vide, et n’est pas compté manquant",
     "un titre ouvre le jeu sur son ecran-titre",
+    "un wav illisible retombe sur la synthese au lieu de se taire",
     "un échantillon hors bornes est ÉCRÊTÉ, et non replié dans le négatif",
     "un étage s’engendre en moins d’un dixième de seconde",
     "un état imposé remplace le clavier",
