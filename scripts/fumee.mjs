@@ -2899,6 +2899,80 @@ ok('Enregistrer telecharge le projet faute de dossier',
       await p.evaluate(() => window.pfe.monde.carteActive)} »`)
 }
 
+/*
+ * TROUVER : un seul champ pour tout ce que le projet nomme.
+ *
+ * On ouvre le jeu-temoin — trois cartes, des salles, des declencheurs — et
+ * l'on cherche quelque chose qui vit dans une AUTRE carte que celle qu'on
+ * regarde. C'est le cas qui justifie la recherche : sans elle, il faut savoir
+ * d'avance ou est la chose pour aller la voir.
+ */
+{
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(800)
+  await p.click('#accueilGouffre')
+  await p.waitForTimeout(1200)
+
+  await p.keyboard.press('Control+f')
+  await p.waitForTimeout(300)
+  ok('Ctrl+F ouvre « Trouver »', await p.isVisible('#trouverChamp'))
+
+  await p.fill('#trouverChamp', 'gouffre')
+  await p.waitForTimeout(300)
+  const trouves = await p.$$eval('.trouvaille',
+    (l) => l.map((e) => `${e.querySelector('.genre').textContent}:${e.querySelector('.nom').textContent}`))
+  ok('elle répond sur toutes les sortes de choses à la fois',
+    trouves.length >= 1 && trouves.some((t) => t.startsWith('carte:')),
+    trouves.slice(0, 5).join(' · '))
+
+  const carteAvant = await p.evaluate(() => window.pfe.monde.carteActive)
+  await p.keyboard.press('Enter')
+  await p.waitForTimeout(900)
+  ok('Entrée fait le trajet : la carte trouvée passe sous le pinceau',
+    (await p.evaluate(() => window.pfe.monde.carteActive)) === 'gouffre'
+    && carteAvant !== 'gouffre',
+    `${carteAvant} → ${await p.evaluate(() => window.pfe.monde.carteActive)}`)
+
+  // Un NOEUD d'une autre scene : elle doit changer de carte ET viser.
+  await p.evaluate(() => window.pfeTrouver.ouvrir())
+  await p.waitForTimeout(250)
+  const cible = await p.evaluate(() => {
+    const r = window.pfeTrouver.chercher('lanterne').find((t) => t.genre === 'noeud')
+    return r ? { nom: r.nom, carte: r.carte, x: r.x, y: r.y } : null
+  })
+  ok('un nœud d’une autre scène se trouve, avec sa carte et sa position',
+    !!cible && !!cible.carte && typeof cible.x === 'number', JSON.stringify(cible))
+  await p.fill('#trouverChamp', 'lanterne')
+  await p.waitForTimeout(300)
+  const rangNoeud = await p.evaluate(() => [...document.querySelectorAll('.trouvaille')]
+    .findIndex((e) => e.querySelector('.genre').textContent === 'nœud'))
+  ok('il est dans la liste', rangNoeud >= 0, `rang ${rangNoeud}`)
+  await p.evaluate((r) => { document.querySelectorAll('.trouvaille')[r].click() }, rangNoeud)
+  await p.waitForTimeout(900)
+  const ou = await p.evaluate(() => ({
+    carte: window.pfe.monde.carteActive,
+    cam: [window.pfe.jeu.camera.x, window.pfe.jeu.camera.y],
+  }))
+  ok('le choisir change de carte ET centre la vue dessus',
+    ou.carte === cible.carte
+    && Math.abs(ou.cam[0] + window_largeur() / 2 - cible.x) < 200,
+    `carte « ${ou.carte} », caméra en ${ou.cam} pour un nœud en ${cible.x},${cible.y}`)
+  function window_largeur() { return 320 }
+
+  await p.evaluate(() => window.pfeTrouver.ouvrir())
+  await p.fill('#trouverChamp', 'lan')
+  await p.waitForTimeout(300)
+  await p.screenshot({ path: 'docs/trouver.png' })
+  await p.fill('#trouverChamp', 'zzzzz')
+  await p.waitForTimeout(300)
+  const vide = await p.textContent('#trouverListe')
+  ok('et une question sans réponse le dit, au lieu d’une liste vide muette',
+    vide.includes('Rien qui ressemble'), vide.trim().slice(0, 60))
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(200)
+  ok('Échap referme', !(await p.isVisible('#trouverChamp')))
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

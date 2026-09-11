@@ -25,6 +25,7 @@ import { depuisTiled, estDuTiled } from '../export/tiled.ts'
 import { depuisLdtk, estDuLdtk } from '../export/ldtk.ts'
 import { PanneauFichiers, genreDe } from './fichiers-panneau.ts'
 import { PanneauConsole, type GenreMessage } from './console-panneau.ts'
+import { chercherDansProjet, type Trouvaille } from './trouver.ts'
 import { rendre as rendreSon, dechiffrerWav, base64DepuisOctets } from '../runtime/son.ts'
 import { rendreMusique } from '../runtime/musique.ts'
 import type { ProjetSerialise } from '../export/format.ts'
@@ -1967,6 +1968,148 @@ function compterEntites(n: { enfants: unknown[] }): number {
 }
 
 /* ------------------------------------------------------------------ */
+/* Trouver                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Un seul champ pour tout ce que le projet nomme.
+ *
+ * ## Pourquoi une recherche et non un filtre dans l'arbre
+ *
+ * Un filtre dans l'arbre repond a « ou est le gardien de la crypte ? » a
+ * condition d'avoir deja ouvert le panneau, choisi l'onglet Scene et la bonne
+ * scene — c'est-a-dire de savoir deja ou il est. Et il ne dit rien des
+ * especes, des planches, des sons, des salles ni des declencheurs, qui vivent
+ * dans six autres onglets.
+ *
+ * Chaque resultat sait ou il HABITE : la carte a mettre sous le pinceau,
+ * l'onglet a ouvrir, le point a viser. Le choisir fait le trajet entier.
+ */
+{
+  const boite = document.getElementById('trouverBoite') as HTMLDialogElement
+  const champ = document.getElementById('trouverChamp') as HTMLInputElement
+  const liste = document.getElementById('trouverListe') as HTMLElement
+  let resultats: Trouvaille[] = []
+  let choisi = 0
+
+  const ETIQUETTES: Record<string, string> = {
+    noeud: 'nœud', carte: 'carte', espece: 'espèce', planche: 'planche',
+    son: 'son', musique: 'musique', dialogue: 'dialogue', animation: 'animation',
+    declencheur: 'déclencheur', salle: 'salle', assemblage: 'assemblage',
+  }
+
+  /**
+   * Va voir.
+   *
+   * L'ordre compte : la carte D'ABORD, parce que la mettre sous le pinceau
+   * reconstruit le monde — viser ou surligner avant cela designerait des
+   * objets que la reconstruction remplace aussitot.
+   */
+  const aller = (t: Trouvaille): void => {
+    boite.close()
+    if (t.carte && t.carte !== (monde.carteActive ?? '')
+      && (monde.cartes ?? []).some((c) => c.nom === t.carte)) {
+      editerCarte(t.carte)
+    }
+    if (t.id) {
+      noeudDesigne = t.id
+      panneauProjet.designerNoeud(t.id)
+    }
+    if (typeof t.x === 'number' && typeof t.y === 'number') {
+      jeu.camera.x = Math.round(t.x - jeu.ecran.vue.largeur / 2)
+      jeu.camera.y = Math.round(t.y - jeu.ecran.vue.hauteur / 2)
+    }
+    if (t.onglet) panneauProjet.ouvrirSur(t.onglet, t.cible ?? '')
+    if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+    verdict.textContent = `${ETIQUETTES[t.genre] ?? t.genre} « ${t.nom} » — ${t.detail}`
+  }
+
+  const dessiner = (): void => {
+    liste.textContent = ''
+    if (!resultats.length) {
+      const vide = document.createElement('p')
+      vide.className = 'ligne menu'
+      vide.textContent = champ.value.trim()
+        ? `Rien qui ressemble à « ${champ.value.trim()} » dans ce projet.`
+        : 'Tapez : les nœuds de toutes les scènes, les cartes, les espèces, les planches, '
+          + 'les sons, les musiques, les dialogues, les animations, les déclencheurs, '
+          + 'les salles et les assemblages répondent.'
+      liste.appendChild(vide)
+      return
+    }
+    resultats.forEach((t, i) => {
+      const b = document.createElement('button')
+      b.className = `trouvaille${i === choisi ? ' actif' : ''}`
+      const genre = document.createElement('span')
+      genre.className = 'genre'
+      genre.textContent = ETIQUETTES[t.genre] ?? t.genre
+      const nom = document.createElement('span')
+      nom.className = 'nom'
+      nom.textContent = t.nom
+      const detail = document.createElement('span')
+      detail.className = 'detail'
+      detail.textContent = t.detail
+      b.append(genre, nom, detail)
+      b.addEventListener('click', () => aller(t))
+      liste.appendChild(b)
+    })
+  }
+
+  const chercher = (): void => {
+    resultats = chercherDansProjet(projetCourant(), champ.value)
+    choisi = 0
+    dessiner()
+  }
+
+  champ.addEventListener('input', chercher)
+  champ.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      choisi = Math.min(resultats.length - 1, choisi + 1)
+      dessiner()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      choisi = Math.max(0, choisi - 1)
+      dessiner()
+    } else if (e.key === 'Enter' && resultats[choisi]) {
+      e.preventDefault()
+      aller(resultats[choisi])
+    } else if (e.key === 'Escape') {
+      /*
+       * Echap ferme la boite, et non le champ.
+       *
+       * Un `input` de type « search » avale la premiere pression pour vider
+       * son contenu : la boite restait ouverte, et il fallait appuyer deux
+       * fois. C'est le banc qui l'a vu — personne ne verifie a la main qu'une
+       * touche d'echappement echappe.
+       */
+      e.preventDefault()
+      boite.close()
+    }
+  })
+
+  const ouvrirTrouver = (): void => {
+    boite.showModal()
+    champ.select()
+    chercher()
+  }
+  document.getElementById('basculeTrouver')?.addEventListener('click', ouvrirTrouver)
+  document.getElementById('fermerTrouver')?.addEventListener('click', () => boite.close())
+  boite.addEventListener('click', (e) => { if (e.target === boite) boite.close() })
+  window.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return
+    // Ctrl+F du navigateur cherche dans la PAGE : sur un editeur dont le
+    // contenu est dans un canevas, il ne trouve jamais rien. On le prend.
+    e.preventDefault()
+    ouvrirTrouver()
+  })
+  ;(window as unknown as { pfeTrouver: unknown }).pfeTrouver = {
+    ouvrir: ouvrirTrouver,
+    chercher: (q: string) => chercherDansProjet(projetCourant(), q),
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* L'aide                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -2074,6 +2217,12 @@ joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
 <code>n</code>, son nœud — pour qu’il traverse l’export.</p>
 
 <h4>Les raccourcis</h4>
+<p><kbd>Ctrl</kbd>+<kbd>F</kbd> <b>trouve</b> n’importe quoi dans le projet —
+un nœud de n’importe quelle scène, une carte, une espèce, une planche, un son,
+une musique, un dialogue, une animation, un déclencheur, une salle, un
+assemblage. Le choisir fait le trajet : la bonne carte sous le pinceau, la vue
+centrée, le bon onglet ouvert.</p>
+
 <p><kbd>1</kbd>…<kbd>7</kbd> les outils du dock · <kbd>Ctrl</kbd>+<kbd>S</kbd>
 enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd> défaire <i>n'importe quel geste</i> ·
 <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire · <kbd>+</kbd> /

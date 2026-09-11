@@ -738,6 +738,37 @@ Deux détails font la différence entre un bouton pause et un outil :
 Une partie figée **tourne toujours**, au sens de l'éditeur : on ne peut pas y
 peindre — sinon la reprise raccrocherait une carte modifiée à un état d'avant.
 
+## Trouver : un seul champ pour tout ce que le projet nomme
+
+![La boîte « Trouver » : les nœuds de toutes les scènes, les espèces, les cartes](docs/trouver.png)
+
+<kbd>Ctrl</kbd>+<kbd>F</kbd>. Un projet est un ensemble de choses **nommées** —
+des nœuds dans plusieurs scènes, des cartes, des espèces, des planches, des
+sons, des musiques, des dialogues, des animations, des déclencheurs, des salles,
+des assemblages. La recherche porte sur toutes, d'un seul champ.
+
+Ce n'est pas un filtre dans l'arbre. Un filtre aurait répondu à « où est le
+gardien de la crypte ? » à condition d'avoir d'abord ouvert le panneau Projet,
+choisi l'onglet Scène, puis la bonne scène — c'est-à-dire à condition de savoir
+déjà où il est.
+
+Chaque résultat sait **où il habite**, et le choisir fait le trajet entier : la
+bonne carte sous le pinceau, la vue centrée sur le nœud, le bon onglet ouvert,
+le nœud sélectionné dans l'arbre et montré par l'inspecteur.
+
+Deux détails font la différence entre une recherche et une liste :
+
+- **Le classement.** Le nom exact d'abord, puis ce qui commence par ce qu'on
+  tape, puis ce qui le contient — et à pertinence égale, un ordre stable. Sans
+  cela, <kbd>Entrée</kbd> ne veut rien dire.
+- **Les accents.** Chercher `gelee` trouve `Gelée`. Sans cela, la recherche
+  punit l'écriture correcte — celle qu'on emploie justement pour nommer les
+  choses d'un jeu français.
+
+La position rendue pour un nœud est **absolue** : un nœud enfant porte une
+position relative à son parent, et viser celle-là ferait regarder le coin de la
+carte.
+
 ## Le brouillon : le filet, pas le plancher
 
 Un onglet qui se ferme, une page qui se recharge, une machine qui s'éteint ne

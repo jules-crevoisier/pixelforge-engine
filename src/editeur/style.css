@@ -295,6 +295,25 @@ button.lien:hover { color: var(--accent); }
 .champs input[type="checkbox"] { width: 14px; height: 14px; justify-self: start; }
 .champs input:disabled { color: var(--dim); background: transparent; }
 
+/* La boite « Trouver » : le champ prend toute la largeur de sa tete, et la
+   liste defile. Une hauteur fixe : une boite qui grandit avec ses resultats
+   saute sous le curseur pendant qu'on tape. */
+.trouver-boite { width: min(680px, 92vw); }
+.trouver-boite .aide-tete input {
+  flex: 1; background: var(--bg-0); color: var(--texte); border: 1px solid var(--line);
+  border-radius: 5px; padding: 5px 8px; font: inherit; font-size: 13px; min-width: 0;
+}
+.trouver-boite .aide-corps { height: 320px; overflow: auto; }
+.trouvaille {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--bg-0); border: 1px solid var(--line); border-radius: 5px;
+  padding: 5px 8px; margin-bottom: 4px; color: var(--texte); font: inherit; font-size: 12px;
+}
+.trouvaille.actif { border-color: var(--accent); }
+.trouvaille .genre { color: var(--dim); font-size: 11px; min-width: 82px; }
+.trouvaille .nom { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trouvaille .detail { color: var(--dim); font-size: 11px; }
+
 /* Une partie FIGEE : un lisere ambre dit qu'on regarde un instant arrete, et
    non un jeu qui tourne. Sans lui, on croit que le jeu a planté. */
 #vue.fige { outline: 2px solid #ffd479; outline-offset: -2px; }

@@ -5491,6 +5491,82 @@ console.log('\n--- copier, coller, d\'une scene a l\'autre ---')
     && copie.id !== source.id && copie.enfants[0]?.id !== source.enfants[0]?.id)
 }
 
+console.log('\n--- trouver : un seul champ pour tout ce que le projet nomme ---')
+
+{
+  const { chercherDansProjet, normaliser, TROUVAILLES_MAX } =
+    await import('../src/editeur/trouver.ts')
+  const { projetNeuf, ajouterCarteProjet, ajouterSonProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+
+  // `ajouterCarteProjet` nomme la carte lui-meme — « niveau2 » — et ne prend
+  // pas le nom qu'on lui glisse. On renomme donc apres, comme le panneau.
+  const { renommerCarteProjet } = await import('../src/editeur/projet-neuf.ts')
+  let pj = ajouterSonProjet(renommerCarteProjet(
+    ajouterCarteProjet(projetNeuf({ nom: 'trouver', projection: 'cote' })),
+    'niveau2', 'crypte'))
+  pj = { ...pj, salles: [{ nom: 'entree', x: 2, y: 1, largeur: 6, hauteur: 4, carte: 'crypte' }] }
+
+  check('rien ne repond a une question vide',
+    chercherDansProjet(pj, '   ').length === 0,
+    'une liste de tout le projet des l\'ouverture ne repond a aucune question')
+
+  const cryptes = chercherDansProjet(pj, 'crypte')
+  check('une carte se trouve par son nom',
+    cryptes.some((t) => t.genre === 'carte' && t.nom === 'crypte'),
+    cryptes.map((t) => `${t.genre}:${t.nom}`).join(', '))
+  check('et le resultat sait quelle carte mettre sous le pinceau',
+    cryptes.find((t) => t.genre === 'carte').carte === 'crypte')
+
+  const heros = chercherDansProjet(pj, 'heros')
+  check('un noeud de scene se trouve, avec sa scene',
+    heros.some((t) => t.genre === 'noeud' && t.detail.includes('scène')),
+    heros.filter((t) => t.genre === 'noeud').map((t) => t.detail).join(' / '))
+  check('et une espece aussi', heros.some((t) => t.genre === 'espece'))
+
+  // La position ABSOLUE : un enfant porte une position relative a son parent,
+  // et viser celle-la ferait regarder le coin de la carte.
+  const corps = chercherDansProjet(pj, 'corps').find((t) => t.genre === 'noeud')
+  const leHeros = heros.find((t) => t.genre === 'noeud' && t.nom === 'heros')
+  check('la position rendue est ABSOLUE, pas relative au parent',
+    !!corps && !!leHeros && corps.x === leHeros.x && corps.y === leHeros.y,
+    `corps en ${corps?.x},${corps?.y} — le heros en ${leHeros?.x},${leHeros?.y}`)
+
+  const salle = chercherDansProjet(pj, 'entree').find((t) => t.genre === 'salle')
+  check('une salle se trouve, et rend son CENTRE a viser',
+    !!salle && salle.x === (2 + 3) * 16 && salle.y === (1 + 2) * 16,
+    `${salle?.x},${salle?.y}`)
+
+  // LE CLASSEMENT : c'est lui qui rend « Entree » utile.
+  const dernierSon = pj.sons[pj.sons.length - 1].nom
+  const rangs = chercherDansProjet(pj, dernierSon)
+  check('le nom exact passe devant', rangs[0].nom === dernierSon && rangs[0].rang === 0,
+    rangs.slice(0, 3).map((t) => `${t.nom}(${t.rang})`).join(' '))
+  const partiel = chercherDansProjet(pj, 'her')
+  check('ce qui COMMENCE par ce qu\'on tape passe devant ce qui le contient',
+    partiel.every((t, i, l) => i === 0 || l[i - 1].rang <= t.rang),
+    partiel.slice(0, 4).map((t) => `${t.nom}(${t.rang})`).join(' '))
+  const deuxFois = chercherDansProjet(pj, 'her').map((t) => `${t.genre}:${t.nom}`)
+  check('deux recherches identiques rendent le MEME ordre',
+    deuxFois.join() === chercherDansProjet(pj, 'her').map((t) => `${t.genre}:${t.nom}`).join(),
+    'sinon Entree ne veut rien dire')
+
+  // Les accents : chercher « gelee » doit trouver « Gelée ».
+  check('la recherche ignore les accents et la casse',
+    normaliser('Gelée bleue') === 'gelee bleue')
+  const accent = chercherDansProjet(
+    { ...pj, especes: [...pj.especes, { ...pj.especes[0], id: 'gelée', nom: 'Gelée' }] }, 'gelee')
+  check('et une espece accentuee se trouve sans accent',
+    accent.some((t) => t.genre === 'espece' && t.nom === 'gelée'),
+    'sinon la recherche punit l\'ecriture correcte')
+
+  check('rien d\'introuvable ne s\'invente',
+    chercherDansProjet(pj, 'zzzzz').length === 0)
+  const beaucoup = chercherDansProjet(pj, 'e')
+  check('la liste est bornee : au-dela, elle ne se lit plus',
+    beaucoup.length <= TROUVAILLES_MAX, `${beaucoup.length} resultats`)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

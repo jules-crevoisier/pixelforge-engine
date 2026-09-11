@@ -24,6 +24,7 @@
       <button id="basculeProjet" title="Cartes, dessins, sons, textes, espèces">Projet</button>
       <button id="basculeFichiers" title="Le dossier de travail, et tout ce que le projet contient">Fichiers</button>
       <button id="basculeConsole" title="Ce que l’éditeur a à dire : scripts refusés, exceptions, traces">Console</button>
+      <button id="basculeTrouver" title="Trouver n’importe quoi dans le projet (Ctrl+F)">🔍</button>
       <span class="sep"></span>
       <button id="nouveau" title="Créer un nouveau jeu">Nouveau…</button>
       <button id="ouvrir" title="Relire un projet enregistré">Ouvrir…</button>
@@ -170,6 +171,18 @@
       <span id="mesure"></span>
     </footer>
   </div>
+  <!-- TROUVER : un seul champ pour tout ce que le projet nomme. Une boîte
+       modale et non un panneau : on la remplit, on choisit, elle se referme. -->
+  <dialog id="trouverBoite" class="aide-boite trouver-boite">
+    <div class="aide-tete">
+      <b>Trouver</b>
+      <input id="trouverChamp" type="search" placeholder="un nœud, une espèce, une carte, un son…"
+        autocomplete="off" aria-label="Chercher dans le projet" />
+      <span class="pousse"></span>
+      <button id="fermerTrouver">✕</button>
+    </div>
+    <div class="aide-corps" id="trouverListe"></div>
+  </dialog>
   <dialog id="aideBoite" class="aide-boite">
     <div class="aide-tete"><b>Prise en main</b><span class="pousse"></span>
       <button id="fermerAide">✕</button></div>
