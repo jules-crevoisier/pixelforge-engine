@@ -6,22 +6,22 @@
 ```
 
 ╭─ AGENT D’ÉVALUATION ────────────────────────────────────────────
-│ 2026-09-11 · dernier passage 2026-09-10
+│ 2026-09-11 · dernier passage 2026-09-11
 ╰─────────────────────────────────────────────────────────────────
 
 LES ÉPREUVES
-  vert   build                    —  3.5 s
+  vert   build                    —  3.7 s
   vert   banc                 83/83  0.3 s
   vert   banc:plateforme      68/68  0.3 s
-  vert   banc:mondes        431/431  1.6 s
+  vert   banc:mondes        431/431  1.7 s
   vert   banc:langages      100/100  1.5 s
   vert   banc:reseau          33/33  0.4 s
   vert   banc:habillage     112/112  0.3 s
   vert   banc:charge          17/17  1.5 s
   vert   banc:image           30/30  0.2 s
-  vert   banc:deploiement       9/9  6.5 s
-  vert   fumee              122/122  89.5 s
-  1005 vérifications au total, 0 rouge(s)
+  vert   banc:deploiement       9/9  6.3 s
+  vert   fumee              127/127  91.3 s
+  1010 vérifications au total, 0 rouge(s)
 
 CE QUE LE PROJET SAIT FAIRE
   Un critère n’est tenu que s’il existe des vérifications qui tomberaient
@@ -63,16 +63,16 @@ CE QUE LE PROJET SAIT FAIRE
   Faire un jeu sans lire le moteur — 12/12
     ✓ Partir d’un projet vide                              6 preuves
     ✓ Redimensionner la carte, gérer les calques           24 preuves
-    ✓ Créer une espèce sans écrire de code                 26 preuves
+    ✓ Créer une espèce sans écrire de code                 27 preuves
     ✓ Poser et déplacer une entité à la souris             13 preuves
     ✓ Défaire et refaire, y compris sur les entités        13 preuves
     ✓ Un projet se ferme, se rouvre, se joue               39 preuves
     ✓ Une aide qui dit dans quel ordre s’y prendre         4 preuves
     ✓ Export vers un moteur du commerce                    20 preuves
-    ✓ Le comportement d’une espèce peut être un script à soi 4 preuves
+    ✓ Le comportement d’une espèce peut être un script à soi 5 preuves
     ✓ La physique du contrôleur se règle par espèce, et ça se mesure 3 preuves
     ✓ L’épée, les cœurs, la réapparition et les pointes se débrayent 4 preuves
-    ✓ La feuille blanche : partir sans un seul asset de démonstration 8 preuves
+    ✓ La feuille blanche : partir sans un seul asset de démonstration 10 preuves
 
   Le multijoueur, et ce qu’il exige d’abord — 6/6
     ✓ Simulation à pas fixe, hasard reproductible          5 preuves
@@ -107,7 +107,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Des déclencheurs : les événements du niveau en données 24 preuves
     ✓ Un script peut tout ce qu’un jeu fait                2 preuves
     ✓ Plusieurs cartes, un déroulé : un projet devient un jeu 16 preuves
-    ✓ Une lumière fidèle à la palette, au prix mesuré      30 preuves
+    ✓ Une lumière fidèle à la palette, au prix mesuré      31 preuves
     ✓ Un jeu-témoin complet, joué par les bancs            13 preuves
     ✓ Un projet relu meurt et REVIENT, comme un vrai jeu   18 preuves
     ✓ Salles et lumière par carte : la carte partout       8 preuves
@@ -119,7 +119,7 @@ CE QUE LE PROJET SAIT FAIRE
 
   Ce qu’un jeu a en plus de son gameplay — 14/14
     ✓ Une fonte de pixels, accents français compris        5 preuves
-    ✓ Son : décrit en données, attaché aux événements d’animation 84 preuves
+    ✓ Son : décrit en données, attaché aux événements d’animation 85 preuves
     ✓ Et un son ne se rejoue pas quand le réseau rembobine 6 preuves
     ✓ Particules et effets                                 8 preuves
     ✓ Dialogue : frappe, coupure, choix                    19 preuves
@@ -138,51 +138,13 @@ CE QU’IL RESTE À FAIRE, DANS L’ORDRE
   une grille entièrement verte ne mesure plus rien.
 
 CE QUI A BOUGÉ
-  + épreuve nouvelle : banc:image, banc:deploiement
-  ↑ 374 vérification(s) de plus
-      mais une AUTRE action de la meme touche reste servie
-      une demi-pente monte d’un pixel toutes les deux colonnes
-      sa moitié haute reprend là où la basse s’arrête, sans marche
-      et son pas est régulier d’un bout à l’autre
-      la demi-pente gauche est l’exact miroir de la droite
-      la collision et les tuiles calculent la MÊME hauteur, partout
-  + critère nouveau : Les créatures contournent ce qui les bloque
-  + critère nouveau : Et cette navigation ne coûte rien par ennemi de plus
-  + critère nouveau : Un chapitre en TABLEAUX posés à la main, pas une grille
-  + critère nouveau : La caméra s’arrête au bord du tableau, et y glisse
-  + critère nouveau : Mourir renvoie à l’entrée du tableau, pas au départ du chapitre
-  + critère nouveau : Et le chapitre se grimpe vraiment, avec le vrai contrôleur
-  + critère nouveau : Le comportement d’une espèce peut être un script à soi
-  + critère nouveau : La physique du contrôleur se règle par espèce, et ça se mesure
-  + critère nouveau : L’épée, les cœurs, la réapparition et les pointes se débrayent
-  + critère nouveau : La feuille blanche : partir sans un seul asset de démonstration
-  + critère nouveau : Une image qui ne contient que ce qu’elle sert
-  + critère nouveau : Toute page du dépôt entre dans l’image, sans qu’on la nomme
-  + critère nouveau : L’application vit sous les en-têtes réels, pas seulement en local
-  + critère nouveau : Le fond défile moins vite que le sol, et on l’a mesuré
-  + critère nouveau : Des demi-pentes : deux cases pour monter d’une
-  + critère nouveau : On ne décolle pas pour une marche d’un pixel
-  + critère nouveau : Une matière survit à l’écriture en un caractère
-  + critère nouveau : Et les six portages lisent la même collision
-  + critère nouveau : L’art dessiné ailleurs entre dans le projet
-  + critère nouveau : Des déclencheurs : les événements du niveau en données
-  + critère nouveau : Un script peut tout ce qu’un jeu fait
-  + critère nouveau : Plusieurs cartes, un déroulé : un projet devient un jeu
-  + critère nouveau : Une lumière fidèle à la palette, au prix mesuré
-  + critère nouveau : Un jeu-témoin complet, joué par les bancs
-  + critère nouveau : Un projet relu meurt et REVIENT, comme un vrai jeu
-  + critère nouveau : Salles et lumière par carte : la carte partout
-  + critère nouveau : Peindre autrement que case par case
-  + critère nouveau : Et découper un niveau en tableaux, à la souris
-  + critère nouveau : Les textes et les musiques s’écrivent dans l’éditeur
-  + critère nouveau : Le premier lancement se comprend sans rien apprendre
-  + critère nouveau : Musique écrite en notes, pas en fichier d’onde
-  + critère nouveau : Et l’export la donne en .wav, que tout moteur sait lire
-  + critère nouveau : Traduction : une clef par texte, et ce qui manque se VOIT
-  + critère nouveau : Aucun libellé du jeu n’est écrit en clair dans le code
-  + critère nouveau : Un jeu à plusieurs niveaux s’exporte entier
-  + critère nouveau : Les six portages retrouvent musiques et textes, à l’identique
+  ↑ 5 vérification(s) de plus
+      et « + Planche » une planche à soi, née d’une case vide
+      on dessine sur la planche neuve, pixel par pixel
+      le formulaire crée l’espèce scriptée, sur la planche à soi
+      la palette la propose, et elle se pose à la souris
+      en jeu, c’est SON script qui la fait bouger
 
-VERDICT : tout est vert · 88/88 critères tenus · 1005 vérifications
+VERDICT : tout est vert · 88/88 critères tenus · 1010 vérifications
 
 ```

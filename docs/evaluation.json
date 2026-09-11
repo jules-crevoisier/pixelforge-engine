@@ -966,8 +966,8 @@
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 122,
-      "total": 122,
+      "reussies": 127,
+      "total": 127,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -1090,11 +1090,16 @@
         "la feuille blanche : les deux héros, et RIEN de la démo",
         "trente secondes après l’accueil, le héros saute sur ce qu’on vient de peindre",
         "« + Son » donne un premier son au projet parti de rien",
-        "et « + Animation » son premier clip"
+        "et « + Animation » son premier clip",
+        "et « + Planche » une planche à soi, née d’une case vide",
+        "on dessine sur la planche neuve, pixel par pixel",
+        "le formulaire crée l’espèce scriptée, sur la planche à soi",
+        "la palette la propose, et elle se pose à la souris",
+        "en jeu, c’est SON script qui la fait bouger"
       ]
     }
   ],
-  "verifications": 1005,
+  "verifications": 1010,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -1270,7 +1275,7 @@
         {
           "nom": "Créer une espèce sans écrire de code",
           "tenu": true,
-          "preuves": 26
+          "preuves": 27
         },
         {
           "nom": "Poser et déplacer une entité à la souris",
@@ -1300,7 +1305,7 @@
         {
           "nom": "Le comportement d’une espèce peut être un script à soi",
           "tenu": true,
-          "preuves": 4
+          "preuves": 5
         },
         {
           "nom": "La physique du contrôleur se règle par espèce, et ça se mesure",
@@ -1315,7 +1320,7 @@
         {
           "nom": "La feuille blanche : partir sans un seul asset de démonstration",
           "tenu": true,
-          "preuves": 8
+          "preuves": 10
         }
       ]
     },
@@ -1478,7 +1483,7 @@
         {
           "nom": "Une lumière fidèle à la palette, au prix mesuré",
           "tenu": true,
-          "preuves": 30
+          "preuves": 31
         },
         {
           "nom": "Un jeu-témoin complet, joué par les bancs",
@@ -1535,7 +1540,7 @@
         {
           "nom": "Son : décrit en données, attaché aux événements d’animation",
           "tenu": true,
-          "preuves": 84
+          "preuves": 85
         },
         {
           "nom": "Et un son ne se rejoue pas quand le réseau rembobine",
@@ -1779,6 +1784,7 @@
     "en courant, on passe dans le tableau suivant",
     "en isometrique, deux cases de meme somme sont a la meme profondeur",
     "en isometrique, « droite » au clavier va vers la droite a l'ecran",
+    "en jeu, c’est SON script qui la fait bouger",
     "en lâchant, il pose exactement son aire",
     "en marchant case par case, aucune salle n'est injoignable",
     "en salle ouverte elle va tout droit, sans marche d’escalier",
@@ -1976,6 +1982,7 @@
     "et une musique y est en NOTES, pas en echantillons",
     "et une patrouille sans vigilance ne remarque jamais rien",
     "et « + Animation » son premier clip",
+    "et « + Planche » une planche à soi, née d’une case vide",
     "et « Retirer » le retire",
     "et « la carte a un contour » donne autre chose",
     "et Échap la referme",
@@ -2068,6 +2075,7 @@
     "la palette d'entités montre les espèces",
     "la palette de matières montre les drapeaux",
     "la palette de tuiles montre la planche",
+    "la palette la propose, et elle se pose à la souris",
     "la palette montre les espèces du projet",
     "la part hors palette est comptee sur les pixels opaques",
     "la planche du héros survit à l’aller-retour pixels, au pixel près",
@@ -2132,6 +2140,7 @@
     "le débit et l’alignement suivent, au lieu d’être écrits en dur",
     "le fichier porte RIFF, WAVE et ses deux morceaux",
     "le fond lointain défile à 40 % de la caméra, mesuré au pixel",
+    "le formulaire crée l’espèce scriptée, sur la planche à soi",
     "le gel suspend la simulation, il ne la ralentit pas",
     "le generateur est deterministe",
     "le heros neutre tient en deux couleurs, remplacables en cinq minutes",
@@ -2270,6 +2279,7 @@
     "on commence dans la salle où l’on est posé",
     "on crée une espèce sans écrire une ligne de TypeScript",
     "on descend une côte en la suivant, sans décoller",
+    "on dessine sur la planche neuve, pixel par pixel",
     "on finit par mourir",
     "on gravit le chapitre entier, tableau par tableau, en sautillant",
     "on gravit les côtes de la caverne en courant, sans sauter",
