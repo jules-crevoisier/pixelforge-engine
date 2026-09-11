@@ -3120,6 +3120,62 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.screenshot({ path: 'docs/selection.png' })
 }
 
+/*
+ * LES CAPTURES DE LA VITRINE.
+ *
+ * Le README montre des images de l'editeur, et ce sont elles qu'on regarde
+ * avant de lire une ligne. Une capture qui date d'avant trois chantiers ne
+ * montre plus le produit : c'est une forme de mensonge, et la seule facon de
+ * l'eviter est de les REFAIRE ici, par le banc qui ouvre deja tout.
+ */
+{
+  const { existsSync, statSync } = await import('node:fs')
+  const debut = Date.now()
+
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(900)
+  await p.screenshot({ path: 'docs/accueil.png' })
+
+  await p.click('#accueilGouffre')
+  await p.waitForTimeout(1300)
+  await p.screenshot({ path: 'docs/editeur.png' })
+
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(400)
+  await p.screenshot({ path: 'docs/entites.png' })
+  await p.click('[data-outil="terrain"]')
+
+  await p.click('#basculeProjet')
+  await p.waitForTimeout(400)
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(300)
+  await p.screenshot({ path: 'docs/projet.png' })
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(400)
+  await p.screenshot({ path: 'docs/scene.png' })
+  await p.click('#fermerProjet')
+
+  await p.click('#basculeFichiers')
+  await p.waitForTimeout(500)
+  await p.screenshot({ path: 'docs/fichiers.png' })
+  await p.click('#fermerFichiers')
+
+  await p.click('#jouer')
+  await p.waitForTimeout(900)
+  await p.keyboard.press('Space')
+  await p.waitForTimeout(600)
+  await p.screenshot({ path: 'docs/jouer.png' })
+  await p.click('#arreter')
+  await p.waitForTimeout(300)
+
+  const vitrine = ['accueil', 'editeur', 'entites', 'projet', 'scene', 'fichiers', 'jouer']
+  const fraiches = vitrine.filter((n) => existsSync(`docs/${n}.png`)
+    && statSync(`docs/${n}.png`).mtimeMs >= debut)
+  ok('les captures de la vitrine sont refaites par ce banc, pas à la main',
+    fraiches.length === vitrine.length,
+    `${fraiches.join(', ')} — une capture qui date d’avant trois chantiers ne montre plus le produit`)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)
