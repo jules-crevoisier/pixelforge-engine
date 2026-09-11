@@ -5435,6 +5435,62 @@ console.log('\n--- figer une image, et l\'avancer d\'un pas ---')
   check('arreter efface aussi la pause', !b.tourne && !b.enPauseMaintenant)
 }
 
+console.log('\n--- copier, coller, d\'une scene a l\'autre ---')
+
+{
+  const { projetNeuf, collerNoeudProjet, ajouterCarteProjet, copieAIdentifiantsNeufs } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { serialiserNoeud } = await import('../src/export/format.ts')
+  void serialiserNoeud
+
+  const pj = ajouterCarteProjet(projetNeuf({ nom: 'copier', projection: 'cote' }), 'niveau2')
+  const scene1 = pj.scenes[0]
+  const ids = (n) => [n.id, ...n.enfants.flatMap(ids)]
+  const compter = (n) => 1 + n.enfants.reduce((t, e) => t + compter(e), 0)
+  const source = scene1.racine.enfants.find((e) => e.type === 'sprite')
+  check('il y a un noeud a copier', !!source && compter(source) >= 2,
+    `${compter(source)} noeuds avec ses enfants`)
+
+  const r = collerNoeudProjet(pj, scene1.nom, scene1.racine.id, source)
+  check('coller ajoute le sous-arbre entier',
+    compter(r.projet.scenes[0].racine) === compter(scene1.racine) + compter(source))
+  const tous = ids(r.projet.scenes[0].racine)
+  check('avec des identifiants que PERSONNE ne portait',
+    new Set(tous).size === tous.length,
+    'deux noeuds du meme identifiant rendent « lequel ? » sans reponse')
+  check('et le geste rend l\'identifiant de la copie : c\'est elle qu\'on choisit ensuite',
+    !!r.id && tous.includes(r.id) && !ids(scene1.racine).includes(r.id))
+
+  // Coller DEUX fois de suite : la deuxieme ne doit pas reprendre les ids de
+  // la premiere.
+  const r2 = collerNoeudProjet(r.projet, scene1.nom, scene1.racine.id, source)
+  const tous2 = ids(r2.projet.scenes[0].racine)
+  check('coller deux fois de suite ne fabrique pas de jumeaux',
+    new Set(tous2).size === tous2.length, `${tous2.length} noeuds, tous distincts`)
+
+  // D'UNE SCENE A L'AUTRE : c'est l'interet du presse-papiers.
+  const autre = pj.scenes[1]
+  const r3 = collerNoeudProjet(pj, autre.nom, autre.racine.id, source)
+  check('coller dans une AUTRE scene la peuple',
+    compter(r3.projet.scenes[1].racine) === compter(autre.racine) + compter(source),
+    'copier un lampadaire dans la clairiere, changer de carte, coller')
+  check('et ne touche pas a la scene d\'ou l\'on vient',
+    compter(r3.projet.scenes[0].racine) === compter(scene1.racine))
+
+  const perdu = collerNoeudProjet(pj, 'scene-qui-n-existe-pas', scene1.racine.id, source)
+  check('coller dans une scene inconnue ne fabrique rien',
+    perdu.projet === pj && perdu.id === '')
+  const orphelin = collerNoeudProjet(pj, scene1.nom, 'parent-inconnu', source)
+  check('et un parent inconnu colle sous la racine, au lieu de perdre la copie',
+    compter(orphelin.projet.scenes[0].racine) === compter(scene1.racine) + compter(source))
+
+  // La fonction partagee : c'est elle qui garantit l'unicite.
+  const copie = copieAIdentifiantsNeufs(scene1.racine, source)
+  check('la copie garde la FORME et change les identifiants',
+    compter(copie) === compter(source) && copie.nom === source.nom
+    && copie.id !== source.id && copie.enfants[0]?.id !== source.enfants[0]?.id)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

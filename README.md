@@ -625,6 +625,30 @@ champ qui ne saurait pas le relire.
 dans une liste de quinze noms. Et chaque valeur réglée ici est un geste de
 structure comme un autre : **Ctrl+Z la reprend**.
 
+### Copier-coller, d'une scène à l'autre
+
+<kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>X</kbd>,
+<kbd>Ctrl</kbd>+<kbd>V</kbd> : le geste que tout le monde tente à la troisième
+minute. Il copie le nœud **et tout ce qu'il porte**, et il traverse les
+scènes — copiez un lampadaire dans la clairière, mettez la caverne sous le
+pinceau, collez.
+
+Le presse-papiers n'est pas celui du système. Celui du navigateur ne rend son
+contenu qu'après une permission et un geste, et ce qu'on y met est du texte :
+on y écrirait du JSON, qu'un collage dans un traitement de texte transformerait
+en pâte illisible. Celui-ci vit dans l'onglet et garde une *description* de
+nœud.
+
+Le collage va **sous** le nœud choisi s'il est structurel — un nœud nu, un
+groupe : on l'a justement créé pour y ranger des choses — et **à côté** s'il
+porte une espèce : coller une créature sous elle-même ferait un empilement que
+personne ne demande. Ce que la chose *est* décide, pas un réglage.
+
+Les identifiants sont refaits à chaque collage, y compris quand on colle deux
+fois de suite ou dans la scène d'où l'on vient : deux nœuds du même identifiant
+rendent « lequel ? » sans réponse — le journal ne saurait plus lequel défaire,
+l'arbre en surlignerait deux.
+
 ### Renommer suit les références
 
 Le format ne connaît pas de renvois : une espèce est nommée `gelee` dans le

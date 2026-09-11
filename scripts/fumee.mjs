@@ -2820,6 +2820,85 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('et « Tout oublier » les oublie', vide === 0)
 }
 
+/*
+ * COPIER-COLLER, ET D'UNE SCENE A L'AUTRE.
+ *
+ * Le geste que tout le monde tente a la troisieme minute. Il n'existait pas :
+ * on dupliquait sur place, et rien ne passait d'une carte a une autre.
+ */
+{
+  // Un projet a soi, avec deux cartes : c'est le cas qui compte.
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(800)
+  await p.click('#accueilPlateforme')
+  await p.waitForTimeout(700)
+
+  const noms = () => p.evaluate(() => {
+    const f = (n) => [n.nom, ...n.enfants.flatMap(f)]
+    return f(window.pfe.monde.racine)
+  })
+  const idsUniques = () => p.evaluate(() => {
+    const f = (n) => [n.id, ...n.enfants.flatMap(f)]
+    const l = f(window.pfe.monde.racine)
+    return new Set(l).size === l.length
+  })
+
+  // Choisir le heros dans l'arbre.
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+  const lignes = await p.$$('#projetCorps .ligne .nom.choisissable')
+  const rang = await p.evaluate(() => [...document.querySelectorAll(
+    '#projetCorps .ligne .nom.choisissable')].findIndex((e) => e.textContent.includes('heros')))
+  await lignes[rang].click()
+  await p.waitForTimeout(300)
+
+  const avant = (await noms()).length
+  await p.keyboard.press('Control+c')
+  await p.waitForTimeout(150)
+  ok('Ctrl+C dit ce qu’il a copié',
+    (await p.textContent('#verdict')).includes('copié'), await p.textContent('#verdict'))
+
+  await p.keyboard.press('Control+v')
+  await p.waitForTimeout(600)
+  const apres = (await noms()).length
+  ok('Ctrl+V colle le nœud ET ses enfants',
+    apres === avant + 2, `${avant} → ${apres} nœuds — le héros et son corps`)
+  ok('et tous les identifiants restent distincts', await idsUniques())
+
+  await p.keyboard.press('Control+v')
+  await p.waitForTimeout(600)
+  ok('coller deux fois ne fabrique pas de jumeaux',
+    (await noms()).length === avant + 4 && (await idsUniques()),
+    `${(await noms()).length} nœuds`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(500)
+  ok('Ctrl+Z reprend le collage', (await noms()).length === avant + 2)
+
+  // D'UNE CARTE A L'AUTRE : le presse-papiers traverse.
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(300)
+  await p.getByRole('button', { name: '+ Carte' }).click()
+  await p.waitForTimeout(700)
+  const cartes = await p.evaluate(() => window.pfe.monde.cartes.map((c) => c.nom))
+  ok('le projet a une deuxième carte', cartes.length === 2, cartes.join(', '))
+  // « Éditer » met l'autre carte sous le pinceau : c'est SA scene qu'on
+  // regarde ensuite.
+  await p.getByRole('button', { name: 'Éditer' }).first().click()
+  await p.waitForTimeout(700)
+  const avantAilleurs = (await noms()).length
+
+  await p.keyboard.press('Escape')
+  await p.keyboard.press('Control+v')
+  await p.waitForTimeout(700)
+  ok('le presse-papiers traverse les scènes : on colle dans l’autre carte',
+    (await noms()).length === avantAilleurs + 2 && (await idsUniques()),
+    `${avantAilleurs} → ${(await noms()).length} nœuds dans « ${
+      await p.evaluate(() => window.pfe.monde.carteActive)} »`)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

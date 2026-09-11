@@ -18,7 +18,7 @@ import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
 import {
   projetNeuf, ajouterSonImporteProjet, ajouterCarteImporteeProjet,
-  retirerNoeudProjet, dupliquerNoeudProjet,
+  retirerNoeudProjet, dupliquerNoeudProjet, collerNoeudProjet,
 } from './projet-neuf.ts'
 import { scriptsVersFichiers, appliquerFichiersScripts } from './scripts-dossier.ts'
 import { depuisTiled, estDuTiled } from '../export/tiled.ts'
@@ -1642,6 +1642,52 @@ function dupliquerChoisi(): void {
   }
 }
 
+/**
+ * LE PRESSE-PAPIERS DE L'EDITEUR.
+ *
+ * ## Pourquoi il n'est pas celui du systeme
+ *
+ * Le presse-papiers du navigateur ne rend son contenu qu'apres une permission
+ * et un geste de l'usager, et ce qu'on y met est du TEXTE : on y ecrirait du
+ * JSON, qu'un collage dans un traitement de texte transformerait en pate
+ * illisible. Celui-ci vit dans l'onglet, garde une DESCRIPTION de noeud, et
+ * traverse ce qui compte : d'une scene a l'autre, d'une carte a l'autre, tant
+ * que l'editeur est ouvert.
+ */
+let pressePapiers: ReturnType<typeof serialiserNoeud> | null = null
+
+/**
+ * Ou colle-t-on ?
+ *
+ * Sous le noeud choisi s'il est STRUCTUREL — un noeud nu, un groupe : on l'a
+ * justement cree pour y ranger des choses. A COTE s'il porte une espece :
+ * copier une creature et la coller sous elle-meme ferait un empilement que
+ * personne ne demande. C'est la meme regle que partout ailleurs ici : ce que
+ * la chose EST decide, pas un reglage.
+ */
+function collerIci(): void {
+  if (!pressePapiers) { verdict.textContent = 'Rien à coller.'; return }
+  const scene = sceneActive()
+  const racine = racineDeScene(scene)
+  const choisi = noeudChoisi()
+  const structurel = choisi && !(choisi as unknown as { espece?: string }).espece
+    && choisi.type !== 'sprite'
+  const parent = !choisi ? racine
+    : (structurel ? choisi : (parentDe(racine, choisi) ?? racine))
+  const t = monde.carte.tuile
+  // Une case a cote : une copie exactement dessous se confond avec
+  // l'original, et l'on croit que le geste n'a rien fait.
+  const description = { ...pressePapiers, x: pressePapiers.x + (structurel ? 0 : t) }
+  const r = collerNoeudProjet(projetCourant(), scene, parent.id, description)
+  if (!r.id) return
+  gesteStructure(`« ${description.nom} » collé sous « ${parent.nom} »`,
+    r.projet, monde.carteActive ?? '')
+  noeudDesigne = r.id
+  panneauProjet.designerNoeud(r.id)
+  if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+  verdict.textContent = `« ${description.nom} » collé sous « ${parent.nom} » — Ctrl+Z le reprend`
+}
+
 window.addEventListener('keydown', (e) => {
   // Pendant que le jeu tourne, les fleches appartiennent au JOUEUR.
   if (jeu?.tourne) return
@@ -1667,6 +1713,23 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && noeudDesigne) {
     e.preventDefault()
     dupliquerChoisi()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x')
+    && noeudDesigne) {
+    const n = noeudChoisi()
+    if (!n) return
+    e.preventDefault()
+    pressePapiers = serialiserNoeud(n)
+    const coupe = e.key.toLowerCase() === 'x'
+    if (coupe) retirerChoisi()
+    verdict.textContent = `« ${n.nom} »${coupe ? ' coupé' : ' copié'}`
+      + ' — Ctrl+V le colle, ici ou dans une autre scène'
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && pressePapiers) {
+    e.preventDefault()
+    collerIci()
     return
   }
   if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && noeudDesigne) {
@@ -1959,6 +2022,14 @@ case (<kbd>Maj</kbd> : d’un pixel), <kbd>Suppr</kbd> le retire,
 <kbd>Ctrl</kbd>+<kbd>D</kbd> le duplique, <kbd>F</kbd> centre la vue dessus,
 <kbd>Échap</kbd> le désélectionne. Sans rien de choisi, les flèches déplacent
 la vue.</p>
+
+<p><kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>X</kbd> et
+<kbd>Ctrl</kbd>+<kbd>V</kbd> font ce qu’on attend — et le collage traverse les
+<b>scènes</b> : copiez un lampadaire dans la clairière, changez de carte,
+collez. Le collage va <i>sous</i> le nœud choisi s’il est structurel (un nœud
+nu, un groupe : on l’a créé pour y ranger des choses) et <i>à côté</i> s’il
+porte une espèce — coller une créature sous elle-même ferait un empilement que
+personne ne demande.</p>
 
 <h4>Découper en tableaux</h4>
 <p><b>Salle</b> pose un tableau en tirant un rectangle, et le retire au clic

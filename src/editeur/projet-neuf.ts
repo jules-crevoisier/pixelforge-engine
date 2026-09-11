@@ -1314,17 +1314,24 @@ export function decalerNoeudProjet(
  * de l'arbre. Le nom, lui, est garde tel quel — c'est l'usage des noms ici,
  * et la copie d'une « lanterne » reste une lanterne.
  */
-export function dupliquerNoeudProjet(
-  p: ProjetSerialise, nomScene: string, id: string,
-): ProjetSerialise {
-  const scene = p.scenes.find((q) => q.nom === nomScene)
-  if (!scene) return p
+/**
+ * Une copie d'un sous-arbre, avec des identifiants que personne ne porte.
+ *
+ * Deux noeuds du meme identifiant rendent « lequel ? » sans reponse : le
+ * journal ne saurait plus lequel defaire, l'arbre en surlignerait deux, et
+ * l'inspecteur montrerait le premier trouve. C'est la seule regle qui compte
+ * ici, et elle vaut pour dupliquer comme pour coller — d'ou la fonction
+ * partagee.
+ */
+export function copieAIdentifiantsNeufs(
+  racine: NoeudSerialise, noeud: NoeudSerialise,
+): NoeudSerialise {
   const pris = new Set<string>()
   const ramasser = (n: NoeudSerialise): void => {
     pris.add(n.id)
     n.enfants.forEach(ramasser)
   }
-  ramasser(scene.racine)
+  ramasser(racine)
   const libre = (base: string): string => {
     let candidat = `${base}-2`
     let n = 3
@@ -1337,6 +1344,42 @@ export function dupliquerNoeudProjet(
     id: libre(n.id),
     enfants: n.enfants.map(copier),
   })
+  return copier(noeud)
+}
+
+/**
+ * COLLE une description de noeud sous un parent.
+ *
+ * La description vient d'ailleurs — d'une autre scene, d'un autre moment — et
+ * l'on ne peut donc rien supposer de ses identifiants : ils sont refaits.
+ * C'est ce qui permet de coller deux fois de suite, ou de coller dans la
+ * scene d'ou l'on vient de copier.
+ */
+export function collerNoeudProjet(
+  p: ProjetSerialise, nomScene: string, idParent: string, description: NoeudSerialise,
+): { projet: ProjetSerialise; id: string } {
+  const scene = p.scenes.find((q) => q.nom === nomScene)
+  if (!scene) return { projet: p, id: '' }
+  const copie = copieAIdentifiantsNeufs(scene.racine, description)
+  const sous = (n: NoeudSerialise): NoeudSerialise => (n.id === idParent
+    ? { ...n, enfants: [...n.enfants, copie] }
+    : { ...n, enfants: n.enfants.map(sous) })
+  const cible = trouverDans(scene.racine, idParent) ? idParent : scene.racine.id
+  return {
+    projet: surScene(p, nomScene, (racine) => (cible === racine.id
+      ? { ...racine, enfants: [...racine.enfants, copie] }
+      : sous(racine))),
+    id: copie.id,
+  }
+}
+
+export function dupliquerNoeudProjet(
+  p: ProjetSerialise, nomScene: string, id: string,
+): ProjetSerialise {
+  const scene = p.scenes.find((q) => q.nom === nomScene)
+  if (!scene) return p
+  const copier = (n: NoeudSerialise): NoeudSerialise =>
+    copieAIdentifiantsNeufs(scene.racine, n)
   const inserer = (n: NoeudSerialise): NoeudSerialise => {
     const i = n.enfants.findIndex((e) => e.id === id)
     if (i < 0) return { ...n, enfants: n.enfants.map(inserer) }
