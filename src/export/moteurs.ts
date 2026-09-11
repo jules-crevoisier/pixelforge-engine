@@ -557,6 +557,19 @@ export function paquetUnity(p: ProjetSerialise): Entree[] {
 
 export const PAQUETS: { id: string; nom: string; fichier: string; note: string }[] = [
   {
+    /*
+     * Le premier de la liste, parce que c'est le geste le plus court entre
+     * « j'ai fait un jeu » et « quelqu'un y joue » : UN fichier .html,
+     * autoporteur, qui s'ouvre en double-clic et se depose sur itch.io.
+     * Le gabarit est le meme runtime que l'editeur, commis dans
+     * public/jeu/ — voir scripts/fabrique-joueur.mjs.
+     */
+    id: 'web',
+    nom: 'Jeu web — un fichier .html',
+    fichier: 'jeu.html',
+    note: 'Le jeu, jouable : un seul fichier. Double-clic, ou déposez-le sur itch.io.',
+  },
+  {
     id: 'godot',
     nom: 'Projet Godot 4 (.zip)',
     fichier: 'godot.zip',

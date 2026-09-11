@@ -1969,6 +1969,46 @@ ok('Enregistrer telecharge le projet faute de dossier',
     (await lanternes()) === avantPose)
 }
 
+/*
+ * LE JEU WEB : l'export qui LIVRE. Un fichier .html autoporteur, projet
+ * inline — et la preuve n'est pas qu'il se telecharge : c'est qu'il TOURNE,
+ * ouvert depuis le disque, sans serveur, comme chez un joueur.
+ */
+{
+  await p.selectOption('#cible', 'paquet:web')
+  const attente = p.waitForEvent('download')
+  await p.click('#exporter')
+  const fichier = await attente
+  // Le fichier temporaire de Playwright n'a pas d'extension, et un
+  // navigateur ne rend pas du HTML sans elle en file:// — on le repose
+  // sous son vrai nom avant de l'ouvrir, comme un joueur l'aurait.
+  const { readFileSync, mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const chemin = join(mkdtempSync(join(tmpdir(), 'pfe-jeu-')), 'jeu.html')
+  await fichier.saveAs(chemin)
+  const page = readFileSync(chemin, 'utf8')
+  ok('l’export « Jeu web » rend UN fichier autoporteur, projet inline',
+    page.includes('<canvas') && page.includes('"version"')
+    && !page.includes('src="./assets') && page.length > 100000,
+    `${fichier.suggestedFilename()} — ${Math.round(page.length / 1024)} Ko, aucune référence externe`)
+
+  const enJeu = await b.newPage({ viewport: { width: 800, height: 500 } })
+  const fautesJeu = []
+  enJeu.on('pageerror', (e) => fautesJeu.push(String(e)))
+  await enJeu.goto(`file://${chemin}`)
+  await enJeu.waitForTimeout(1200)
+  const vie = await enJeu.evaluate(() => ({
+    tourne: window.pfj?.jeu?.tourne ?? false,
+    pas: window.pfj?.jeu?.pas ?? -1,
+    titre: document.title,
+  }))
+  ok('et il TOURNE, ouvert depuis le disque, sans serveur',
+    vie.tourne && vie.pas > 10 && fautesJeu.length === 0,
+    `« ${vie.titre} » — pas ${vie.pas}, aucune erreur de page : c'est le jeu, chez un joueur`)
+  await enJeu.close()
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

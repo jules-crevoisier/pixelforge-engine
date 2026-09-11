@@ -278,6 +278,11 @@ const OBJECTIFS = [
         symboles: ['aideBoite'], indices: ['aide'], preuves: 2 },
       { nom: 'Export vers un moteur du commerce',
         symboles: ['paquetGodot', 'paquetUnity'], indices: ['godot', 'unity', 'archive'], preuves: 2 },
+      { nom: 'Livrer : le jeu web en un fichier, qui tourne chez un joueur',
+        symboles: ['fabrique-joueur', 'gabarit.html', "'paquet:web'"],
+        indices: ['fichier autoporteur', 'ouvert depuis le disque', 'gabarit du jeu web',
+          'commis est le meme', 'il tient seul'],
+        preuves: 4 },
       /*
        * LA LIBERTE. « J'ai l'impression que tout est precode » : les quatre
        * criteres qui suivent sont la reponse, et chacun tomberait si la

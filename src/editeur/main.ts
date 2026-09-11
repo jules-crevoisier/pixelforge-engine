@@ -1448,6 +1448,47 @@ async function exporter(): Promise<void> {
   const choix = selectCible.value
   const p = projetCourant()
 
+  if (choix === 'paquet:web') {
+    /*
+     * Le jeu web : le gabarit autoporteur, avec le projet INLINE. Le
+     * fichier s'ouvre alors sans serveur — c'est tout son interet — et
+     * l'echappement de « </ » empeche le JSON de fermer sa propre balise.
+     */
+    const r = await fetch('jeu/gabarit.html')
+    if (!r.ok) {
+      verdict.textContent = 'Le gabarit du jeu web manque : lancez `npm run joueur` et redéployez.'
+      return
+    }
+    const gabarit = await r.text()
+    const inline = versTexte(p).replace(/<\//g, '<\\/')
+    const page = gabarit.replace(
+      '<script id="projet" type="application/json"></script>',
+      `<script id="projet" type="application/json">${inline}</script>`,
+    )
+    if (page === gabarit) {
+      verdict.textContent = 'Le gabarit n’a pas l’emplacement du projet : refaites `npm run joueur`.'
+      return
+    }
+    // Un projet relu s'appelle souvent « mon-jeu.json » : on ne livre pas
+    // un « mon-jeu.json.html ».
+    const nomPage = `${p.nom.replace(/\.json$/i, '')}.html`
+    if (travail) {
+      try {
+        await dossier.ecrire(travail, nomPage, page)
+        verdict.textContent = `${travail.name}/${nomPage} — le jeu, jouable en un fichier `
+          + `(${Math.round(page.length / 1024)} Ko). Double-clic, ou itch.io.`
+        return
+      } catch (e) {
+        verdict.textContent = e instanceof Error ? e.message : String(e)
+        return
+      }
+    }
+    telecharger(nomPage, page, 'text/html')
+    verdict.textContent = `${nomPage} — le jeu, jouable en un fichier `
+      + `(${Math.round(page.length / 1024)} Ko). Double-clic, ou itch.io.`
+    return
+  }
+
   if (choix.startsWith('paquet:')) {
     const id = choix.slice(7)
     const entrees = id === 'godot' ? paquetGodot(p) : paquetUnity(p)

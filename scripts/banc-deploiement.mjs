@@ -174,6 +174,28 @@ check('aucune erreur de page', erreurs.length === 0, erreurs.slice(0, 3).join(' 
 await b.close()
 serveur.close()
 rmSync(ctx, { recursive: true, force: true })
+
+/*
+ * LA FRAICHEUR DU GABARIT DU JEU WEB. C'est un build COMMIS — l'export
+ * l'emballe tel quel — et un gabarit perime livrerait des jeux privés des
+ * corrections du runtime, en silence. On le refabrique ailleurs et l'on
+ * compare octet pour octet : la meme regle que pour l'exemple du Gouffre.
+ */
+{
+  const chemin = join(tmpdir(), `gabarit-frais-${process.pid}.html`)
+  const r = spawnSync('node', ['scripts/fabrique-joueur.mjs', '--sortie', chemin],
+    { cwd: new URL('..', import.meta.url).pathname, encoding: 'utf8' })
+  const commis = readFileSync(new URL('../public/jeu/gabarit.html', import.meta.url), 'utf8')
+  const frais = existsSync(chemin) ? readFileSync(chemin, 'utf8') : ''
+  rmSync(chemin, { force: true })
+  check('le gabarit du jeu web se refabrique', r.status === 0, (r.stderr ?? '').slice(0, 200))
+  check('et celui qui est commis est LE MEME — un gabarit perime livrerait de vieux runtimes',
+    frais.length > 0 && frais === commis,
+    `${Math.round(commis.length / 1024)} Ko commis, ${Math.round(frais.length / 1024)} Ko refaits`)
+  check('il tient seul : pas de reference externe, et l\'emplacement du projet y est',
+    commis.includes('<script id="projet" type="application/json"></script>')
+    && !commis.includes('src="./assets') && commis.includes('<canvas'))
+}
 conclure()
 
 function conclure() {

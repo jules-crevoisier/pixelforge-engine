@@ -848,6 +848,24 @@ seconde.
 - Tiled et LDtk, dans les deux sens
 - export du projet et de son chargeur
 
+## Livrer : le jeu web, en un fichier
+
+Créer un jeu, c'est pour le **donner à jouer**. L'export « **Jeu web — un
+fichier .html** » emballe le gabarit du joueur — le même runtime que
+l'éditeur, sans un bouton d'édition — avec le projet **inliné** dedans :
+un seul fichier autoporteur, qui s'ouvre en **double-clic**, sans serveur,
+et se dépose tel quel sur **itch.io**. S'il se comporte autrement que sous
+« Jouer », c'est un bug : il n'y a qu'un seul chemin de relecture.
+
+Le gabarit est un build **commis** (`public/jeu/gabarit.html`, ~108 Ko) —
+l'export doit marcher depuis l'éditeur, qui ne sait pas builder. La même
+règle que pour l'exemple du Gouffre s'applique : `npm run joueur` le
+refabrique, et le banc de déploiement le refabrique **ailleurs** et compare
+octet pour octet — un gabarit périmé livrerait des jeux privés des
+corrections du runtime, en silence. La fumée ne vérifie pas que le fichier
+se télécharge : elle l'**ouvre depuis le disque** dans une page neuve et
+mesure que le jeu tourne.
+
 ## Le projet, sur votre disque
 
 **Dossier…** choisit le dossier de travail, **Enregistrer** (ou Ctrl+S) y écrit
