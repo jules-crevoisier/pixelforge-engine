@@ -3,7 +3,8 @@ import type { Carte, Calque } from '../tuiles/tilemap.ts'
 import { VIDE, SOLIDE } from '../tuiles/tilemap.ts'
 import { mondeVersCase } from '../noyau/projection.ts'
 import {
-  Historique, differences, gesteDeChangements, type Changement,
+  Historique, differences, gesteDeChangements, type Changement, type Resolveur,
+  adresseCases, adressePresence, adresseSolides,
 } from './historique.ts'
 
 /**
@@ -128,8 +129,20 @@ export class Edition {
     finir(id: string): void
   } | null = null
 
-  /** Ce qu'on peut defaire. Partage avec l'editeur, qui y pose ses gestes. */
-  readonly historique = new Historique()
+  /**
+   * Ce qu'on peut defaire. Partage avec l'editeur, qui y pose ses gestes.
+   *
+   * Il vient du DEHORS depuis que l'editeur reconstruit le monde a chaque
+   * geste de structure : une Edition neuve naissait avec un journal neuf, et
+   * redimensionner une carte effacait tout ce qu'on pouvait defaire. Le
+   * journal survit donc aux mondes, et c'est lui qui traverse la seance.
+   */
+  readonly historique: Historique
+  /** Comment retrouver un tableau de carte apres une reconstruction. */
+  private readonly resoudre: Resolveur | undefined
+  /** Le nom de la carte editee : il entre dans l'adresse de chaque geste. */
+  private nomCarte = ''
+  private readonly redessiner: () => void
 
   /**
    * Le coin de depart d'un rectangle en cours, et son coin courant.
@@ -155,9 +168,26 @@ export class Edition {
   /** L'entite qu'on traine, et si elle a vraiment change de case. */
   private glisseEntite: { id: string; depart: { cx: number; cy: number }; bougee: boolean } | null = null
 
-  constructor(jeu: Jeu, carte: Carte) {
+  constructor(jeu: Jeu, carte: Carte, options: {
+    /** Le journal de la seance, quand il doit survivre a cette Edition. */
+    historique?: Historique | undefined
+    resoudre?: Resolveur | undefined
+    nomCarte?: string | undefined
+    /**
+     * Redessiner, apres un defaire.
+     *
+     * Passe du dehors et non pris sur `this.jeu` : le jeu est remplace a
+     * chaque reconstruction du projet, et un geste qui garderait celui de sa
+     * naissance repeindrait un ecran que personne ne regarde plus.
+     */
+    redessiner?: (() => void) | undefined
+  } = {}) {
     this.jeu = jeu
     this.carte = carte
+    this.historique = options.historique ?? new Historique()
+    this.resoudre = options.resoudre
+    this.nomCarte = options.nomCarte ?? ''
+    this.redessiner = options.redessiner ?? (() => this.jeu.dessiner())
     this.etat.calque = calqueEditable(carte)
   }
 
@@ -180,8 +210,9 @@ export class Edition {
   }
 
   /** Change la carte editee : l'editeur passe d'un monde a l'autre. */
-  changerCarte(carte: Carte, tuileFixe = 0): void {
+  changerCarte(carte: Carte, tuileFixe = 0, nom = this.nomCarte): void {
     this.carte = carte
+    this.nomCarte = nom
     this.etat.calque = calqueEditable(carte)
     this.etat.tuileFixe = tuileFixe
     this.finir()
@@ -207,15 +238,24 @@ export class Edition {
   private enregistrer(nom: string): void {
     if (!this.photo) return
     const changements: Changement[] = []
+    // Chaque paquet de cases part avec SON adresse : « les cases du calque
+    // decor de la carte niveau2 ». C'est elle qui permettra de defaire ce
+    // coup de pinceau apres trois reconstructions du projet.
     this.carte.calques.forEach((c, i) => {
-      changements.push(...differences(c.cases, this.photo!.cases[i]))
+      changements.push(...differences(
+        c.cases, this.photo!.cases[i], adresseCases(this.nomCarte, c.nom)))
       const p = this.photo!.presence[i]
-      if (c.presence && p) changements.push(...differences(c.presence, p))
+      if (c.presence && p) {
+        changements.push(...differences(
+          c.presence, p, adressePresence(this.nomCarte, c.nom)))
+      }
     })
-    changements.push(...differences(this.carte.solides, this.photo.solides))
+    changements.push(...differences(
+      this.carte.solides, this.photo.solides, adresseSolides(this.nomCarte)))
     this.photo = null
     if (changements.length === 0) return
-    this.historique.poser(gesteDeChangements(nom, changements, () => this.jeu.dessiner()))
+    this.historique.poser(gesteDeChangements(
+      nom, changements, () => this.redessiner(), this.resoudre, this.nomCarte))
   }
 
   commencer(pageX: number, pageY: number, bouton: number): void {

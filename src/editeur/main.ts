@@ -3,8 +3,9 @@ import { Palette, depuisHex } from '../noyau/palette.ts'
 import { atlasDepuisLettres } from '../runtime/atlas.ts'
 import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil, type Trace } from './edition.ts'
+import { Historique, type TableauCarte, type Geste } from './historique.ts'
 import type { Noeud } from '../scene/noeud.ts'
-import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud } from '../export/format.ts'
+import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud, serialiserNoeud } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
 import { pageDeJeu, paquetBureau } from '../export/jeu-web.ts'
@@ -70,6 +71,48 @@ let palette: Palette
 let edition: Edition
 
 /**
+ * LE JOURNAL DE LA SEANCE.
+ *
+ * ## Pourquoi il vit ici et non dans l'Edition
+ *
+ * Il y vivait, et c'etait le defaut le plus couteux de l'editeur : une
+ * Edition neuve nait a chaque reconstruction du monde — et le monde est
+ * reconstruit par CHAQUE geste de structure. Redimensionner une carte,
+ * ajouter un calque, importer une planche effacaient donc tout ce qu'on
+ * pouvait defaire, sans un mot. On a longtemps ecrit dans l'aide que « ces
+ * gestes-la ne se defont pas » ; c'etait honnete, et c'etait la premiere
+ * chose qu'un moteur doit savoir faire.
+ *
+ * Le journal traverse donc la seance. Pour qu'il le puisse, aucun geste ne
+ * garde de reference vivante : un coup de pinceau garde l'ADRESSE de ses
+ * tableaux (voir `historique.ts`), une entite garde son identifiant et sa
+ * description, un geste de structure garde deux photographies du projet. Tout
+ * ce qui est resolu l'est au moment de defaire, dans le projet d'alors.
+ */
+const journal = new Historique()
+
+/**
+ * Retrouve un tableau de carte par son adresse, dans le projet vivant.
+ *
+ * Toutes les cartes, pas seulement celle qu'on regarde : defaire un coup de
+ * pinceau donne sur le niveau deux doit le defaire meme si l'on edite le
+ * niveau un — et `defaire` ramenera ensuite le niveau deux sous les yeux.
+ */
+function resoudreTableau(cible: string): TableauCarte | null {
+  const m = /^carte:(.*?)\/(?:calque:(.*?)\/)?(solides|cases|presence)$/.exec(cible)
+  if (!m) return null
+  const [, nomCarte, nomCalque, quoi] = m
+  const cartes = monde.cartes ?? [{ nom: monde.carteActive ?? '', carte: monde.carte }]
+  const c = cartes.find((q) => q.nom === nomCarte)?.carte
+    ?? (nomCarte === (monde.carteActive ?? '') ? monde.carte : null)
+  if (!c) return null
+  if (quoi === 'solides') return c.solides
+  const calque = c.calques.find((q) => q.nom === nomCalque)
+  if (!calque) return null
+  return quoi === 'cases' ? calque.cases : (calque.presence ?? null)
+}
+
+/**
  * L'atelier de scripts.
  *
  * Il recoit des accesseurs et non des objets : le jeu et la scene sont
@@ -131,9 +174,18 @@ function installer(nouveau: Monde): void {
   palette = new Palette(monde.id, monde.couleurs.map(depuisHex))
 
   const outilPrecedent = edition?.etat.outil ?? 'terrain'
-  edition = new Edition(jeu, monde.carte)
+  edition = new Edition(jeu, monde.carte, {
+    // Le MEME journal d'un monde a l'autre : voir sa declaration.
+    historique: journal,
+    resoudre: resoudreTableau,
+    nomCarte: monde.carteActive ?? '',
+    // Le redessin passe par les variables du module, jamais par celles
+    // capturees a la naissance du geste : trois reconstructions plus tard,
+    // celles-la peindraient un ecran abandonne.
+    redessiner: () => { if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() } },
+  })
   edition.etat.montrerCollision = voirCollision.checked
-  edition.changerCarte(monde.carte, monde.tuilePinceau)
+  edition.changerCarte(monde.carte, monde.tuilePinceau, monde.carteActive ?? '')
   edition.etat.espece = monde.especes.find((e) => e.degats > 0)?.id
     ?? monde.especes[0]?.id ?? null
   edition.etat.calqueChoisi = monde.carte.calques[monde.carte.calques.length - 1]?.nom ?? null
@@ -154,6 +206,39 @@ function installer(nouveau: Monde): void {
   // fantome — et le clic droit le retirerait sans qu'on comprenne quoi.
   const sallesIci = (): SalleJeu[] => (monde.salles ?? []).filter(
     (q) => !(q.carte ?? '') || q.carte === (monde.carteActive ?? ''))
+  /*
+   * Les salles se defont, elles aussi.
+   *
+   * Elles n'entraient dans aucun historique : « elles vivent sur le monde »,
+   * disait le commentaire, « les melanger au dessin ferait qu'un defaire sur
+   * un coup de pinceau retirerait une salle ». C'etait vrai du temps ou
+   * l'historique photographiait des tableaux de cases. Depuis que le journal
+   * accepte n'importe quel geste, une salle y a sa place comme le reste — et
+   * un rectangle tire de travers se rattrape au Ctrl+Z au lieu de demander un
+   * clic droit bien vise.
+   *
+   * Le geste garde la salle par sa VALEUR et non par sa reference : le projet
+   * est reconstruit a chaque geste de structure, et la salle d'alors ne sera
+   * plus le meme objet.
+   */
+  const posesSalle = (s: SalleJeu): void => {
+    const m = monde as Monde & { salles?: SalleJeu[] }
+    if (!m.salles) m.salles = []
+    if (m.salles.some((q) => q.nom === s.nom)) return
+    m.salles.push(structuredClone(s))
+    panneauProjet?.montrer()
+    majEtat()
+  }
+  const otesSalle = (nom: string): SalleJeu | null => {
+    const m = monde as Monde & { salles?: SalleJeu[] }
+    if (!m.salles) return null
+    const i = m.salles.findIndex((q) => q.nom === nom)
+    if (i < 0) return null
+    const [partie] = m.salles.splice(i, 1)
+    panneauProjet?.montrer()
+    majEtat()
+    return partie
+  }
   edition.surSalle = {
     liste: () => sallesIci() as { nom: string; x: number; y: number; largeur: number; hauteur: number }[],
     poser: (x, y, largeur, hauteur) => {
@@ -165,18 +250,29 @@ function installer(nouveau: Monde): void {
       while (m.salles.some((q) => q.nom === `salle${n}`)) n++
       // La salle nait sur la carte SOUS LE PINCEAU : c'est la qu'on la voit
       // naitre, c'est la qu'elle doit vivre — voir le format v15.
-      m.salles.push(salleNeuve(`salle${n}`, { x, y, largeur, hauteur, carte: monde.carteActive ?? '' }))
+      const neuve = salleNeuve(`salle${n}`, { x, y, largeur, hauteur, carte: monde.carteActive ?? '' })
+      posesSalle(neuve)
+      journal.poser({
+        nom: 'salle posée',
+        carte: monde.carteActive ?? '',
+        defaire: () => { otesSalle(neuve.nom) },
+        refaire: () => posesSalle(neuve),
+      })
+      majHistorique()
       // Le compte et l'avertissement vont dans la barre d'etat, qui les
       // GARDE : voir `majEtat`.
       panneauProjet?.montrer()
     },
     retirer: (nom) => {
-      const m = monde as Monde & { salles?: SalleJeu[] }
-      if (!m.salles) return
-      const i = m.salles.findIndex((q) => q.nom === nom)
-      if (i < 0) return
-      m.salles.splice(i, 1)
-      panneauProjet?.montrer()
+      const partie = otesSalle(nom)
+      if (!partie) return
+      journal.poser({
+        nom: 'salle retirée',
+        carte: partie.carte ?? (monde.carteActive ?? ''),
+        defaire: () => posesSalle(partie),
+        refaire: () => { otesSalle(nom) },
+      })
+      majHistorique()
     },
   }
 
@@ -296,16 +392,25 @@ function installer(nouveau: Monde): void {
       const apres = { x: n.x, y: n.y }
       depart = null
       if (avant.x === apres.x && avant.y === apres.y) return
-      // Le depart SUIT l'entite deplacee — sinon le premier arret la
-      // renverrait la ou elle etait avant le geste.
-      const retenirIci = (): void => {
-        monde.retenirDepart?.(n, parentDe(monde.racine, n) ?? monde.racine)
+      // Le geste ne garde ni le noeud ni la scene, mais leurs NOMS : trois
+      // reconstructions plus tard, il retrouvera l'entite d'aujourd'hui au
+      // lieu d'ecrire dans le fantome de celle d'hier.
+      const scene = sceneActive()
+      const poser = (ou: { x: number; y: number }) => (): void => {
+        const cible = trouverEntite(racineDeScene(scene), id)
+        if (!cible) return
+        cible.x = ou.x
+        cible.y = ou.y
+        // Le depart SUIT l'entite deplacee — sinon le premier arret la
+        // renverrait la ou elle etait avant le geste.
+        monde.retenirDepart?.(cible, parentDe(racineDeScene(scene), cible) ?? racineDeScene(scene))
+        if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
       }
-      retenirIci()
+      poser(apres)()
       edition.historique.poser({
         nom: 'entité déplacée',
-        defaire: () => { n.x = avant.x; n.y = avant.y; retenirIci(); jeu.dessiner() },
-        refaire: () => { n.x = apres.x; n.y = apres.y; retenirIci(); jeu.dessiner() },
+        defaire: poser(avant),
+        refaire: poser(apres),
       })
       majHistorique()
       verdict.textContent = `entité déplacée en ${apres.x},${apres.y}`
@@ -454,7 +559,13 @@ function relire(texte: string, nomFichier: string): void {
     selectMonde.appendChild(o)
   }
   selectMonde.value = id
+  // Un AUTRE projet commence : ce qu'on pouvait defaire dans le precedent
+  // n'a plus de sens ici, et le garder ferait qu'un Ctrl+Z de trop
+  // reinstallerait le projet d'avant a la place de celui qu'on vient
+  // d'ouvrir.
+  journal.vider()
   charger(id)
+  majHistorique()
   verdict.textContent = `Relu : ${nomFichier}${avertissement}`
 }
 
@@ -489,6 +600,53 @@ function installerProjet(p: ProjetSerialise, nom: string, carteVoulue = ''): voi
 /** Ce que installerProjet previent — rempli plus bas, une fois les panneaux nes. */
 const panneauxAPrevenir: (() => void)[] = []
 
+/** Change la carte sous le pinceau, sans rien changer au projet. */
+function editerCarte(nom: string): void {
+  installerProjet(projetCourant(),
+    monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id, nom)
+}
+
+/**
+ * Un geste de STRUCTURE, et son annulation.
+ *
+ * ## Pourquoi deux photographies du projet entier
+ *
+ * Un geste de structure ne touche pas une case : il change la forme du projet
+ * — une carte plus grande, un calque de moins, une espece de plus, un noeud
+ * deplace dans l'arbre. Ecrire l'inverse de chacun de ces gestes, un par un,
+ * c'est trente inverses a tenir a jour, et le premier oubli fait un « defaire »
+ * qui ne defait pas tout : le pire des defauts, parce qu'on ne s'en apercoit
+ * que trois gestes plus tard. C'est deja l'argument qui a fait photographier
+ * les cases plutot que les coups de pinceau ; il vaut ici a plus forte raison.
+ *
+ * On photographie donc le projet AVANT et APRES, sous sa forme de texte —
+ * celle qui ne garde aucune reference vivante, et qui se mesure en octets,
+ * ce que le journal compte pour ne pas manger la memoire de l'onglet.
+ *
+ * Le prix est connu : un aller-retour par le serialiseur a chaque geste de
+ * structure. C'est le prix d'un enregistrement, une fois par geste rare.
+ */
+function gesteStructure(nom: string, apres: ProjetSerialise, carteApres?: string): void {
+  const carteAvant = monde.carteActive ?? ''
+  // AVANT toute modification : `apres` a ete calcule sur une copie, le monde
+  // vivant est encore celui d'avant le geste.
+  const avantTexte = versTexte(projetCourant())
+  const apresTexte = versTexte(apres)
+  const ou = carteApres ?? carteAvant
+  installerProjet(apres, apres.nom, ou)
+  const remettre = (texte: string, carte: string) => (): void => {
+    const p = JSON.parse(texte) as ProjetSerialise
+    installerProjet(p, p.nom, carte)
+  }
+  journal.poser({
+    nom,
+    poids: avantTexte.length + apresTexte.length,
+    defaire: remettre(avantTexte, carteAvant),
+    refaire: remettre(apresTexte, ou),
+  })
+  majHistorique()
+}
+
 const panneauProjet = new PanneauProjet(
   {
     panneau: document.getElementById('projet') as HTMLElement,
@@ -502,7 +660,12 @@ const panneauProjet = new PanneauProjet(
     appliquer: (p, quoi) => {
       // Un geste du panneau ne change pas de carte : redimensionner le
       // niveau deux doit laisser le niveau deux sous le pinceau.
-      installerProjet(p, p.nom, monde.carteActive ?? '')
+      //
+      // Et il passe par le JOURNAL : c'est ici que se joue le « Ctrl+Z sur
+      // tout ». Tous les gestes de structure du panneau — taille de carte,
+      // calques, especes, arbre de scene, assemblages, planches — arrivent
+      // par cette unique porte, donc un seul appel les rend tous defaisables.
+      gesteStructure(quoi, p, monde.carteActive ?? '')
       verdict.textContent = quoi
     },
     carteActive: () => monde.carteActive ?? '',
@@ -518,7 +681,7 @@ const panneauProjet = new PanneauProjet(
       redessinerEdition()
     },
     editerCarte: (nom) => {
-      installerProjet(projetCourant(), monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id, nom)
+      editerCarte(nom)
       verdict.textContent = `Carte « ${nom} » sous le pinceau`
     },
     dire: (m) => { verdict.textContent = m },
@@ -579,7 +742,9 @@ async function routerFichier(f: File): Promise<void> {
       const r = depuisTiled(brut)
       const p2 = ajouterCarteImporteeProjet(projetCourant(), f.name, r.carte)
       const nomCarte = p2.cartes[p2.cartes.length - 1].nom
-      installerProjet(p2, p2.nom, nomCarte)
+      // Un import est un geste comme un autre : il se defait. Deposer le
+      // mauvais fichier ne doit pas couter un « annuler tout, rouvrir ».
+      gesteStructure(`carte Tiled « ${nomCarte} » importée`, p2, nomCarte)
       panneauProjet.ouvrirSur('carte')
       verdict.textContent = `Carte Tiled « ${nomCarte} » importée : ${r.calquesLus} calque(s), `
         + `${r.objetsLus} objet(s)${r.avertissements.length ? ` · ${r.avertissements.join(' · ')}` : ''}`
@@ -597,7 +762,7 @@ async function routerFichier(f: File): Promise<void> {
         p2 = ajouterCarteImporteeProjet(p2, c.nom, c.carte)
         derniere = p2.cartes[p2.cartes.length - 1].nom
       }
-      installerProjet(p2, p2.nom, derniere)
+      gesteStructure(`${r.cartes.length} niveau(x) LDtk importé(s)`, p2, derniere)
       panneauProjet.ouvrirSur('carte')
       verdict.textContent = `${r.cartes.length} niveau(x) LDtk importé(s)`
         + `${r.avertissements.length ? ` · ${r.avertissements.join(' · ')}` : ''}`
@@ -624,7 +789,7 @@ async function routerFichier(f: File): Promise<void> {
       projetCourant(), f.name, base64DepuisOctets(octets), dureeMs,
     )
     const nomSon = p2.sons[p2.sons.length - 1].nom
-    installerProjet(p2, p2.nom)
+    gesteStructure(`son « ${nomSon} » importé`, p2)
     panneauProjet.ouvrirSur('sons', nomSon)
     verdict.textContent = `Son « ${nomSon} » importé : ${Math.round(dureeMs)} ms à ${brut.taux} Hz. `
       + 'Un script le joue par c.jouer, une animation par son événement.'
@@ -654,7 +819,7 @@ const panneauFichiers = new PanneauFichiers(
     importerAsset: (f) => routerFichier(f),
     ouvrirProjetPanneau: (onglet, cible) => panneauProjet.ouvrirSur(onglet, cible),
     editerCarte: (nom) => {
-      installerProjet(projetCourant(), monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id, nom)
+      editerCarte(nom)
       verdict.textContent = `Carte « ${nom} » sous le pinceau`
     },
     dire: (m) => { verdict.textContent = m },
@@ -759,7 +924,9 @@ const demarrerProjet = (projection: 'cote' | 'dessus'): void => {
   // univers. La demo reste a un clic : « un jeu fini » et les mondes
   // d'exemple.
   const pj = projetNeuf({ nom: 'mon-jeu', projection, depart: 'vierge' })
+  journal.vider()
   installerProjet(pj, pj.nom)
+  majHistorique()
   verdict.textContent = projection === 'cote'
     ? 'Feuille blanche. Peignez du mur (1), redessinez le héros (onglet Dessin), ▶ Jouer.'
     : 'Feuille blanche, vue de dessus. Peignez du mur (1), redessinez le héros (onglet Dessin), ▶ Jouer.'
@@ -789,7 +956,9 @@ accueil.hidden = false
 document.getElementById('nouveau')?.addEventListener('click', () => {
   if (!window.confirm('Créer un projet vide ? Ce qui est à l’écran sera remplacé.')) return
   const p = projetNeuf()
+  journal.vider()
   installerProjet(p, p.nom)
+  majHistorique()
   panneauProjet.ouvrir()
   verdict.textContent = 'Projet vide. Peignez du mur, posez des entités, appuyez sur Jouer.'
 })
@@ -833,7 +1002,12 @@ void (async () => {
   direDossier()
 })()
 
-selectMonde.addEventListener('change', () => charger(selectMonde.value))
+selectMonde.addEventListener('change', () => {
+  // Changer de monde, c'est changer de projet : meme raison que dans `relire`.
+  journal.vider()
+  charger(selectMonde.value)
+  majHistorique()
+})
 
 /* ------------------------------------------------------------------ */
 /* L'edition                                                           */
@@ -1035,34 +1209,46 @@ const boutonDefaire = document.getElementById('defaire') as HTMLButtonElement
 const boutonRefaire = document.getElementById('refaire') as HTMLButtonElement
 
 function majHistorique(): void {
-  boutonDefaire.disabled = !edition.historique.peutDefaire
-  boutonRefaire.disabled = !edition.historique.peutRefaire
-  boutonDefaire.title = edition.historique.peutDefaire
-    ? `Défaire : ${edition.historique.nomDefaire} (Ctrl+Z)` : 'Rien à défaire'
-  boutonRefaire.title = edition.historique.peutRefaire
-    ? `Refaire : ${edition.historique.nomRefaire} (Ctrl+Maj+Z)` : 'Rien à refaire'
+  boutonDefaire.disabled = !journal.peutDefaire
+  boutonRefaire.disabled = !journal.peutRefaire
+  // Les trois derniers gestes dans l'infobulle, et non le seul suivant :
+  // savoir qu'a trois Ctrl+Z de la il y a « carte redimensionnée » evite
+  // d'appuyer a l'aveugle pour voir ou l'on retombe. C'est ce que le journal
+  // d'un moteur montre dans un panneau ; ici il tient dans une infobulle.
+  const derniers = journal.derniers.slice(0, 3)
+  boutonDefaire.title = journal.peutDefaire
+    ? `Défaire (Ctrl+Z) : ${derniers.join(' ← ')}` : 'Rien à défaire'
+  boutonRefaire.title = journal.peutRefaire
+    ? `Refaire : ${journal.nomRefaire} (Ctrl+Maj+Z)` : 'Rien à refaire'
+}
+
+/**
+ * Defaire, refaire.
+ *
+ * Le geste rendu porte parfois le nom d'une CARTE : un coup de pinceau donne
+ * sur le niveau deux se defait meme si l'on regarde le niveau un — et il faut
+ * alors ramener le niveau deux sous les yeux, sinon le Ctrl+Z a l'air de
+ * n'avoir rien fait alors qu'il vient de modifier ailleurs.
+ */
+function apresJournal(g: Geste | null, quoi: string): void {
+  if (!g) return
+  if (g.carte && g.carte !== (monde.carteActive ?? '')) editerCarte(g.carte)
+  jeu.dessiner()
+  redessinerEdition()
+  majEtat()
+  majHistorique()
+  // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
+  // faire compte plus que le compte des cases, pendant une seconde.
+  verdict.textContent = `${quoi} : ${g.nom}`
+    + (g.carte && g.carte !== (monde.carteActive ?? '') ? ` — sur la carte « ${g.carte} »` : '')
 }
 
 function defaire(): void {
-  const nom = edition.historique.defaire()
-  jeu.dessiner()
-  redessinerEdition()
-  majEtat()
-  majHistorique()
-  // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
-  // faire compte plus que le compte des cases, pendant une seconde.
-  if (nom) verdict.textContent = `défait : ${nom}`
+  apresJournal(journal.defaire(), 'défait')
 }
 
 function refaire(): void {
-  const nom = edition.historique.refaire()
-  jeu.dessiner()
-  redessinerEdition()
-  majEtat()
-  majHistorique()
-  // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
-  // faire compte plus que le compte des cases, pendant une seconde.
-  if (nom) verdict.textContent = `refait : ${nom}`
+  apresJournal(journal.refaire(), 'refait')
 }
 
 boutonDefaire.addEventListener('click', defaire)
@@ -1180,25 +1366,65 @@ function majEtat(): void {
     + (croise.length ? ` · ⚠ « ${croise[0][0]} » et « ${croise[0][1]} » se recouvrent` : '')
 }
 
+/** Le nom de la scene qu'on edite, dans la liste des scenes du projet. */
+function sceneActive(): string {
+  return (monde.scenes ?? []).find((s) => s.racine === monde.racine)?.nom ?? ''
+}
+
+/** La racine d'une scene nommee, ou celle qu'on edite. */
+function racineDeScene(nom: string): Noeud {
+  return (monde.scenes ?? []).find((s) => s.nom === nom)?.racine ?? monde.racine
+}
+
 /**
  * Poser ou retirer une entite, en un geste qu'on peut defaire.
  *
- * Le noeud lui-meme est garde, pas une description : le remettre en place doit
- * rendre la MEME entite, avec son identifiant. Un noeud recree porterait un
- * autre identifiant, et tout ce qui y renvoyait — une vitalite, un script —
- * pointerait dans le vide.
+ * ## Pourquoi une DESCRIPTION et non le noeud lui-meme
+ *
+ * On gardait le noeud vivant, et c'etait juste : le remettre en place rendait
+ * la meme entite, avec son identifiant, et tout ce qui y renvoyait continuait
+ * de pointer quelque part. Cela ne tenait qu'a une condition — que la scene
+ * ne soit pas reconstruite entre-temps. Or elle l'est a chaque geste de
+ * structure, et le noeud garde devenait alors un orphelin : on le rattachait
+ * a une scene qui ne le dessinait plus, ou l'on cherchait a le retirer d'une
+ * racine ou il n'avait jamais ete.
+ *
+ * Le geste garde donc une ADRESSE — la scene, l'identifiant du parent — et
+ * une DESCRIPTION serialisee. L'identifiant, lui, survit a la relecture
+ * depuis qu'`adopterId` existe : c'est ce qui rend l'entite reellement la
+ * meme d'un bout a l'autre, et non une copie qui lui ressemble.
+ *
+ * La description est REPRISE a chaque retrait : une entite posee, deplacee,
+ * puis retiree doit revenir la ou elle etait au moment du retrait, et non la
+ * ou elle etait nee.
  */
 function gesteEntite(nom: string, parent: Noeud, n: Noeud, pose = false) {
+  const scene = sceneActive()
+  const idParent = parent.id
+  let description = serialiserNoeud(n)
+
   // Chaque sens du geste tient les DEPARTS a jour : un arret raccroche les
   // departs, donc un noeud present sans depart disparait au premier arret,
   // et un depart sans noeud fait une revenante. Voir monde-projet.
   const ajouter = (): void => {
-    if (!parent.enfants.includes(n)) parent.enfants.push(n)
-    monde.retenirDepart?.(n, parent)
+    const racine = racineDeScene(scene)
+    // Deja la : un journal qui rejoue deux fois le meme ajout ferait des
+    // jumeaux qu'aucun « defaire » ne saurait departager.
+    if (trouverEntite(racine, description.id)) return
+    const pere = trouverEntite(racine, idParent) ?? racine
+    const neuf = relireNoeud(description)
+    pere.enfants.push(neuf)
+    monde.retenirDepart?.(neuf, pere)
   }
   const oter = (): void => {
-    retirerDe(monde.racine, n)
-    monde.oublierDepart?.(n)
+    const racine = racineDeScene(scene)
+    const vivant = trouverEntite(racine, description.id)
+    if (!vivant) return
+    // On photographie AVANT de retirer : c'est l'etat de cet instant que le
+    // prochain « defaire » devra rendre.
+    description = serialiserNoeud(vivant)
+    if (!monde.peuplement?.tuer(vivant.id)) retirerDe(racine, vivant)
+    monde.oublierDepart?.(vivant)
   }
   return {
     nom,
@@ -1294,8 +1520,11 @@ et leur nom se règlent dans <b>Projet</b>.</p>
 <h4>Changer la structure</h4>
 <p><b>Projet</b> ouvre ce que le pinceau ne sait pas faire : redimensionner la
 carte, ajouter ou retirer un calque, créer une espèce sans écrire une ligne de
-code. Ces gestes-là reconstruisent le projet et <b>ne se défont pas</b> au
-Ctrl+Z — enregistrez avant, si vous hésitez.</p>
+code. Ces gestes-là <b>se défont comme les autres</b> : le
+<kbd>Ctrl</kbd>+<kbd>Z</kbd> ne connaît qu'un seul journal, qu'on ait peint une
+case, posé une salle, déplacé un nœud dans l'arbre, importé un niveau Tiled ou
+redimensionné la carte. L'infobulle du bouton <b>↶</b> dit les trois derniers
+gestes, pour qu'on sache où l'on retombe avant d'appuyer.</p>
 
 <h4>Essayer</h4>
 <p><b>Jouer</b> lance le jeu dans le cadre réel, celui que le joueur verra.
@@ -1311,7 +1540,7 @@ joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
 
 <h4>Les raccourcis</h4>
 <p><kbd>1</kbd>…<kbd>7</kbd> les outils du dock · <kbd>Ctrl</kbd>+<kbd>S</kbd>
-enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd> défaire ·
+enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd> défaire <i>n'importe quel geste</i> ·
 <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire · <kbd>+</kbd> /
 <kbd>−</kbd> ou la <b>molette</b> pour le cadre d’édition · molette du milieu
 ou outil <b>Main</b> pour déplacer la vue.</p>

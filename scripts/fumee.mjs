@@ -2098,6 +2098,146 @@ ok('Enregistrer telecharge le projet faute de dossier',
     `${Math.round(zipBrut.length / 1024)} Ko — décompresser, npm install, npm run construire`)
 }
 
+/*
+ * LE JOURNAL : un seul Ctrl+Z, pour tous les gestes.
+ *
+ * Ce bloc eprouve la promesse la plus dure de l'editeur, celle qu'on a
+ * longtemps ecrite au passe dans l'aide : « ces gestes-la ne se defont pas ».
+ * Le piege est precis — un geste de structure RECONSTRUIT le projet, et tout
+ * ce qui etait dans le journal pointait alors sur des objets abandonnes. On
+ * peint, on redimensionne, et l'on defait DEUX fois : la deuxieme est celle
+ * qui ne marchait pas.
+ */
+{
+  // Un projet neuf, a soi. La confirmation de « Nouveau… » est acceptee par
+  // le gestionnaire pose plus haut : en poser un second ici ferait deux
+  // reponses a une seule question, et Playwright s'en plaint a juste titre.
+  await p.click('#nouveau')
+  await p.waitForTimeout(600)
+  if (await p.isVisible('#projetCorps')) await p.click('#fermerProjet')
+  await p.waitForTimeout(150)
+
+  const solides = () => p.evaluate(() => window.pfe.edition.compter().solides)
+  const taille = () => p.evaluate(() => [window.pfe.monde.carte.largeur, window.pfe.monde.carte.hauteur])
+  const entites = () => p.evaluate(() => {
+    let n = 0
+    const f = (x) => { if (x.espece) n++; x.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  const salles = () => p.evaluate(() => (window.pfe.monde.salles ?? []).length)
+  const c = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+
+  await p.click('[data-outil="terrain"]')
+  await p.waitForTimeout(120)
+  const sol0 = await solides()
+  await p.mouse.move(c[0] + c[2] * 0.30, c[1] + c[3] * 0.45)
+  await p.mouse.down()
+  for (let i = 0; i <= 10; i++) await p.mouse.move(c[0] + c[2] * (0.30 + i * 0.02), c[1] + c[3] * 0.45)
+  await p.mouse.up()
+  await p.waitForTimeout(200)
+  const sol1 = await solides()
+  ok('le journal — on peint un mur', sol1 > sol0, `${sol0} → ${sol1} cases solides`)
+
+  // LE GESTE DE STRUCTURE : il reconstruit le projet de fond en comble.
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(250)
+  // L'onglet, explicitement : le panneau garde celui d'un bloc precedent, et
+  // chercher le champ « largeur » dans l'onglet des sons vise le vide.
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(200)
+  const champs = await p.$$(
+    'xpath=//div[@id="projetCorps"]//div[contains(@class,"bloc")][h3[text()="Carte"]]//input')
+  await champs[0].fill('52')
+  await champs[1].fill('28')
+  await p.getByRole('button', { name: 'Redimensionner' }).click()
+  await p.waitForTimeout(500)
+  ok('on redimensionne — le projet est reconstruit',
+    String(await taille()) === '52,28', String(await taille()))
+  ok('et ce qui était peint a suivi', (await solides()) === sol1,
+    `${await solides()} cases solides`)
+
+  await p.click('#fermerProjet')
+  await p.waitForTimeout(150)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(400)
+  ok('Ctrl+Z DÉFAIT le redimensionnement — un geste de structure se défait',
+    String(await taille()) !== '52,28',
+    `retour à ${await taille()} — c\'était « enregistrez avant, si vous hésitez »`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(300)
+  ok('et le Ctrl+Z SUIVANT retrouve le coup de pinceau d’avant la reconstruction',
+    (await solides()) === sol0,
+    `${await solides()} cases solides — le journal a traversé la reconstruction du projet`)
+
+  await p.keyboard.press('Control+Shift+z')
+  await p.waitForTimeout(300)
+  ok('refaire repeint le mur', (await solides()) === sol1, `${await solides()} cases`)
+  await p.keyboard.press('Control+Shift+z')
+  await p.waitForTimeout(500)
+  ok('et refaire encore remet la carte à sa nouvelle taille',
+    String(await taille()) === '52,28', String(await taille()))
+
+  // UNE ENTITE, de part et d'autre d'une reconstruction. C'est le cas ou le
+  // geste garde un noeud : apres la reconstruction, ce noeud n'existe plus,
+  // et seul un geste qui vise par identifiant retrouve le sien.
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(250)
+  const ent0 = await entites()
+  await p.mouse.click(c[0] + c[2] * 0.32, c[1] + c[3] * 0.42)
+  await p.waitForTimeout(250)
+  const ent1 = await entites()
+  ok('on pose une créature', ent1 === ent0 + 1, `${ent0} → ${ent1}`)
+
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(250)
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(200)
+  const champs2 = await p.$$(
+    'xpath=//div[@id="projetCorps"]//div[contains(@class,"bloc")][h3[text()="Carte"]]//input')
+  await champs2[0].fill('44')
+  await p.getByRole('button', { name: 'Redimensionner' }).click()
+  await p.waitForTimeout(500)
+  await p.click('#fermerProjet')
+  await p.waitForTimeout(150)
+  ok('la créature survit à la reconstruction', (await entites()) === ent1)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(400)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(400)
+  ok('deux Ctrl+Z plus tard, la créature posée AVANT la reconstruction est retirée',
+    (await entites()) === ent0,
+    `${await entites()} entités — le geste l\'a retrouvée par son identifiant, pas par sa référence`)
+  await p.keyboard.press('Control+Shift+z')
+  await p.waitForTimeout(300)
+  ok('et refaire la repose', (await entites()) === ent1, `${await entites()} entités`)
+
+  // UNE SALLE : elle n'entrait dans aucun historique.
+  await p.click('[data-outil="salle"]')
+  await p.waitForTimeout(200)
+  const s0 = await salles()
+  await p.mouse.move(c[0] + c[2] * 0.25, c[1] + c[3] * 0.30)
+  await p.mouse.down()
+  for (let i = 1; i <= 8; i++) {
+    await p.mouse.move(c[0] + c[2] * (0.25 + i * 0.02), c[1] + c[3] * (0.30 + i * 0.02))
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(250)
+  ok('on tire une salle', (await salles()) === s0 + 1, `${await salles()} salle(s)`)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(250)
+  ok('et une salle tirée de travers se rattrape au Ctrl+Z',
+    (await salles()) === s0,
+    'avant, il fallait viser le clic droit — les salles ne connaissaient pas le journal')
+
+  // L'infobulle du bouton dit OU l'on retombe.
+  const titre = await p.getAttribute('#defaire', 'title')
+  ok('le bouton ↶ annonce les trois derniers gestes',
+    (titre ?? '').includes('Ctrl+Z') && (titre ?? '').split('←').length >= 2, titre)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

@@ -4995,6 +4995,145 @@ console.log('\n--- le code dans le dossier ---')
     'la faute de frappe qui ne ferait rien du tout serait introuvable autrement')
 }
 
+console.log('\n--- le journal : defaire APRES une reconstruction ---')
+
+/*
+ * Le defaut qu'on repare ici.
+ *
+ * L'editeur reconstruit le projet entier a chaque geste de structure :
+ * redimensionner une carte, ajouter un calque, importer une planche. Les
+ * gestes deja poses dans le journal gardaient une reference au tableau de
+ * cases d'AVANT cette reconstruction. Defaire ecrivait donc dans un tableau
+ * que plus personne ne dessine : rien ne bougeait a l'ecran, et rien ne
+ * disait pourquoi.
+ *
+ * On verifie ici que le geste vise par ADRESSE, et qu'il retrouve le tableau
+ * du projet d'aujourd'hui — celui qu'on regarde.
+ */
+{
+  const {
+    Historique, differences, gesteDeChangements, POIDS_GARDE, GESTES_GARDES,
+    adresseCases, adresseSolides, adressePresence,
+  } = await import('../src/editeur/historique.ts')
+
+  // Un projet « vivant », et sa reconstruction : deux tableaux differents a
+  // la meme adresse, exactement ce que fait `installerProjet`.
+  const faireCarte = (valeurs) => ({
+    calques: [{ nom: 'decor', cases: Int32Array.from(valeurs), presence: Uint8Array.from(valeurs.map((v) => (v ? 1 : 0))) }],
+    solides: Uint16Array.from(valeurs.map((v) => (v ? 1 : 0))),
+  })
+  let vivante = faireCarte([0, 0, 0, 0])
+  const resoudre = (cible) => {
+    if (cible === adresseCases('niveau1', 'decor')) return vivante.calques[0].cases
+    if (cible === adressePresence('niveau1', 'decor')) return vivante.calques[0].presence
+    if (cible === adresseSolides('niveau1')) return vivante.solides
+    return null
+  }
+
+  const photo = vivante.calques[0].cases.slice()
+  vivante.calques[0].cases[2] = 7
+  const geste = gesteDeChangements('terrain', differences(
+    vivante.calques[0].cases, photo, adresseCases('niveau1', 'decor')),
+  () => {}, resoudre, 'niveau1')
+
+  // LA RECONSTRUCTION : le projet est relu, les tableaux sont neufs, et ils
+  // portent l'etat d'apres le geste — comme apres un `installerProjet`.
+  const ancienne = vivante
+  vivante = faireCarte([0, 0, 7, 0])
+  check('apres une reconstruction, le tableau vise n\'est plus le meme objet',
+    vivante.calques[0].cases !== ancienne.calques[0].cases)
+
+  geste.defaire()
+  check('defaire ecrit dans le tableau D\'AUJOURD\'HUI, pas dans celui d\'hier',
+    vivante.calques[0].cases[2] === 0,
+    'c\'est tout le chantier : un Ctrl+Z apres un redimensionnement')
+  check('et l\'ancien tableau, lui, n\'est pas touche',
+    ancienne.calques[0].cases[2] === 7,
+    'ecrire dans les deux serait aussi faux — l\'un d\'eux est un fantome')
+  geste.refaire()
+  check('refaire le repose au meme endroit', vivante.calques[0].cases[2] === 7)
+
+  // Une adresse qui ne mene nulle part — le calque a ete supprime depuis.
+  const orphelin = gesteDeChangements('terrain', [
+    { tableau: vivante.calques[0].cases, cible: 'carte:niveau1/calque:disparu/cases', index: 1, avant: 0, apres: 5 },
+  ], () => {}, resoudre, 'niveau1')
+  orphelin.defaire()
+  check('une adresse morte n\'ecrit RIEN plutot que d\'ecrire au hasard',
+    vivante.calques[0].cases[1] === 0,
+    'mieux vaut un geste qui ne se defait pas qu\'un geste qui abime une autre carte')
+
+  // Sans adresse — un geste d'avant l'adressage : la reference reste le
+  // secours, et il doit continuer de marcher.
+  const parReference = gesteDeChangements('collision', [
+    { tableau: vivante.solides, index: 0, avant: 0, apres: 1 },
+  ], () => {}, resoudre)
+  parReference.refaire()
+  check('un geste sans adresse retombe sur sa reference : rien n\'est casse',
+    vivante.solides[0] === 1)
+
+  // Le journal lui-meme.
+  const h = new Historique()
+  h.poser({ nom: 'un', defaire() {}, refaire() {} })
+  h.poser({ nom: 'deux', defaire() {}, refaire() {} })
+  check('le journal montre ses derniers gestes, du plus recent au plus ancien',
+    h.derniers.join(',') === 'deux,un')
+  const rendu = h.defaire()
+  check('defaire rend le GESTE et non son nom : c\'est lui qui sait sur quelle carte il agit',
+    rendu && rendu.nom === 'deux' && typeof rendu.refaire === 'function')
+
+  const gros = (n) => ({ nom: `gros ${n}`, poids: 8 * 1024 * 1024, defaire() {}, refaire() {} })
+  const h2 = new Historique()
+  for (let i = 0; i < 10; i++) h2.poser(gros(i))
+  check('le journal oublie les vieux gestes avant de manger la memoire de l\'onglet',
+    h2.poids <= POIDS_GARDE && h2.taille >= 1,
+    `${Math.round(h2.poids / 1024 / 1024)} Mo gardes sur 80 poses`)
+  check('mais le dernier geste reste defaisable, si enorme soit-il',
+    h2.derniers[0] === 'gros 9')
+  const h3 = new Historique()
+  const enorme = { nom: 'le projet entier', poids: POIDS_GARDE * 3, defaire() {}, refaire() {} }
+  h3.poser(enorme)
+  check('un seul geste plus lourd que la limite ne s\'oublie pas lui-meme',
+    h3.peutDefaire && h3.taille === 1,
+    'sinon le geste qu\'on vient de faire serait le premier a disparaitre')
+  const h4 = new Historique()
+  for (let i = 0; i < GESTES_GARDES + 10; i++) h4.poser({ nom: `g${i}`, defaire() {}, refaire() {} })
+  check('et la limite en NOMBRE tient toujours', h4.taille === GESTES_GARDES)
+}
+
+console.log('\n--- l\'identite d\'un noeud survit au fichier ---')
+
+{
+  const { serialiserNoeud, relireNoeud } = await import('../src/export/format.ts')
+  const { creerNoeud, nouvelId } = await import('../src/scene/noeud.ts')
+
+  const n = creerNoeud('sprite', 'gardien')
+  n.x = 40
+  const relu = relireNoeud(serialiserNoeud(n))
+  check('un noeud relu garde SON identifiant',
+    relu.id === n.id,
+    'sans cela, tout ce qui designait ce noeud designait un fantome des la premiere relecture')
+  const relu2 = relireNoeud(serialiserNoeud(relu))
+  check('et il le garde encore au deuxieme aller-retour', relu2.id === n.id)
+
+  // Le piege de l'adoption : reprendre un identifiant sans pousser le
+  // compteur ferait qu'un noeud cree ensuite porterait le meme.
+  const apres = creerNoeud('sprite', 'autre')
+  check('un noeud cree apres une adoption ne reprend pas un identifiant deja pris',
+    apres.id !== relu.id && apres.id !== nouvelId(),
+    `${apres.id} vs ${relu.id}`)
+
+  const sansId = relireNoeud({ ...serialiserNoeud(n), id: '' })
+  check('un noeud sans identifiant dans le fichier en recoit un neuf',
+    !!sansId.id && sansId.id !== n.id,
+    'un fichier ecrit a la main n\'a pas a en fournir')
+
+  const enfant = creerNoeud('corps', 'corps')
+  n.enfants.push(enfant)
+  const arbre = relireNoeud(serialiserNoeud(n))
+  check('les enfants gardent le leur aussi',
+    arbre.enfants[0].id === enfant.id)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

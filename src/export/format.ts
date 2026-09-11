@@ -10,7 +10,7 @@ import type { Son } from '../runtime/son.ts'
 import type { Replique } from '../runtime/dialogue.ts'
 import type { Musique } from '../runtime/musique.ts'
 import type { Salle } from '../niveau/salles.ts'
-import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
+import { creerNoeud, adopterId, type TypeNoeud } from '../scene/noeud.ts'
 
 /**
  * Le format de projet : ce que TOUS les langages liront.
@@ -662,6 +662,10 @@ export function relireCarte(s: CarteSerialisee, fabrique: (l: number, h: number,
  */
 export function relireNoeud(s: NoeudSerialise): Noeud {
   const n = creerNoeud(s.type as TypeNoeud, s.nom)
+  // L'identifiant du fichier, et non un neuf : c'est par lui que l'arbre,
+  // l'atelier et le journal retrouvent ce noeud apres une relecture. Voir
+  // `adopterId`.
+  adopterId(n, s.id)
   n.x = s.x
   n.y = s.y
   n.visible = s.visible

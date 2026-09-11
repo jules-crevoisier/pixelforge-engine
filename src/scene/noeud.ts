@@ -107,6 +107,33 @@ export interface NoeudCamera extends Noeud {
 let compteur = 0
 export const nouvelId = (): string => `n${(++compteur).toString(36)}`
 
+/**
+ * Rend a un noeud relu l'identifiant qu'il avait.
+ *
+ * ## Pourquoi l'identite doit survivre a un aller-retour par le fichier
+ *
+ * Un noeud relu recevait un identifiant NEUF. Tant qu'on ne relisait qu'au
+ * chargement, personne ne s'en apercevait : rien d'anterieur n'y renvoyait.
+ * Mais l'editeur relit le projet a chaque geste de structure — redimensionner
+ * une carte, ajouter un calque, importer une planche passent tous par la. Et
+ * apres ce passage, tout ce qui designait un noeud par son identifiant
+ * designait un fantome : la ligne surlignee dans l'arbre, le noeud choisi dans
+ * l'atelier, et surtout le « defaire » d'une entite posee, qui ne retrouvait
+ * plus ce qu'il devait retirer.
+ *
+ * On garde donc l'identifiant du fichier, et l'on POUSSE le compteur au-dela :
+ * sans cela, le prochain noeud cree reprendrait un numero deja pris, et deux
+ * noeuds du meme identifiant rendent « lequel ? » sans reponse.
+ */
+export function adopterId(n: Noeud, id: string): void {
+  if (!id) return
+  n.id = id
+  const m = /^n([0-9a-z]+)$/.exec(id)
+  if (!m) return
+  const valeur = parseInt(m[1], 36)
+  if (Number.isFinite(valeur) && valeur > compteur) compteur = valeur
+}
+
 export function creerNoeud(type: TypeNoeud, nom: string): Noeud {
   const base: Noeud = {
     id: nouvelId(), nom, type, x: 0, y: 0, visible: true,
