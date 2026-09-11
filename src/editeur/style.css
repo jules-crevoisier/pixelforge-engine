@@ -40,8 +40,18 @@ body {
 /* Le ressort ne pousse plus rien quand la barre se replie : il ferait une
    ligne de vide au lieu de coller l'export a droite. */
 @media (max-width: 1500px) { .barre .pousse { flex: 0; } }
-.marque { font-weight: 600; letter-spacing: .2px; }
-.marque b { color: var(--accent); font-weight: 600; }
+.marque {
+  font-weight: 700; letter-spacing: .2px; display: inline-flex;
+  align-items: center; gap: 7px;
+}
+.marque b { color: var(--accent); font-weight: 700; }
+.marque::before {
+  content: ''; width: 16px; height: 16px; border-radius: 4px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 4px 4px / 8px 8px no-repeat,
+    var(--bg-0);
+  border: 1px solid var(--line);
+}
 .sep { width: 1px; height: 20px; background: var(--line); }
 .pousse { flex: 1; }
 .info { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -51,6 +61,9 @@ button {
   background: var(--bg-2); color: var(--texte); cursor: pointer; font-size: 12px;
 }
 button:hover:not(:disabled) { border-color: var(--accent); }
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
 button:disabled { opacity: .45; cursor: default; }
 .primaire { background: var(--accent); color: #0d0f14; border-color: var(--accent); font-weight: 600; }
 
@@ -91,9 +104,18 @@ button:disabled { opacity: .45; cursor: default; }
   margin: 0; padding: 7px 10px; font-size: 10.5px; line-height: 1.4;
   color: var(--dim); border-top: 1px solid var(--line);
 }
+/* La zone de travail n'est pas « du noir » : un damier tres sombre dit
+   « ici, c'est l'etabli », comme dans tous les editeurs d'images. Le canevas
+   du jeu, lui, reste exactement ce que le joueur verra. */
 .scene {
   display: flex; align-items: center; justify-content: center;
-  background: #000; min-height: 0; min-width: 0; overflow: hidden; flex: 1;
+  min-height: 0; min-width: 0; overflow: hidden; flex: 1;
+  background: #0a0b10;
+  background-image:
+    linear-gradient(45deg, #0e1016 25%, transparent 25%, transparent 75%, #0e1016 75%),
+    linear-gradient(45deg, #0e1016 25%, transparent 25%, transparent 75%, #0e1016 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 12px 12px;
 }
 
 /* L'atelier de scripts. Il prend de la place a la scene plutot que de flotter
@@ -319,3 +341,19 @@ button.grand { padding: 7px 18px; font-size: 13px; border-radius: 8px; }
 .accueil-carte { transition: transform .12s ease, border-color .12s ease; }
 .accueil-icone { font-size: 26px; line-height: 1; }
 .accueil-exemples { margin-top: 20px; font-size: 12.5px; font-weight: 400; }
+
+/* L'accueil respire : une ombre douce et le logo en grand. */
+.accueil-boite { animation: accueil-entre .18s ease-out; }
+@keyframes accueil-entre {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.accueil-carte { box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
+.accueil-marque::before {
+  content: ''; display: inline-block; width: 22px; height: 22px;
+  border-radius: 6px; margin-right: 10px; vertical-align: -2px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 6px 6px / 10px 10px no-repeat,
+    var(--bg-1);
+  border: 1px solid var(--line);
+}

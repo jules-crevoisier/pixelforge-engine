@@ -261,7 +261,7 @@ function installer(nouveau: Monde): void {
 
   jeu.cadrer()
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
 
   atelier.reinitialiser()
   // L'aide du pied montre L'OUTIL courant, pas la fiche du monde : c'est la
@@ -669,7 +669,7 @@ traces.addEventListener('click', (e) => {
 voirCollision.addEventListener('change', () => {
   edition.etat.montrerCollision = voirCollision.checked
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
 })
 
 // Le menu contextuel du navigateur volerait le clic droit, qui sert a retirer.
@@ -796,7 +796,7 @@ function majHistorique(): void {
 function defaire(): void {
   const nom = edition.historique.defaire()
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
   majEtat()
   majHistorique()
   // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
@@ -807,7 +807,7 @@ function defaire(): void {
 function refaire(): void {
   const nom = edition.historique.refaire()
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
   majEtat()
   majHistorique()
   // Apres `majEtat`, qui ecrit dans le meme endroit : dire ce qu'on vient de
@@ -1104,7 +1104,7 @@ function appliquerCadre(): void {
     : `${cadre > 1 ? 'Plus de carte' : 'De plus près'} que le cadre du jeu (${monde.vue.largeur}×${monde.vue.hauteur})`
   jeu.cadrer()
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
 }
 
 function decalerCadre(pas: number): void {
@@ -1155,7 +1155,7 @@ function arreter(): void {
   appliquerCadre()
   jeu.cadrer()
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
 }
 boutonArreter.addEventListener('click', arreter)
 
@@ -1280,5 +1280,5 @@ requestAnimationFrame(rafraichirMesure)
 window.addEventListener('resize', () => {
   if (jeu.tourne) return
   jeu.dessiner()
-  dessinerCollision()
+  redessinerEdition()
 })
