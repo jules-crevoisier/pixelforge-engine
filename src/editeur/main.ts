@@ -630,6 +630,14 @@ const AIDE_OUTILS: Record<string, string> = {
 function choisirOutil(o: Outil): void {
   edition.etat.outil = o
   aide.textContent = AIDE_OUTILS[o] ?? ''
+  // L'outil Collision peint une chose invisible tant que sa surcouche est
+  // eteinte : on peindrait dans le noir sans le savoir. La choisir allume
+  // donc la surcouche — et la case a cocher suit, pour que l'etat reste
+  // celui qu'on voit.
+  if (o === 'collision' && !voirCollision.checked) {
+    voirCollision.checked = true
+    edition.etat.montrerCollision = true
+  }
   for (const b of outils.querySelectorAll('button')) {
     b.classList.toggle('actif', (b as HTMLElement).dataset.outil === o)
   }
