@@ -2589,6 +2589,66 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.screenshot({ path: 'docs/arbre-compose.png' })
 }
 
+/*
+ * RENOMMER SUIT LES REFERENCES.
+ *
+ * Le format ne connait pas de renvois : chaque entite posee porte la CHAINE
+ * du nom de son espece. L'identifiant etait donc en lecture seule — renommer
+ * aurait fait disparaitre les creatures posees, sans une erreur.
+ */
+{
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Espèces', exact: true }).click()
+  await p.waitForTimeout(300)
+
+  const especes = () => p.evaluate(() => window.pfe.monde.especes.map((e) => e.id))
+  const portees = () => p.evaluate(() => {
+    const out = []
+    const f = (n) => { if (n.espece) out.push(n.espece); n.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return out
+  })
+  const avant = await especes()
+  const avantPortees = await portees()
+  const cible = avantPortees[0]
+  ok('une entité posée porte le nom de son espèce', !!cible, avantPortees.join(', '))
+
+  // La liste suit l'ordre du catalogue : la ligne d'une espece est a son rang.
+  // Chercher par le TEXTE de la ligne visait le nom affiche — « Héros » — et
+  // non l'identifiant, qui est ce qu'on renomme.
+  const rang = avant.indexOf(cible)
+  ok('la ligne de cette espèce est là', rang >= 0, `rang ${rang} sur ${avant.length}`)
+
+  // On remplace `prompt` dans la page, comme les blocs precedents : un
+  // gestionnaire de dialogue Playwright ne verrait rien passer — la page a
+  // deja remplace `window.prompt`, et c'est lui qui repondrait.
+  await p.evaluate(() => { window.prompt = () => 'colosse' })
+  await p.evaluate((r) => {
+    const l = [...document.querySelectorAll('#projetCorps .liste .ligne')][r]
+    ;[...l.querySelectorAll('button')].find((b) => b.title.includes('Renommer l’identifiant')).click()
+  }, rang)
+  await p.waitForTimeout(600)
+  ok('renommer une espèce renomme le catalogue',
+    (await especes()).includes('colosse') && !(await especes()).includes(cible),
+    (await especes()).join(', '))
+  ok('ET les entités déjà posées portent le nouveau nom, dans la scène qui joue',
+    (await portees()).includes('colosse') && !(await portees()).includes(cible),
+    `${avantPortees.join(', ')} → ${(await portees()).join(', ')}`)
+
+  // Elles doivent TOUJOURS exister : c'est tout l'enjeu.
+  ok('et elles n’ont pas disparu au passage',
+    (await portees()).length === avantPortees.length,
+    `${avantPortees.length} → ${(await portees()).length} entités`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(600)
+  ok('Ctrl+Z rend son nom à l’espèce, et aux entités',
+    String(await especes()) === String(avant)
+    && String(await portees()) === String(avantPortees),
+    (await especes()).join(', '))
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

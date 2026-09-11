@@ -18,6 +18,7 @@ import {
   ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet, retirerAnimationProjet,
   reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet, dupliquerNoeudProjet,
   ajouterNoeudProjet, reparenterNoeudProjet, TYPES_NOEUD,
+  renommerEspeceProjet, renommerPlancheProjet, scriptsQuiNomment,
   poserAssemblageProjet, retirerAssemblageProjet,
   reglerReglesProjet,
 } from './projet-neuf.ts'
@@ -221,6 +222,39 @@ export class PanneauProjet {
   fermer(): void {
     this.panneau.hidden = true
     this.bascule.classList.remove('actif')
+  }
+
+  /**
+   * Renommer quelque chose que tout le projet designe par son NOM.
+   *
+   * Le geste est le meme pour une espece et pour une planche : demander,
+   * appliquer, et DIRE ce que le renommage n'a pas su suivre. Ce dernier point
+   * est la moitie du travail — un script qui ecrit `c.poser('gelee', x, y)`
+   * nomme l'espece dans du texte, et reecrire ce texte demanderait de
+   * comprendre le programme. Se taire la-dessus ferait un renommage qui ment.
+   */
+  private renommer(
+    quoi: string, nom: string,
+    geste: (base: ProjetSerialise, neuf: string) => ProjetSerialise,
+    apres: (neuf: string) => void = () => {},
+  ): void {
+    const voulu = window.prompt(`Nouveau nom pour la ${quoi} « ${nom} »`, nom)
+    if (!voulu?.trim() || voulu.trim() === nom) return
+    const neuf = voulu.trim()
+    const base = this.frais()
+    const p2 = geste(base, neuf)
+    // Le geste rend le projet TEL QUEL quand il refuse : un nom deja pris
+    // ferait deux choses indiscernables.
+    if (p2 === base) {
+      this.crochets.dire(`« ${neuf} » est déjà pris, ou n’est pas un nom : rien n’a été renommé.`)
+      return
+    }
+    const restants = scriptsQuiNomment(base, nom)
+    apres(neuf)
+    this.appliquer(p2, `${quoi} « ${nom} » → « ${neuf} »`
+      + (restants.length
+        ? ` · ${restants.length} script(s) nomment encore « ${nom} » : ${restants.join(', ')}`
+        : ''))
   }
 
   /**
@@ -1259,6 +1293,10 @@ export class PanneauProjet {
       ligne.append(
         nom,
         bouton('✎', 'Modifier cette espèce', () => { this.especeEditee = e.id; this.montrer() }),
+        bouton('✎ id', 'Renommer l’identifiant — les entités déjà posées suivent', () => {
+          this.renommer('espèce', e.id, (base, neuf) => renommerEspeceProjet(base, e.id, neuf),
+            (id) => { this.especeEditee = id })
+        }),
         bouton('✕', 'Retirer l’espèce ET les entités posées qui la portaient', () => {
           if (!window.confirm(
             `Retirer « ${e.nom} » ? Les entités déjà posées qui la portent disparaîtront aussi.`,
@@ -1605,6 +1643,15 @@ export class PanneauProjet {
       this.montrer()
     })
     const quelleCase = champ(g, 'Case', this.caseEditee, 'number')
+    // Renommer une planche : les especes qui y piochent leurs dessins et les
+    // sprites qui la nomment suivent. Sans cela, une planche renommee rendait
+    // invisible tout ce qu'elle dessinait.
+    const renommerPlanche = bouton('✎ nom',
+      'Renommer la planche — les espèces et les sprites qui la nomment suivent', () => {
+        this.renommer('planche', planche.nom,
+          (base, neuf) => renommerPlancheProjet(base, planche.nom, neuf))
+      })
+    g.append(document.createElement('span'), renommerPlanche)
     quelleCase.addEventListener('change', () => {
       this.caseEditee = Math.max(0, Math.min(planche.dessins.length - 1, Number(quelleCase.value)))
       this.montrer()

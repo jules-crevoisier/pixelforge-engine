@@ -5275,6 +5275,105 @@ console.log('\n--- l\'arbre COMPOSE : creer un noeud, changer son parent ---')
     'sinon le journal garderait un geste qui ne change rien')
 }
 
+console.log('\n--- renommer SUIT les references ---')
+
+{
+  const {
+    projetNeuf, renommerEspeceProjet, renommerPlancheProjet, renommerCarteProjet,
+    scriptsQuiNomment, ajouterCarteProjet,
+  } = await import('../src/editeur/projet-neuf.ts')
+
+  const pj = projetNeuf({ nom: 'noms', projection: 'cote' })
+  const trouver = (n, f) => (f(n) ? n : n.enfants.map((e) => trouver(e, f)).find(Boolean))
+  // L'espece qu'une entite PORTE vraiment : le catalogue en contient
+  // plusieurs, et toutes ne sont pas posees dans la scene de depart.
+  const espece = trouver(pj.scenes[0].racine, (n) => !!n.espece)?.espece
+
+  // UNE ESPECE. Le format ne connait pas de references : chaque entite porte
+  // la CHAINE. Un renommage naif fait disparaitre les creatures posees.
+  const posee = trouver(pj.scenes[0].racine, (n) => n.espece === espece)
+  check('une entite posee porte le NOM de son espece, pas un renvoi',
+    !!posee && posee.espece === espece, posee?.espece)
+
+  const renomme = renommerEspeceProjet(pj, espece, 'colosse')
+  check('renommer une espece renomme le catalogue',
+    renomme.especes.some((e) => e.id === 'colosse') && !renomme.especes.some((e) => e.id === espece))
+  check('ET les entites deja posees suivent',
+    !!trouver(renomme.scenes[0].racine, (n) => n.espece === 'colosse')
+    && !trouver(renomme.scenes[0].racine, (n) => n.espece === espece),
+    'sans cela, les creatures posees disparaissent du jeu — sans une erreur, sans un mot')
+
+  const pris = renommerEspeceProjet(pj, espece, pj.especes[1]?.id ?? espece)
+  check('un nom deja pris est refuse : deux especes indiscernables ne se departagent pas',
+    pris === pj)
+  check('un nom vide aussi', renommerEspeceProjet(pj, espece, '   ') === pj)
+  check('et une espece inconnue ne fabrique rien',
+    renommerEspeceProjet(pj, 'personne', 'colosse') === pj)
+
+  // UNE PLANCHE.
+  // Une planche dont une espece se sert : c'est le cas qui casse.
+  const utilisee = pj.especes.find((e) => pj.planches.some((q) => q.nom === e.planche))
+  const planche = utilisee.planche
+  const plancheRenommee = renommerPlancheProjet(pj, planche, 'feuille')
+  check('renommer une planche suit les especes qui y piochent leurs dessins',
+    !!utilisee
+    && plancheRenommee.especes.find((e) => e.id === utilisee.id).planche === 'feuille',
+    'sinon toutes les creatures de cette planche cessent de se dessiner')
+  check('et les sprites qui la nomment',
+    !trouver(plancheRenommee.scenes[0].racine,
+      (n) => n.type === 'sprite' && n.proprietes.source === planche))
+
+  // UNE CARTE : le defaut trouve en ecrivant ce banc.
+  let p2 = ajouterCarteProjet(pj, 'niveau2')
+  p2 = {
+    ...p2,
+    salles: [{ nom: 'entree', x: 0, y: 0, largeur: 4, hauteur: 4, carte: 'niveau2' }],
+    declencheurs: [{
+      nom: 'porte', quand: 'salle', carte: 'niveau2', salle: 'entree',
+      zone: { x: 0, y: 0, l: 1, h: 1 }, qui: '', unefois: true, script: 'c.fin()',
+    }],
+  }
+  const carteRenommee = renommerCarteProjet(p2, 'niveau2', 'crypte')
+  check('renommer une carte emmene ses SALLES',
+    carteRenommee.salles[0].carte === 'crypte',
+    'une salle orpheline ne borne plus rien, et rien ne le dit')
+  check('et ses DECLENCHEURS',
+    carteRenommee.declencheurs[0].carte === 'crypte',
+    'un declencheur orphelin ne tire jamais — le pire des silences')
+
+  // Un sprite dont la planche s'appelle comme la carte ne doit PAS suivre.
+  const piege = {
+    ...p2,
+    scenes: p2.scenes.map((s, i) => (i === 0 ? {
+      ...s,
+      racine: {
+        ...s.racine,
+        enfants: [...s.racine.enfants, {
+          id: 'sprite-piege', nom: 'piege', type: 'sprite', x: 0, y: 0, visible: true,
+          script: null, espece: null, image: 0, proprietes: { source: 'niveau2' }, enfants: [],
+        }],
+      },
+    } : s)),
+  }
+  const apresPiege = renommerCarteProjet(piege, 'niveau2', 'crypte')
+  const spritePiege = trouver(apresPiege.scenes[0].racine, (n) => n.id === 'sprite-piege')
+  check('mais un SPRITE dont la planche porte le meme nom ne suit pas',
+    spritePiege.proprietes.source === 'niveau2',
+    '« source » veut dire une carte sur un noeud de carte, une planche sur un sprite')
+
+  // CE QU'ON NE SAIT PAS SUIVRE, on le DIT.
+  const avecScript = {
+    ...pj,
+    especes: pj.especes.map((e, i) => (i === 0 ? { ...e, script: `c.poser('${espece}', n.x, n.y)` } : e)),
+  }
+  const restants = scriptsQuiNomment(avecScript, espece)
+  check('un script qui nomme l\'ancien nom dans du TEXTE est signale, pas reecrit',
+    restants.length === 1 && restants[0].includes('espèce'),
+    'reecrire ce texte demanderait de comprendre le programme ; se taire serait mentir')
+  check('et un mot qui n\'y figure pas ne signale rien',
+    scriptsQuiNomment(avecScript, 'introuvable').length === 0)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

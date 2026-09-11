@@ -862,9 +862,18 @@ function chercherHeros(racine?: NoeudSerialise): NoeudSerialise | null {
 export function renommerCarteProjet(
   p: ProjetSerialise, nom: string, neuf: string,
 ): ProjetSerialise {
+  /*
+   * Le noeud de DECOR seulement.
+   *
+   * `source` veut dire deux choses selon le type : pour un noeud de carte,
+   * c'est le nom d'une carte ; pour un sprite, c'est le nom d'une planche.
+   * Renommer les deux faisait qu'une planche appelee comme une carte changeait
+   * de nom en meme temps qu'elle — et les creatures qui la dessinaient
+   * devenaient invisibles.
+   */
   const renommerSource = (n: NoeudSerialise): NoeudSerialise => ({
     ...n,
-    proprietes: n.proprietes?.source === nom
+    proprietes: n.type === 'carte' && n.proprietes?.source === nom
       ? { ...n.proprietes, source: neuf } : n.proprietes,
     enfants: n.enfants.map(renommerSource),
   })
@@ -876,11 +885,123 @@ export function renommerCarteProjet(
       nom: s.nom === nom ? neuf : s.nom,
       racine: renommerSource(s.racine),
     })),
+    // Les SALLES et les DECLENCHEURS portent le nom de leur carte depuis les
+    // versions 15 et 14 du format, et le renommage ne les suivait pas : une
+    // carte renommee perdait ses tableaux et ses declenchements, en silence.
+    // C'est exactement le genre de perte qui ne se decouvre qu'en jouant.
+    salles: (p.salles ?? []).map((q) => (q.carte === nom ? { ...q, carte: neuf } : q)),
+    declencheurs: (p.declencheurs ?? []).map(
+      (q) => (q.carte === nom ? { ...q, carte: neuf } : q)),
     deroule: {
       titre: p.deroule?.titre ?? '',
       ordre: (p.deroule?.ordre ?? []).map((q) => (q === nom ? neuf : q)),
     },
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Renommer, et suivre les references                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Renommer, dans un projet ou tout se designe par son NOM.
+ *
+ * ## Pourquoi c'est un geste a part, et pas un champ de texte
+ *
+ * Le format ne connait pas de references : une espece est nommee « gelee »
+ * dans le catalogue, et chaque entite posee porte la CHAINE « gelee ». C'est
+ * ce qui rend le fichier lisible par six langages sans table d'indirection —
+ * et c'est ce qui fait qu'un renommage naif casse tout ce qui renvoyait a
+ * l'ancien nom, sans une erreur, sans un mot. Les creatures posees
+ * disparaissent simplement du jeu.
+ *
+ * L'identifiant d'une espece etait donc en lecture seule : on ne renommait
+ * pas, parce que renommer aurait ete faux. Le geste existe maintenant, et il
+ * SUIT les references — c'est la seule maniere honnete de l'offrir.
+ *
+ * ## Ce qu'il ne peut pas suivre
+ *
+ * Un script qui ecrit `c.poser('gelee', x, y)` nomme l'espece dans du TEXTE.
+ * Reecrire ce texte demanderait de comprendre le programme — de distinguer la
+ * chaine qui designe l'espece de celle qui n'en parle pas. On ne le fait donc
+ * pas : on le DIT. Voir `scriptsQuiNomment`.
+ */
+function renommerEspeceDansNoeud(n: NoeudSerialise, id: string, neuf: string): NoeudSerialise {
+  return {
+    ...n,
+    espece: n.espece === id ? neuf : n.espece,
+    enfants: n.enfants.map((e) => renommerEspeceDansNoeud(e, id, neuf)),
+  }
+}
+
+export function renommerEspeceProjet(
+  p: ProjetSerialise, id: string, voulu: string,
+): ProjetSerialise {
+  const neuf = voulu.trim()
+  // Un nom deja pris ferait deux especes indiscernables, et un nom vide une
+  // espece qu'aucune entite ne peut nommer. On rend le projet tel quel : le
+  // panneau le voit, et le dit.
+  if (!neuf || neuf === id || p.especes.some((e) => e.id === neuf)) return p
+  if (!p.especes.some((e) => e.id === id)) return p
+  return {
+    ...p,
+    especes: p.especes.map((e) => (e.id === id ? { ...e, id: neuf } : e)),
+    scenes: p.scenes.map((s) => ({ ...s, racine: renommerEspeceDansNoeud(s.racine, id, neuf) })),
+    // Les assemblages portent des noeuds eux aussi : un modele qui garderait
+    // l'ancien nom poserait des copies invisibles.
+    assemblages: (p.assemblages ?? []).map(
+      (a) => ({ ...a, racine: renommerEspeceDansNoeud(a.racine, id, neuf) })),
+  }
+}
+
+/** La planche d'un SPRITE — voir `renommerCarteProjet` pour l'ambiguite. */
+function renommerPlancheDansNoeud(n: NoeudSerialise, nom: string, neuf: string): NoeudSerialise {
+  return {
+    ...n,
+    proprietes: n.type === 'sprite' && n.proprietes?.source === nom
+      ? { ...n.proprietes, source: neuf } : n.proprietes,
+    enfants: n.enfants.map((e) => renommerPlancheDansNoeud(e, nom, neuf)),
+  }
+}
+
+export function renommerPlancheProjet(
+  p: ProjetSerialise, nom: string, voulu: string,
+): ProjetSerialise {
+  const neuf = voulu.trim()
+  if (!neuf || neuf === nom || p.planches.some((q) => q.nom === neuf)) return p
+  if (!p.planches.some((q) => q.nom === nom)) return p
+  return {
+    ...p,
+    planches: p.planches.map((q) => (q.nom === nom ? { ...q, nom: neuf } : q)),
+    // Une espece dit OU piocher ses dessins : sans cette ligne, toutes les
+    // creatures de la planche renommee cessent de se dessiner.
+    especes: p.especes.map((e) => (e.planche === nom ? { ...e, planche: neuf } : e)),
+    scenes: p.scenes.map((s) => ({ ...s, racine: renommerPlancheDansNoeud(s.racine, nom, neuf) })),
+    assemblages: (p.assemblages ?? []).map(
+      (a) => ({ ...a, racine: renommerPlancheDansNoeud(a.racine, nom, neuf) })),
+  }
+}
+
+/**
+ * Ce qui nomme encore l'ancien nom DANS DU TEXTE — et qu'on ne reecrit pas.
+ *
+ * Un script, un declencheur : la chaine y est du programme, et la reecrire
+ * demanderait de comprendre ce programme. On rend donc la liste de ce qui
+ * mentionne le mot, pour que le renommage puisse le DIRE. Un renommage qui se
+ * tait sur ce qu'il n'a pas su suivre est un renommage qui ment.
+ */
+export function scriptsQuiNomment(p: ProjetSerialise, mot: string): string[] {
+  const dedans = (texte: string | null | undefined): boolean =>
+    !!texte && new RegExp(`['"\`]${mot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`).test(texte)
+  const out: string[] = []
+  for (const e of p.especes) if (dedans(e.script)) out.push(`espèce ${e.id}`)
+  for (const d of p.declencheurs ?? []) if (dedans(d.script)) out.push(`déclencheur ${d.nom}`)
+  const parcourir = (n: NoeudSerialise, ou: string): void => {
+    if (dedans(n.script)) out.push(`${ou} · ${n.nom}`)
+    n.enfants.forEach((q) => parcourir(q, ou))
+  }
+  for (const s of p.scenes) parcourir(s.racine, `scène ${s.nom}`)
+  return out
 }
 
 /**

@@ -625,6 +625,38 @@ champ qui ne saurait pas le relire.
 dans une liste de quinze noms. Et chaque valeur réglée ici est un geste de
 structure comme un autre : **Ctrl+Z la reprend**.
 
+### Renommer suit les références
+
+Le format ne connaît pas de renvois : une espèce est nommée `gelee` dans le
+catalogue, et chaque entité posée porte la **chaîne** `gelee`. C'est ce qui rend
+le fichier lisible par six langages sans table d'indirection — et ce qui fait
+qu'un renommage naïf casse tout ce qui renvoyait à l'ancien nom, sans une
+erreur et sans un mot : les créatures posées disparaissent, simplement.
+
+L'identifiant d'une espèce était donc **en lecture seule**. On ne renommait pas,
+parce que renommer aurait été faux.
+
+Le geste existe maintenant, et il suit :
+
+| Renommer | Ce qui suit |
+| --- | --- |
+| une **espèce** | le catalogue, les entités posées de toutes les scènes, les nœuds des assemblages |
+| une **planche** | les espèces qui y piochent leurs dessins, les sprites qui la nomment |
+| une **carte** | sa scène, le nœud de décor, le déroulé, **ses salles et ses déclencheurs** |
+
+Ces deux derniers manquaient : une carte renommée perdait ses tableaux et ses
+déclenchements en silence — la perte qui ne se découvre qu'en jouant. Et le
+renommage d'une carte touchait la propriété `source` de **tous** les nœuds,
+alors qu'elle veut dire deux choses : le nom d'une carte sur un nœud de décor,
+le nom d'une planche sur un sprite. Une planche appelée comme une carte
+changeait de nom avec elle.
+
+Ce qu'il ne sait pas suivre, il le **dit**. Un script qui écrit
+`c.poser('gelee', x, y)` nomme l'espèce dans du *texte* ; réécrire ce texte
+demanderait de comprendre le programme. Le renommage signale donc « 3 script(s)
+nomment encore *gelee* », avec la liste. Un renommage qui se tait sur ce qu'il
+n'a pas su suivre est un renommage qui ment.
+
 ### Le clavier, sur le nœud choisi
 
 Un éditeur de scène se juge à ce qu'on peut faire **sans quitter la vue**.
