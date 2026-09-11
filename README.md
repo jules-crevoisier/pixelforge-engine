@@ -573,6 +573,29 @@ le nœud — fini de chercher une entité à la souris —, **⧉** la duplique 
 des identifiants neufs, une case à côté ; et saisir une entité dans la vue
 la **surligne** dans l'arbre. La vue et l'arbre parlent du même nœud.
 
+### L'arbre compose : créer un nœud, changer son parent
+
+![L'arbre : « + Nœud », et une ligne qu'on glisse sur une autre](docs/arbre-compose.png)
+
+L'arbre **recevait** ce que la palette y posait — des entités — et rien
+d'autre. On ne pouvait pas créer un nœud de groupe pour ranger douze pièges,
+ni une zone posée à la main, ni une caméra à soi ; et l'on pouvait ordonner des
+frères, jamais changer de famille. Un arbre qui ne compose pas n'est pas un
+arbre de scène.
+
+**+ Nœud** crée l'un des cinq types du moteur — nœud nu, sprite, corps, zone,
+caméra — sous le nœud choisi, ou sous la racine. Le squelette vient du moteur
+et non d'une table recopiée dans le panneau : la boîte de huit pixels d'un
+corps est décidée à un seul endroit.
+
+**Glisser une ligne sur une autre** la lui donne pour parent, avec tout ce
+qu'elle porte. Trois gestes sont refusés, et le refus vit dans le geste et non
+dans l'interface : un nœud sur lui-même, un nœud sur l'un de ses propres
+descendants — la scène se détacherait d'elle-même et le parcours qui la dessine
+tournerait en rond jusqu'à épuiser la pile —, et la racine, qui *est* la scène.
+Reposer un nœud chez son parent actuel ne fait rien non plus : sinon le journal
+garderait un geste qui ne change rien.
+
 ### L'inspecteur : ce qu'un nœud porte
 
 ![L'inspecteur : l'arbre, et sous lui ce que le nœud choisi porte](docs/inspecteur.png)

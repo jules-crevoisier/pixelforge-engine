@@ -2526,6 +2526,69 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.waitForTimeout(150)
 }
 
+/*
+ * L'ARBRE COMPOSE : creer un noeud, et le glisser sur un autre.
+ *
+ * L'arbre ne recevait que ce que la palette y posait. On ne pouvait pas
+ * creer un noeud de groupe, ni attacher un corps a un sprite apres coup.
+ */
+{
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+
+  const arbre = () => p.evaluate(() => {
+    const f = (n, d) => [`${'  '.repeat(d)}${n.nom}`, ...n.enfants.flatMap((e) => f(e, d + 1))]
+    return f(window.pfe.monde.racine, 0)
+  })
+  const avant = (await arbre()).length
+
+  const champNom = await p.$('xpath=//div[@id="projetCorps"]//input[@placeholder="nom du nœud"]')
+  await champNom.fill('pièges')
+  await p.getByRole('button', { name: '+ Nœud' }).click()
+  await p.waitForTimeout(500)
+  const apres = await arbre()
+  ok('« + Nœud » crée un nœud de groupe dans la scène vivante',
+    apres.length === avant + 1 && apres.some((l) => l.trim() === 'pièges'),
+    apres.map((l) => l.trim()).join(' · '))
+
+  // GLISSER une créature sur le groupe : elle lui devient enfant.
+  const rangs = await p.evaluate(() => {
+    const l = [...document.querySelectorAll('#projetCorps .ligne .nom.choisissable')]
+    // La ligne dit « pièges · noeud » : le nom ET le genre. Chercher
+    // l'egalite stricte visait donc le vide.
+    return { piege: l.findIndex((e) => e.textContent.includes('pièges')),
+      gelee: l.findIndex((e) => e.textContent.includes('gelee')) }
+  })
+  ok('les deux lignes sont là', rangs.piege >= 0 && rangs.gelee >= 0, JSON.stringify(rangs))
+  // `dragTo` vit sur un Locator et non sur une poignee : c'est lui qui sait
+  // jouer un glisser-deposer HTML5 complet, evenements compris.
+  const lignes = p.locator('#projetCorps .liste .ligne')
+  await lignes.nth(rangs.gelee).dragTo(lignes.nth(rangs.piege))
+  await p.waitForTimeout(600)
+  const range = await arbre()
+  const iPiege = range.findIndex((l) => l.trim() === 'pièges')
+  ok('glisser une créature sur le groupe la lui donne pour parent',
+    iPiege >= 0 && (range[iPiege + 1] ?? '').includes('gelee')
+    && (range[iPiege + 1] ?? '').startsWith(range[iPiege].match(/^ */)[0] + '  '),
+    range.slice(Math.max(0, iPiege - 1), iPiege + 3).join(' | '))
+  ok('et elle a emmené son corps de collision',
+    (range[iPiege + 2] ?? '').includes('corps'),
+    range.slice(iPiege, iPiege + 3).map((l) => l.trim()).join(' > '))
+  ok('la scène n’a rien perdu au passage', range.length === apres.length,
+    `${apres.length} → ${range.length} nœuds`)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(500)
+  const defait = await arbre()
+  const iPiege2 = defait.findIndex((l) => l.trim() === 'pièges')
+  ok('Ctrl+Z la ressort du groupe',
+    iPiege2 >= 0 && !(defait[iPiege2 + 1] ?? '').includes('gelee'),
+    defait.map((l) => l.trim()).join(' · '))
+  await p.screenshot({ path: 'docs/arbre-compose.png' })
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

@@ -17,6 +17,7 @@ import {
   ajouterMusiqueProjet, reglerMusiqueProjet, retirerMusiqueProjet,
   ajouterSonProjet, retirerSonProjet, ajouterAnimationProjet, retirerAnimationProjet,
   reglerNoeudProjet, retirerNoeudProjet, decalerNoeudProjet, dupliquerNoeudProjet,
+  ajouterNoeudProjet, reparenterNoeudProjet, TYPES_NOEUD,
   poserAssemblageProjet, retirerAssemblageProjet,
   reglerReglesProjet,
 } from './projet-neuf.ts'
@@ -129,6 +130,13 @@ const choix = (
   return s
 }
 
+/** Le noeud d'un arbre serialise portant cet identifiant, ou null. */
+function trouverNoeud(n: NoeudSerialise, id: string): NoeudSerialise | null {
+  if (n.id === id) return n
+  for (const e of n.enfants) { const r = trouverNoeud(e, id); if (r) return r }
+  return null
+}
+
 function bloc(parent: HTMLElement, titre: string): HTMLElement {
   const d = document.createElement('div')
   d.className = 'bloc'
@@ -181,6 +189,8 @@ export class PanneauProjet {
   private noeudDesigne = ''
   /** Le dernier noeud que l'inspecteur a MONTRE : voir `blocInspecteur`. */
   private noeudInspecte = ''
+  /** Le type que « + Nœud » creera. Il se garde d'un affichage a l'autre. */
+  private typeNeuf = 'noeud'
 
   constructor(
     elements: {
@@ -896,6 +906,47 @@ export class PanneauProjet {
       const ligne = document.createElement('div')
       ligne.className = `ligne${n.id === this.noeudDesigne ? ' actif' : ''}`
       ligne.style.paddingLeft = `${profondeur * 14}px`
+      /*
+       * GLISSER UN NOEUD SUR UN AUTRE LE LUI DONNE POUR PARENT.
+       *
+       * C'est le geste de tous les arbres de scene, et c'est ce qui manquait
+       * pour que celui-ci en soit un : on pouvait ordonner des freres, jamais
+       * changer de famille. Sans lui, un corps de collision ne pouvait pas
+       * etre attache a un sprite apres coup, et rien ne permettait de ranger
+       * douze pieges sous un noeud « pieges ».
+       *
+       * Le refus vit dans le geste (voir `reparenterNoeudProjet`) et non ici :
+       * l'interface ne doit pas etre le seul endroit qui sait qu'un noeud ne
+       * peut pas devenir son propre descendant.
+       */
+      ligne.draggable = true
+      ligne.addEventListener('dragstart', (e) => {
+        e.dataTransfer?.setData('text/plain', n.id)
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+      })
+      ligne.addEventListener('dragover', (e) => {
+        e.preventDefault()
+        ligne.classList.add('cible')
+      })
+      ligne.addEventListener('dragleave', () => ligne.classList.remove('cible'))
+      ligne.addEventListener('drop', (e) => {
+        e.preventDefault()
+        ligne.classList.remove('cible')
+        const tire = e.dataTransfer?.getData('text/plain') ?? ''
+        if (!tire || tire === n.id) return
+        // Le projet de depart est garde : le geste rend CE MEME objet quand
+        // il refuse, et c'est ainsi qu'on sait qu'il a refuse. Le comparer a
+        // un `frais()` neuf ne dirait jamais rien — deux serialisations
+        // successives sont deux objets differents.
+        const base = this.frais()
+        const apres = reparenterNoeudProjet(base, nomScene, tire, n.id)
+        if (apres === base) {
+          this.crochets.dire(`« ${n.nom} » ne peut pas accueillir ce nœud : `
+            + 'un nœud ne devient pas l’enfant de ce qu’il porte.')
+          return
+        }
+        this.appliquer(apres, `nœud attaché à « ${n.nom} »`)
+      })
       const oeil = bouton(n.visible ? '👁' : '·',
         'Montrer ou cacher — un nœud caché ne se dessine pas, lui et les siens', () => {
           this.appliquer(reglerNoeudProjet(this.frais(), nomScene, n.id, { visible: !n.visible }),
@@ -962,10 +1013,49 @@ export class PanneauProjet {
     ligneDe(scene.racine, 0, true)
     d.appendChild(liste)
 
+    /*
+     * CREER un noeud. L'arbre ne recevait que ce que la palette y posait —
+     * des entites. Un projet ne pouvait donc pas avoir un noeud de groupe
+     * pour ranger ses pieges, ni une zone posee a la main, ni une camera.
+     */
+    const neuf = document.createElement('div')
+    neuf.className = 'ligne'
+    const type = document.createElement('select')
+    for (const t of TYPES_NOEUD) {
+      const o = document.createElement('option')
+      o.value = t.id
+      o.textContent = t.nom
+      o.title = t.note
+      type.appendChild(o)
+    }
+    type.value = this.typeNeuf
+    type.addEventListener('change', () => {
+      this.typeNeuf = type.value
+      type.title = TYPES_NOEUD.find((t) => t.id === type.value)?.note ?? ''
+    })
+    type.title = TYPES_NOEUD.find((t) => t.id === this.typeNeuf)?.note ?? ''
+    const nomNeuf = document.createElement('input')
+    nomNeuf.placeholder = 'nom du nœud'
+    nomNeuf.className = 'nom'
+    const sous = this.noeudDesigne
+      ? (trouverNoeud(scene.racine, this.noeudDesigne)?.nom ?? scene.racine.nom)
+      : scene.racine.nom
+    neuf.append(type, nomNeuf,
+      bouton('+ Nœud', `Ajouter sous « ${sous} » — le nœud choisi, ou la racine`, () => {
+        const cible = this.noeudDesigne && trouverNoeud(scene.racine, this.noeudDesigne)
+          ? this.noeudDesigne : scene.racine.id
+        this.appliquer(
+          ajouterNoeudProjet(this.frais(), nomScene, cible, type.value,
+            nomNeuf.value || type.value),
+          `Nœud « ${nomNeuf.value || type.value} » ajouté sous « ${sous} »`)
+      }))
+    d.appendChild(neuf)
+
     const note = document.createElement('p')
     note.className = 'ligne menu'
     note.textContent = 'L’ordre est l’ordre de dessin : le dernier passe dessus. '
-      + 'Cliquez un nom : l’inspecteur montre ce que ce nœud porte.'
+      + 'Cliquez un nom : l’inspecteur montre ce que ce nœud porte. '
+      + 'Glissez une ligne sur une autre : elle lui devient enfant.'
     d.appendChild(note)
 
     this.blocInspecteur(p, nomScene, scene.racine)
@@ -1026,12 +1116,7 @@ export class PanneauProjet {
    * defait au Ctrl+Z comme le reste — voir le journal.
    */
   private blocInspecteur(p: ProjetSerialise, nomScene: string, racine: NoeudSerialise): void {
-    const trouver = (n: NoeudSerialise): NoeudSerialise | null => {
-      if (n.id === this.noeudDesigne) return n
-      for (const e of n.enfants) { const r = trouver(e); if (r) return r }
-      return null
-    }
-    const n = trouver(racine)
+    const n = this.noeudDesigne ? trouverNoeud(racine, this.noeudDesigne) : null
     const d = bloc(this.corps, n ? `Inspecteur · ${n.nom}` : 'Inspecteur')
     if (!n) {
       const vide = document.createElement('p')

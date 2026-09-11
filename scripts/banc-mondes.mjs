@@ -5213,6 +5213,68 @@ console.log('\n--- le verbe qui trace, et celui qui est refuse ---')
   check('et ce qu\'il trace arrive mis en forme', vues[0] === 'x {"pv":3}', vues[0])
 }
 
+console.log('\n--- l\'arbre COMPOSE : creer un noeud, changer son parent ---')
+
+{
+  const { projetNeuf, ajouterNoeudProjet, reparenterNoeudProjet, TYPES_NOEUD } =
+    await import('../src/editeur/projet-neuf.ts')
+  const pj = projetNeuf({ nom: 'arbre', projection: 'cote' })
+  const nomScene = pj.scenes[0].nom
+  const racine = pj.scenes[0].racine
+  const trouver = (n, id) => (n.id === id ? n : n.enfants.map((e) => trouver(e, id)).find(Boolean))
+  const compter = (n) => 1 + n.enfants.reduce((t, e) => t + compter(e), 0)
+
+  check('les cinq types de noeud sont proposes',
+    TYPES_NOEUD.length === 5 && TYPES_NOEUD.every((t) => t.id && t.nom && t.note),
+    TYPES_NOEUD.map((t) => t.id).join(', '))
+
+  const avecGroupe = ajouterNoeudProjet(pj, nomScene, racine.id, 'noeud', 'pièges')
+  const groupe = avecGroupe.scenes[0].racine.enfants.find((e) => e.nom === 'pièges')
+  check('on cree un noeud nu, sous la racine',
+    !!groupe && groupe.type === 'noeud' && compter(avecGroupe.scenes[0].racine) === compter(racine) + 1)
+  check('et il a un identifiant a lui, pris a personne',
+    !!groupe.id && !trouver(racine, groupe.id))
+
+  const avecCorps = ajouterNoeudProjet(avecGroupe, nomScene, groupe.id, 'corps', 'boîte')
+  const corps = trouver(avecCorps.scenes[0].racine, groupe.id).enfants[0]
+  check('on en cree un SOUS un autre', corps?.nom === 'boîte' && corps.type === 'corps')
+  check('avec les valeurs par defaut du MOTEUR, pas d\'une table recopiee',
+    corps.proprietes.boiteL === 8 && corps.proprietes.boiteH === 8,
+    `boite ${corps.proprietes.boiteL}x${corps.proprietes.boiteH}`)
+
+  const sansNom = ajouterNoeudProjet(pj, nomScene, racine.id, 'zone', '   ')
+  check('un nom vide prend celui du type : un noeud sans nom est introuvable',
+    sansNom.scenes[0].racine.enfants.some((e) => e.nom === 'zone'))
+  const parentInconnu = ajouterNoeudProjet(pj, nomScene, 'personne', 'noeud', 'perdu')
+  check('un parent inconnu met le noeud sous la racine, au lieu de le perdre',
+    parentInconnu.scenes[0].racine.enfants.some((e) => e.nom === 'perdu'))
+
+  // REPARENTER.
+  const heros = racine.enfants.find((e) => e.type === 'sprite')
+  const range = reparenterNoeudProjet(avecGroupe, nomScene, heros.id, groupe.id)
+  check('glisser un noeud sur un autre le lui donne pour parent',
+    trouver(range.scenes[0].racine, groupe.id).enfants.some((e) => e.id === heros.id)
+    && !range.scenes[0].racine.enfants.some((e) => e.id === heros.id))
+  check('et il emmene tout ce qu\'il porte',
+    compter(range.scenes[0].racine) === compter(avecGroupe.scenes[0].racine),
+    'un noeud reparente qui perdrait ses enfants serait pire qu\'un geste absent')
+
+  // LES REFUS : ils rendent le projet TEL QUEL, ce qui est le signal.
+  const surSoi = reparenterNoeudProjet(avecGroupe, nomScene, heros.id, heros.id)
+  check('un noeud ne devient pas son propre parent', surSoi === avecGroupe)
+  const enfant = trouver(avecGroupe.scenes[0].racine, heros.id).enfants[0]
+  const cycle = reparenterNoeudProjet(avecGroupe, nomScene, heros.id, enfant.id)
+  check('ni l\'enfant de ce qu\'il porte : la scene se detacherait d\'elle-meme',
+    cycle === avecGroupe,
+    'le parcours qui la dessine tournerait en rond jusqu\'a epuiser la pile')
+  const laRacine = reparenterNoeudProjet(avecGroupe, nomScene, avecGroupe.scenes[0].racine.id, groupe.id)
+  check('la racine ne se reparente pas : elle EST la scene', laRacine === avecGroupe)
+  const deja = reparenterNoeudProjet(avecGroupe, nomScene, heros.id, avecGroupe.scenes[0].racine.id)
+  check('et reposer un noeud chez son parent actuel ne fait rien',
+    deja === avecGroupe,
+    'sinon le journal garderait un geste qui ne change rien')
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

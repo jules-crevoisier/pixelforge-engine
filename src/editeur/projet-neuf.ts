@@ -1,9 +1,10 @@
 import {
-  VERSION_FORMAT, decrirePlanche, serialiserAnimation, serialiserCarte,
+  VERSION_FORMAT, decrirePlanche, serialiserAnimation, serialiserCarte, serialiserNoeud,
   type ProjetSerialise, type CarteSerialisee, type NoeudSerialise, type PlancheSerialisee,
   type DeclencheurSerialise,
 } from '../export/format.ts'
 import { matiereEnCaractere, caractereEnMatiere, VIDE } from '../tuiles/tilemap.ts'
+import { creerNoeud } from '../scene/noeud.ts'
 import { ORTHO_DESSUS, ORTHO_COTE, ISO, type Projection } from '../noyau/projection.ts'
 import { espece, type Espece } from '../runtime/entites.ts'
 import { musique as musiqueFabrique, voie as voieFabrique, type Voie } from '../runtime/musique.ts'
@@ -1065,6 +1066,88 @@ export function reglerNoeudProjet(
       ? { ...n.proprietes, ...changements.proprietes }
       : n.proprietes,
   })))
+}
+
+/**
+ * Les types de noeud qu'on peut ajouter a la main, et ce qu'ils font.
+ *
+ * Ils existent tous dans le moteur depuis longtemps ; ce qui manquait, c'est
+ * de pouvoir en CREER un. L'arbre ne recevait que ce que la palette y posait
+ * — des entites —, si bien qu'un projet ne pouvait pas avoir un noeud de
+ * groupe pour ranger ses pieges, ni une zone posee a la main, ni une camera a
+ * soi. Un arbre de scene qui ne compose pas n'est pas un arbre de scene.
+ */
+export const TYPES_NOEUD = [
+  { id: 'noeud', nom: 'Nœud', note: 'Un nœud nu : il ne dessine rien, il RANGE. Le déplacer déplace tout ce qu’il porte.' },
+  { id: 'sprite', nom: 'Sprite', note: 'Un dessin d’une planche, animable.' },
+  { id: 'corps', nom: 'Corps', note: 'Une boîte de collision : c’est elle qui se cogne au décor.' },
+  { id: 'zone', nom: 'Zone', note: 'Un rectangle qui se sait touché — un rôle, pas un dessin.' },
+  { id: 'camera', nom: 'Caméra', note: 'Un point de vue, avec ses marges.' },
+] as const
+
+/** Ajoute un noeud neuf sous un parent. Le parent inconnu : sous la racine. */
+export function ajouterNoeudProjet(
+  p: ProjetSerialise, nomScene: string, idParent: string, type: string, nom: string,
+): ProjetSerialise {
+  const propre = nom.trim() || type
+  // Le squelette vient du MOTEUR et non d'une table ecrite ici : les valeurs
+  // par defaut d'un corps — sa boite de huit pixels — vivent dans
+  // `creerNoeud`, et les recopier ferait deux verites pour une.
+  const neuf = serialiserNoeud(creerNoeud(type as Parameters<typeof creerNoeud>[0], propre))
+  const sous = (n: NoeudSerialise): NoeudSerialise => (n.id === idParent
+    ? { ...n, enfants: [...n.enfants, neuf] }
+    : { ...n, enfants: n.enfants.map(sous) })
+  return surScene(p, nomScene, (racine) => (
+    idParent && trouverDans(racine, idParent) ? sous(racine)
+      : { ...racine, enfants: [...racine.enfants, neuf] }))
+}
+
+/** Le noeud d'un arbre serialise portant cet identifiant, ou null. */
+function trouverDans(n: NoeudSerialise, id: string): NoeudSerialise | null {
+  if (n.id === id) return n
+  for (const e of n.enfants) { const r = trouverDans(e, id); if (r) return r }
+  return null
+}
+
+/** Vrai si `id` est quelque part SOUS `n` — lui-meme compris. */
+function contient(n: NoeudSerialise, id: string): boolean {
+  return trouverDans(n, id) !== null
+}
+
+/**
+ * Change le PARENT d'un noeud : le geste qui fait d'un arbre un arbre.
+ *
+ * ## Ce qui est refuse, et pourquoi
+ *
+ * Deposer un noeud sur lui-meme, ou sur l'un de ses propres descendants,
+ * detacherait tout le sous-arbre de la scene : il deviendrait son propre
+ * ancetre, et le parcours qui le dessine tournerait en rond jusqu'a epuiser
+ * la pile. Le geste ne fait alors RIEN — mieux vaut un glisser sans effet
+ * qu'une scene qu'on ne peut plus ouvrir.
+ *
+ * La racine ne se reparente pas non plus : elle est la scene.
+ */
+export function reparenterNoeudProjet(
+  p: ProjetSerialise, nomScene: string, id: string, idParent: string,
+): ProjetSerialise {
+  const scene = p.scenes.find((q) => q.nom === nomScene)
+  if (!scene || id === idParent || id === scene.racine.id) return p
+  const noeud = trouverDans(scene.racine, id)
+  const parent = trouverDans(scene.racine, idParent)
+  if (!noeud || !parent) return p
+  // Son propre descendant : voir plus haut.
+  if (contient(noeud, idParent)) return p
+  // Deja son parent : rien a faire, et surtout pas un geste dans le journal.
+  if (parent.enfants.some((e) => e.id === id)) return p
+  const copie = structuredClone(noeud)
+  const elaguer = (n: NoeudSerialise): NoeudSerialise => ({
+    ...n,
+    enfants: n.enfants.filter((e) => e.id !== id).map(elaguer),
+  })
+  const greffer = (n: NoeudSerialise): NoeudSerialise => (n.id === idParent
+    ? { ...n, enfants: [...n.enfants, copie] }
+    : { ...n, enfants: n.enfants.map(greffer) })
+  return surScene(p, nomScene, (racine) => greffer(elaguer(racine)))
 }
 
 /**

@@ -295,6 +295,10 @@ button.lien:hover { color: var(--accent); }
 .champs input[type="checkbox"] { width: 14px; height: 14px; justify-self: start; }
 .champs input:disabled { color: var(--dim); background: transparent; }
 
+/* L'arbre de scene : la ligne qu'on survole en glissant est la FUTURE mere.
+   Sans ce lisere, on lache au jugé et l'on se trompe d'une ligne. */
+.ligne.cible { border-color: var(--accent); background: rgba(127, 212, 168, .10); }
+
 /* La console vit EN BAS, sur toute la largeur : c'est sa place dans les
    moteurs, et la colonne de droite reste aux panneaux qu'on lit en meme
    temps qu'elle. Une hauteur fixe et non extensible : une console qui grandit
