@@ -1651,19 +1651,33 @@ export class PanneauProjet {
       d.appendChild(note)
       return
     }
+    if (s.wav) {
+      // Un son importe ne se synthetise pas : montrer la frequence ou
+      // l'attaque laisserait regler des champs sans effet, ce qui est la
+      // pire des interfaces. Le volume, lui, s'applique toujours.
+      const note = document.createElement('p')
+      note.className = 'ligne menu'
+      note.textContent = `« ${s.nom} » est un WAV importé (${s.duree} ms). `
+        + 'Seul le volume se règle ; le reste appartient au fichier.'
+      d.appendChild(note)
+    }
     const g = document.createElement('div')
     g.className = 'champs'
-    const forme = choix(g, 'Forme',
-      FORMES.map((f) => ({ valeur: f, nom: f })), s.forme)
-    const nombres: [string, keyof Son, number][] = [
-      ['Fréquence (Hz)', 'frequence', 1],
-      ['Fréquence finale', 'frequenceFin', 1],
-      ['Durée (ms)', 'duree', 1],
-      ['Volume (0 à 1)', 'volume', 0.01],
-      ['Attaque (ms)', 'attaque', 1],
-      ['Chute (ms)', 'chute', 1],
-      ['Paliers (demi-tons)', 'paliers', 1],
-    ]
+    const forme = s.wav
+      ? Object.assign(document.createElement('select'), { value: s.forme })
+      : choix(g, 'Forme',
+        FORMES.map((f) => ({ valeur: f, nom: f })), s.forme)
+    const nombres: [string, keyof Son, number][] = s.wav
+      ? [['Volume (0 à 1)', 'volume', 0.01]]
+      : [
+        ['Fréquence (Hz)', 'frequence', 1],
+        ['Fréquence finale', 'frequenceFin', 1],
+        ['Durée (ms)', 'duree', 1],
+        ['Volume (0 à 1)', 'volume', 0.01],
+        ['Attaque (ms)', 'attaque', 1],
+        ['Chute (ms)', 'chute', 1],
+        ['Paliers (demi-tons)', 'paliers', 1],
+      ]
     const champsNombres = nombres.map(([etiquette, cle, pas]) => {
       const i = champ(g, etiquette, s[cle] as number, 'number')
       i.step = String(pas)
@@ -1672,7 +1686,9 @@ export class PanneauProjet {
     d.appendChild(g)
 
     const appliquer = (): void => {
-      s.forme = forme.value as Son['forme']
+      // Un son importe garde sa forme : le select detache n'a pas d'options,
+      // et sa valeur vide ecraserait la vraie.
+      if (!s.wav) s.forme = forme.value as Son['forme']
       for (const [cle, i] of champsNombres) {
         const v = Number(i.value)
         if (Number.isFinite(v)) (s as unknown as Record<string, number>)[cle] = v

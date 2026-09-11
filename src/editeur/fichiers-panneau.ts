@@ -188,16 +188,19 @@ export class PanneauFichiers {
             this.crochets.ouvrirProjet(texte, f)
           })
         }))
-      } else if (genre === 'image' || genre === 'sprites') {
-        ligne.appendChild(this.bouton('Importer', 'Découper cette image en planche du projet', () => {
+      } else if (genre === 'image' || genre === 'sprites' || genre === 'son') {
+        const aide = genre === 'son'
+          ? 'Faire de ce WAV un son du projet'
+          : 'Découper cette image en planche du projet'
+        ligne.appendChild(this.bouton('Importer', aide, () => {
           void this.crochets.lireFichier(f).then(async (fichier) => {
             if (!fichier) { this.crochets.dire(`« ${f} » est illisible.`); return }
             await this.crochets.importerAsset(fichier)
           })
         }))
       } else {
-        // Un .wav, un .zip : le panneau les MONTRE — ce sont souvent les
-        // exports du projet — sans pretendre savoir les rouvrir.
+        // Un .zip : le panneau le MONTRE — c'est souvent l'export du projet —
+        // sans pretendre savoir le rouvrir.
         etiquette.classList.add('menu')
       }
       liste.appendChild(ligne)

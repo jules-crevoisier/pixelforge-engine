@@ -10,18 +10,18 @@
 ╰─────────────────────────────────────────────────────────────────
 
 LES ÉPREUVES
-  vert   build                    —  3.7 s
+  vert   build                    —  3.6 s
   vert   banc                 83/83  0.3 s
   vert   banc:plateforme      68/68  0.3 s
-  vert   banc:mondes        431/431  1.7 s
-  vert   banc:langages      100/100  1.5 s
+  vert   banc:mondes        431/431  1.6 s
+  vert   banc:langages      100/100  2.3 s
   vert   banc:reseau          33/33  0.4 s
   vert   banc:habillage     112/112  0.3 s
   vert   banc:charge          17/17  1.5 s
   vert   banc:image           30/30  0.2 s
-  vert   banc:deploiement       9/9  6.3 s
-  vert   fumee              127/127  91.3 s
-  1010 vérifications au total, 0 rouge(s)
+  vert   banc:deploiement       9/9  7.1 s
+  vert   fumee              131/131  96.3 s
+  1014 vérifications au total, 0 rouge(s)
 
 CE QUE LE PROJET SAIT FAIRE
   Un critère n’est tenu que s’il existe des vérifications qui tomberaient
@@ -60,10 +60,10 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Pesanteur pour les créatures, en vue de côté         4 preuves
     ✓ Armes et portée réglées, pas devinées                18 preuves
 
-  Faire un jeu sans lire le moteur — 12/12
+  Faire un jeu sans lire le moteur — 13/13
     ✓ Partir d’un projet vide                              6 preuves
     ✓ Redimensionner la carte, gérer les calques           24 preuves
-    ✓ Créer une espèce sans écrire de code                 27 preuves
+    ✓ Créer une espèce sans écrire de code                 28 preuves
     ✓ Poser et déplacer une entité à la souris             13 preuves
     ✓ Défaire et refaire, y compris sur les entités        13 preuves
     ✓ Un projet se ferme, se rouvre, se joue               39 preuves
@@ -72,6 +72,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Le comportement d’une espèce peut être un script à soi 5 preuves
     ✓ La physique du contrôleur se règle par espèce, et ça se mesure 3 preuves
     ✓ L’épée, les cœurs, la réapparition et les pointes se débrayent 4 preuves
+    ✓ Les fichiers se voient, s’ouvrent et se déposent, comme dans un moteur 4 preuves
     ✓ La feuille blanche : partir sans un seul asset de démonstration 10 preuves
 
   Le multijoueur, et ce qu’il exige d’abord — 6/6
@@ -83,7 +84,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Plusieurs personnages dirigeables, chacun ses touches 6 preuves
 
   Le déployer sans que ça casse en production — 4/4
-    ✓ Une image qui ne contient que ce qu’elle sert        46 preuves
+    ✓ Une image qui ne contient que ce qu’elle sert        47 preuves
     ✓ Toute page du dépôt entre dans l’image, sans qu’on la nomme 2 preuves
     ✓ L’application vit sous les en-têtes réels, pas seulement en local 5 preuves
     ✓ Le fond défile moins vite que le sol, et on l’a mesuré 12 preuves
@@ -115,11 +116,11 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Et découper un niveau en tableaux, à la souris       4 preuves
     ✓ Les textes et les musiques s’écrivent dans l’éditeur 6 preuves
     ✓ Le premier lancement se comprend sans rien apprendre 4 preuves
-    ✓ Dessiner, monter et régler dans l’éditeur            5 preuves
+    ✓ Dessiner, monter et régler dans l’éditeur            6 preuves
 
   Ce qu’un jeu a en plus de son gameplay — 14/14
     ✓ Une fonte de pixels, accents français compris        5 preuves
-    ✓ Son : décrit en données, attaché aux événements d’animation 85 preuves
+    ✓ Son : décrit en données, attaché aux événements d’animation 86 preuves
     ✓ Et un son ne se rejoue pas quand le réseau rembobine 6 preuves
     ✓ Particules et effets                                 8 preuves
     ✓ Dialogue : frappe, coupure, choix                    19 preuves
@@ -138,13 +139,13 @@ CE QU’IL RESTE À FAIRE, DANS L’ORDRE
   une grille entièrement verte ne mesure plus rien.
 
 CE QUI A BOUGÉ
-  ↑ 5 vérification(s) de plus
-      et « + Planche » une planche à soi, née d’une case vide
-      on dessine sur la planche neuve, pixel par pixel
-      le formulaire crée l’espèce scriptée, sur la planche à soi
-      la palette la propose, et elle se pose à la souris
-      en jeu, c’est SON script qui la fait bouger
+  ↑ 4 vérification(s) de plus
+      le panneau Fichiers inventorie le projet : cartes, planches, espèces, sons…
+      cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS
+      déposer une image sur la page en fait une planche, et le voile se retire
+      déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait
+  + critère nouveau : Les fichiers se voient, s’ouvrent et se déposent, comme dans un moteur
 
-VERDICT : tout est vert · 88/88 critères tenus · 1010 vérifications
+VERDICT : tout est vert · 89/89 critères tenus · 1014 vérifications
 
 ```

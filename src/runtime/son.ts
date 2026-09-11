@@ -58,10 +58,25 @@ export interface Son {
    * l'ecran : la contrainte fait le style.
    */
   paliers: number
+  /**
+   * Un fichier WAV importe, en base64 — le son n'est alors plus synthetise.
+   *
+   * ## Pourquoi accepter un fichier dans un moteur qui decrit tout en donnees
+   *
+   * Les six nombres de la synthese font les bruitages d'une puce sonore, et
+   * c'est un style. Mais un cri enregistre, une note de guitare, un bruit
+   * d'eau ne se decrivent pas en six nombres — et refuser l'audio enregistre
+   * fermerait la porte a la moitie des jeux. Le fichier part DANS le projet,
+   * comme les planches partent en lettres : un projet reste un seul fichier
+   * qui se depose sur la page. Seul le volume s'applique encore ; les autres
+   * reglages appartiennent a la synthese, et les cacher vaut mieux que les
+   * laisser sans effet.
+   */
+  wav?: string
 }
 
 export function son(nom: string, p: Partial<Son> = {}): Son {
-  return {
+  const s: Son = {
     nom,
     forme: p.forme ?? 'carre',
     frequence: p.frequence ?? 440,
@@ -72,6 +87,90 @@ export function son(nom: string, p: Partial<Son> = {}): Son {
     chute: p.chute ?? 40,
     paliers: p.paliers ?? 0,
   }
+  // Seulement s'il existe : un champ `wav: undefined` changerait la liste
+  // des cles de chaque son, et tout ce qui compare des sons au banc.
+  if (p.wav !== undefined) s.wav = p.wav
+  return s
+}
+
+/* ------------------------------------------------------------------ */
+/* Le WAV importe                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Les octets d'une chaine base64. Chunk par chunk : atob n'a pas de limite
+ * dure, mais les tres longues chaines coutent ; c'est symetrique de l'encodage. */
+export function octetsDepuisBase64(b64: string): Uint8Array {
+  const brut = atob(b64)
+  const octets = new Uint8Array(brut.length)
+  for (let i = 0; i < brut.length; i++) octets[i] = brut.charCodeAt(i)
+  return octets
+}
+
+/** L'inverse, par morceaux : btoa(String.fromCharCode(...tout)) explose la
+ * pile d'appels des quelques dizaines de milliers d'octets. */
+export function base64DepuisOctets(octets: Uint8Array): string {
+  let s = ''
+  const PAS = 0x8000
+  for (let i = 0; i < octets.length; i += PAS) {
+    s += String.fromCharCode(...octets.subarray(i, i + PAS))
+  }
+  return btoa(s)
+}
+
+/**
+ * Lit un WAV PCM seize bits. Null si ce n'en est pas un — l'appelant DIT
+ * alors pourquoi il refuse, au lieu d'importer du bruit.
+ *
+ * Le decodeur vit ici et non a cote de l'encodeur d'export : l'export
+ * importe deja ce module pour rendre les sons, et l'inverse serait un cycle.
+ * Les chunks sont parcourus un a un — un WAV sorti d'Audacity porte souvent
+ * un chunk LIST avant les donnees, et le lire a offset fixe le casserait.
+ */
+export function dechiffrerWav(
+  octets: Uint8Array,
+): { echantillons: Float32Array; taux: number } | null {
+  if (octets.length < 44) return null
+  const texte = (i: number, attendu: string): boolean =>
+    [...attendu].every((c, j) => octets[i + j] === c.charCodeAt(0))
+  if (!texte(0, 'RIFF') || !texte(8, 'WAVE')) return null
+  const vue = new DataView(octets.buffer, octets.byteOffset, octets.byteLength)
+  let position = 12
+  let taux = 0
+  let voies = 0
+  let bits = 0
+  let format = 0
+  let debut = -1
+  let taille = 0
+  while (position + 8 <= octets.length) {
+    const id = String.fromCharCode(
+      octets[position], octets[position + 1], octets[position + 2], octets[position + 3],
+    )
+    const t = vue.getUint32(position + 4, true)
+    if (id === 'fmt ' && position + 24 <= octets.length) {
+      format = vue.getUint16(position + 8, true)
+      voies = vue.getUint16(position + 10, true)
+      taux = vue.getUint32(position + 12, true)
+      bits = vue.getUint16(position + 22, true)
+    } else if (id === 'data') {
+      debut = position + 8
+      taille = t
+    }
+    // Les chunks sont alignes sur deux octets ; un chunk impair est complete.
+    position += 8 + t + (t % 2)
+  }
+  if (format !== 1 || bits !== 16 || voies < 1 || taux <= 0 || debut < 0) return null
+  const totales = Math.floor(Math.min(taille, octets.length - debut) / 2)
+  const parVoie = Math.floor(totales / voies)
+  if (parVoie < 1) return null
+  const sortie = new Float32Array(parVoie)
+  for (let i = 0; i < parVoie; i++) {
+    // Mixage mono : la moyenne des voies. Le moteur joue tout en une voie,
+    // comme il dessine tout en pixels entiers.
+    let somme = 0
+    for (let v = 0; v < voies; v++) somme += vue.getInt16(debut + (i * voies + v) * 2, true)
+    sortie[i] = (somme / voies) / 32768
+  }
+  return { echantillons: sortie, taux }
 }
 
 /**
@@ -108,6 +207,23 @@ function quantifier(f: number, paliers: number): number {
  * le claquement s'entend plus que le son.
  */
 export function rendre(s: Son, tauxEchantillon = 44100): Float32Array {
+  if (s.wav) {
+    const brut = dechiffrerWav(octetsDepuisBase64(s.wav))
+    if (brut) {
+      // Reechantillonnage au plus proche : pour des sons d'un dixieme de
+      // seconde, un filtre n'apporterait rien qu'on entende, et le plus
+      // proche est reproductible au banc a l'echantillon pres.
+      const n2 = Math.max(1, Math.round((brut.echantillons.length * tauxEchantillon) / brut.taux))
+      const sortie = new Float32Array(n2)
+      for (let i = 0; i < n2; i++) {
+        const j = Math.min(brut.echantillons.length - 1, Math.round((i * brut.taux) / tauxEchantillon))
+        sortie[i] = brut.echantillons[j] * s.volume
+      }
+      return sortie
+    }
+    // Un wav illisible RETOMBE sur la synthese : le son change au lieu de
+    // disparaitre, et un son etrange se remarque la ou un silence s'oublie.
+  }
   const n = Math.max(1, Math.round((s.duree / 1000) * tauxEchantillon))
   const sortie = new Float32Array(n)
   const attaque = Math.max(1, Math.round((s.attaque / 1000) * tauxEchantillon))

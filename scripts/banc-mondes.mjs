@@ -4701,6 +4701,73 @@ console.log('\n--- la feuille blanche ---')
     avecClip.animations.length === 1 && avecClip.animations[0].images.length === 2)
 }
 
+/*
+ * LE SON IMPORTE : un WAV dans le projet, joue tel quel.
+ *
+ * La synthese en six nombres reste le depart ; un cri enregistre ne s'y
+ * decrit pas. On verifie l'aller-retour a l'echantillon pres — l'encodeur
+ * d'export et le dechiffreur du moteur doivent parler exactement le meme
+ * WAV — et que le rendu d'un son importe vient bien du fichier, pas de la
+ * synthese. Et dans l'autre sens : un son SANS wav se synthetise comme
+ * avant, a l'identique.
+ */
+console.log('\n--- le son importe ---')
+{
+  const { son, rendre, dechiffrerWav, octetsDepuisBase64, base64DepuisOctets } =
+    await import('../src/runtime/son.ts')
+  const { encoderWav } = await import('../src/export/wav.ts')
+  const { ajouterSonImporteProjet, projetNeuf } = await import('../src/editeur/projet-neuf.ts')
+  const { versTexte, VERSION_FORMAT } = await import('../src/export/format.ts')
+
+  const piou = son('piou', { frequence: 880, frequenceFin: 220, duree: 90 })
+  const synthese = rendre(piou, 22050)
+  const octets = encoderWav(synthese, 22050)
+  const relu = dechiffrerWav(octets)
+  const pire = relu
+    ? Math.max(...synthese.map((v, i) => Math.abs(v - relu.echantillons[i])))
+    : 1
+  check('l\'encodeur d\'export et le dechiffreur parlent le meme WAV',
+    relu !== null && relu.taux === 22050 && relu.echantillons.length === synthese.length
+    && pire <= 1 / 32767,
+    `${synthese.length} echantillons, pire ecart ${pire.toFixed(6)} — la quantification 16 bits, rien d'autre`)
+
+  const b64 = base64DepuisOctets(octets)
+  check('le base64 fait l\'aller-retour octet pour octet',
+    octetsDepuisBase64(b64).every((v, i) => v === octets[i]))
+
+  const importe = son('cri', { wav: b64, volume: 1, duree: 90 })
+  const rendu = rendre(importe, 22050)
+  check('un son importe se REND depuis le fichier, pas depuis la synthese',
+    rendu.length === synthese.length
+    && rendu.every((v, i) => Math.abs(v - relu.echantillons[i]) < 1e-9),
+    'meme taux : les echantillons sortent tels quels')
+  check('et le volume s\'y applique encore — le seul reglage qui reste',
+    Math.abs(rendre(son('cri', { wav: b64, volume: 0.5 }), 22050)[40]
+      - rendu[40] * 0.5) < 1e-9)
+  const moitie = rendre(importe, 11025)
+  check('le reechantillonnage suit le taux demande',
+    Math.abs(moitie.length - synthese.length / 2) <= 1,
+    `${synthese.length} echantillons a 22050 Hz, ${moitie.length} a 11025`)
+
+  const casse = son('casse', { wav: 'cGFzIHVuIHdhdg==', duree: 70 })
+  check('un wav illisible retombe sur la synthese au lieu de se taire',
+    rendre(casse, 22050).length === Math.round((70 / 1000) * 22050),
+    'le son change, il ne disparait pas — un silence s\'oublie, un son etrange se remarque')
+
+  check('un son sans wav se synthetise comme avant',
+    rendre(son('t', { duree: 50 }), 22050).length === Math.round((50 / 1000) * 22050)
+    && !('wav' in son('t')),
+    'et il ne gagne pas de champ fantome : les cles d\'un son n\'ont pas bouge')
+
+  const pj = ajouterSonImporteProjet(projetNeuf({ depart: 'vierge' }), 'blip.wav', b64, 90)
+  const rejoue = JSON.parse(versTexte(pj))
+  check('le wav traverse l\'enregistrement, nomme d\'apres son fichier',
+    rejoue.version === VERSION_FORMAT && rejoue.version === 17
+    && rejoue.sons.length === 1 && rejoue.sons[0].nom === 'blip'
+    && rejoue.sons[0].wav === b64 && rejoue.sons[0].duree === 90,
+    `version ${rejoue.version}, son « ${rejoue.sons[0].nom} », ${rejoue.sons[0].duree} ms`)
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

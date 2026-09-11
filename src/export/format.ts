@@ -39,6 +39,14 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * ## L'histoire des versions
  *
+ * **17** — le son importe. Un son peut porter un fichier WAV en base64
+ * (`Son.wav`) : il n'est alors plus synthetise, il est JOUE. La synthese en
+ * six nombres reste le depart — elle se regle, se diffe, s'exporte — mais un
+ * cri enregistre ne se decrit pas en six nombres, et refuser l'audio
+ * enregistre fermait la porte a la moitie des jeux. Un lecteur d'avant
+ * ignore le champ et synthetise les parametres : le son change, il ne
+ * disparait pas.
+ *
  * **16** — les regles du jeu. L'epee sur la touche action, les coeurs a
  * l'ecran, la duree de reapparition, ce qu'une pointe retire : tout cela
  * etait OFFERT — c'est-a-dire impose. Un jeu de plateforme pur n'a pas
@@ -160,7 +168,7 @@ import { creerNoeud, type TypeNoeud } from '../scene/noeud.ts'
  *
  * **1** — la premiere.
  */
-export const VERSION_FORMAT = 16
+export const VERSION_FORMAT = 17
 
 export interface ProjetSerialise {
   version: number

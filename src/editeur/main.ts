@@ -13,9 +13,9 @@ import { Atelier } from './atelier-panneau.ts'
 import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
-import { projetNeuf } from './projet-neuf.ts'
+import { projetNeuf, ajouterSonImporteProjet } from './projet-neuf.ts'
 import { PanneauFichiers, genreDe } from './fichiers-panneau.ts'
-import { rendre as rendreSon } from '../runtime/son.ts'
+import { rendre as rendreSon, dechiffrerWav, base64DepuisOctets } from '../runtime/son.ts'
 import { rendreMusique } from '../runtime/musique.ts'
 import type { ProjetSerialise } from '../export/format.ts'
 import { retirerDe } from '../runtime/entites.ts'
@@ -498,8 +498,27 @@ async function routerFichier(f: File): Promise<void> {
     panneauProjet.ouvrirSur('dessin')
     return
   }
+  if (genre === 'son') {
+    const octets = new Uint8Array(await f.arrayBuffer())
+    const brut = dechiffrerWav(octets)
+    if (!brut) {
+      verdict.textContent = `« ${f.name} » n’est pas un WAV PCM 16 bits. `
+        + 'Exportez-le sans compression — c’est le seul format que tout moteur lit.'
+      return
+    }
+    const dureeMs = (brut.echantillons.length / brut.taux) * 1000
+    const p2 = ajouterSonImporteProjet(
+      projetCourant(), f.name, base64DepuisOctets(octets), dureeMs,
+    )
+    const nomSon = p2.sons[p2.sons.length - 1].nom
+    installerProjet(p2, p2.nom)
+    panneauProjet.ouvrirSur('sons', nomSon)
+    verdict.textContent = `Son « ${nomSon} » importé : ${Math.round(dureeMs)} ms à ${brut.taux} Hz. `
+      + 'Un script le joue par c.jouer, une animation par son événement.'
+    return
+  }
   verdict.textContent = `« ${f.name} » : rien à en faire ici. `
-    + 'Une image devient une planche, un .json s’ouvre comme projet.'
+    + 'Une image devient une planche, un .json s’ouvre comme projet, un .wav devient un son.'
 }
 
 const panneauFichiers = new PanneauFichiers(

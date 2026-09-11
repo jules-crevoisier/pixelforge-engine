@@ -966,8 +966,8 @@
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 127,
-      "total": 127,
+      "reussies": 131,
+      "total": 131,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -1095,11 +1095,15 @@
         "on dessine sur la planche neuve, pixel par pixel",
         "le formulaire crée l’espèce scriptée, sur la planche à soi",
         "la palette la propose, et elle se pose à la souris",
-        "en jeu, c’est SON script qui la fait bouger"
+        "en jeu, c’est SON script qui la fait bouger",
+        "le panneau Fichiers inventorie le projet : cartes, planches, espèces, sons…",
+        "cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS",
+        "déposer une image sur la page en fait une planche, et le voile se retire",
+        "déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait"
       ]
     }
   ],
-  "verifications": 1010,
+  "verifications": 1014,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -1259,8 +1263,8 @@
     },
     {
       "jeu": "Faire un jeu sans lire le moteur",
-      "tenus": 12,
-      "total": 12,
+      "tenus": 13,
+      "total": 13,
       "criteres": [
         {
           "nom": "Partir d’un projet vide",
@@ -1275,7 +1279,7 @@
         {
           "nom": "Créer une espèce sans écrire de code",
           "tenu": true,
-          "preuves": 27
+          "preuves": 28
         },
         {
           "nom": "Poser et déplacer une entité à la souris",
@@ -1314,6 +1318,11 @@
         },
         {
           "nom": "L’épée, les cœurs, la réapparition et les pointes se débrayent",
+          "tenu": true,
+          "preuves": 4
+        },
+        {
+          "nom": "Les fichiers se voient, s’ouvrent et se déposent, comme dans un moteur",
           "tenu": true,
           "preuves": 4
         },
@@ -1369,7 +1378,7 @@
         {
           "nom": "Une image qui ne contient que ce qu’elle sert",
           "tenu": true,
-          "preuves": 46
+          "preuves": 47
         },
         {
           "nom": "Toute page du dépôt entre dans l’image, sans qu’on la nomme",
@@ -1523,7 +1532,7 @@
         {
           "nom": "Dessiner, monter et régler dans l’éditeur",
           "tenu": true,
-          "preuves": 5
+          "preuves": 6
         }
       ]
     },
@@ -1540,7 +1549,7 @@
         {
           "nom": "Son : décrit en données, attaché aux événements d’animation",
           "tenu": true,
-          "preuves": 85
+          "preuves": 86
         },
         {
           "nom": "Et un son ne se rejoue pas quand le réseau rembobine",
@@ -1734,6 +1743,7 @@
     "citadelle : les clips reviennent avec leurs evenements",
     "citadelle : les planches reviennent, au pixel pres",
     "citadelle : une image d'animation valide",
+    "cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS",
     "cote : contact et passage ne se ressemblent pas",
     "dans « Le Gouffre », la nuit s'epaissit en descendant",
     "defaire remet exactement l'etat d'avant",
@@ -1769,6 +1779,8 @@
     "donjon : orthogonale vue de dessus, 20x15",
     "donjon : une image d'animation valide",
     "douze demi-tons font une octave",
+    "déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait",
+    "déposer une image sur la page en fait une planche, et le voile se retire",
     "elle dit exactement ce qui manque à une langue",
     "elle emporte la graine du monde engendré",
     "elle est retenue dans la liste de ce qui reste à traduire",
@@ -2160,6 +2172,7 @@
     "le niveau porte sa place dans le monde",
     "le nombre de cœurs affiché est celui qu’on a vraiment",
     "le nombre de salles demande est atteint",
+    "le panneau Fichiers inventorie le projet : cartes, planches, espèces, sons…",
     "le panneau Projet s’ouvre",
     "le panneau borne la parallaxe entre zéro et quatre",
     "le panneau pose un déclencheur et son script, en données",

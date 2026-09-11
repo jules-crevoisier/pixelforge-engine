@@ -1664,6 +1664,40 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait',
     projetDepose.id === 'projet:gouffre-depose.json' && projetDepose.option,
     projetDepose.id)
+
+  // Un .wav depose devient un son du projet — l'audio ENREGISTRE, pas
+  // seulement la synthese. Le fichier est fabrique ici meme, en PCM 16 bits.
+  await p.evaluate(() => {
+    const taux = 8000
+    const n = 800
+    const octets = new Uint8Array(44 + n * 2)
+    const vue = new DataView(octets.buffer)
+    const texte = (i, t) => { for (let j = 0; j < t.length; j++) octets[i + j] = t.charCodeAt(j) }
+    texte(0, 'RIFF'); vue.setUint32(4, 36 + n * 2, true); texte(8, 'WAVE')
+    texte(12, 'fmt '); vue.setUint32(16, 16, true); vue.setUint16(20, 1, true)
+    vue.setUint16(22, 1, true); vue.setUint32(24, taux, true)
+    vue.setUint32(28, taux * 2, true); vue.setUint16(32, 2, true); vue.setUint16(34, 16, true)
+    texte(36, 'data'); vue.setUint32(40, n * 2, true)
+    for (let i = 0; i < n; i++) {
+      vue.setInt16(44 + i * 2, Math.round(Math.sin(i / 6) * 12000), true)
+    }
+    const dt = new DataTransfer()
+    dt.items.add(new File([octets], 'blip.wav', { type: 'audio/wav' }))
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await p.waitForTimeout(600)
+  const sonDepose = await p.evaluate(() => {
+    const q = (window.pfe.monde.sons ?? []).find((r) => r.nom === 'blip')
+    const corps = document.getElementById('projetCorps')
+    return {
+      present: !!q && typeof q.wav === 'string' && q.wav.length > 100 && q.duree === 100,
+      duree: q?.duree ?? -1,
+      panneau: corps?.textContent.includes('WAV importé') ?? false,
+    }
+  })
+  ok('déposer un .wav en fait un son du projet — l’audio enregistré entre aussi',
+    sonDepose.present && sonDepose.panneau,
+    `« blip », ${sonDepose.duree} ms, et le panneau Sons dit qu’il est importé`)
   await p.click('#basculeFichiers')
   await p.waitForTimeout(200)
 }

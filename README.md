@@ -453,9 +453,23 @@ Le panneau **Fichiers** rend tout visible :
 Et le **glisser-déposer** : lâchez n'importe quoi sur la page. Une image
 devient une planche (avec détection d'échelle et quantification à la
 palette), un `.json` s'ouvre comme projet, un `.pixelforge` devient une
-planche dont chaque image d'animation est une case. Un voile pendant le
-survol dit ce que chaque type deviendra — un dépôt muet obligerait à essayer
-pour savoir.
+planche dont chaque image d'animation est une case, un `.wav` devient un
+son. Un voile pendant le survol dit ce que chaque type deviendra — un dépôt
+muet obligerait à essayer pour savoir.
+
+### Le son importé (format v17)
+
+La synthèse en six nombres reste le départ — elle se règle, se diffe,
+s'exporte — mais un cri enregistré ne se décrit pas en six nombres. Un
+`.wav` PCM 16 bits déposé (ou importé du dossier de travail) part **dans**
+le fichier de projet en base64 : le projet reste un seul fichier qui se
+dépose sur la page. Le son importé se joue tel quel — seul le volume se
+règle encore, et le panneau Sons le dit au lieu de montrer des champs sans
+effet. Un WAV illisible retombe sur la synthèse : le son change, il ne
+disparaît pas — un silence s'oublie, un son étrange se remarque. L'export
+vers les moteurs le ré-encode en `.wav` dans l'archive, comme les sons
+synthétisés ; l'aller-retour encodeur/décodeur est vérifié au banc à
+l'échantillon près.
 
 Un projet PixelForge reste **un seul fichier** — c'est le choix qui permet de
 l'ouvrir en le déposant sur la page, et le panneau ne fait pas semblant du

@@ -988,6 +988,28 @@ export function retirerSonProjet(p: ProjetSerialise, nom: string): ProjetSeriali
 }
 
 /**
+ * Ajoute un son IMPORTE — un fichier WAV en base64, nomme d'apres le
+ * fichier. La duree vient du fichier : c'est elle que le panneau montre, et
+ * un son importe qui afficherait « 120 ms » de defaut mentirait.
+ */
+export function ajouterSonImporteProjet(
+  p: ProjetSerialise, nomFichier: string, wav: string, dureeMs: number,
+): ProjetSerialise {
+  const liste = p.sons ?? []
+  const base = nomFichier.replace(/\.[^.]+$/, '').trim() || 'son'
+  let nom = base
+  let n = 2
+  while (liste.some((s) => s.nom === nom)) nom = `${base}-${n++}`
+  return {
+    ...p,
+    sons: [...liste, sonFabrique(nom, {
+      wav,
+      duree: Math.max(1, Math.round(dureeMs)),
+    })],
+  }
+}
+
+/**
  * Ajoute une animation, nommee d'office : deux images de la planche du
  * heros, un rythme lent. Deux images et non une — une animation d'une image
  * ne bouge pas, et l'on croirait le lecteur casse. C'est dans le panneau

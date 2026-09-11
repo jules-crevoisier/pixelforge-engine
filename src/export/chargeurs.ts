@@ -245,6 +245,8 @@ export interface Son {
   chute: number
   /** Quantification en demi-tons. Zero : glissando continu. */
   paliers: number
+  /** Un WAV importe, en base64. Present : le son se lit, il ne se synthetise pas. */
+  wav?: string
 }
 
 export interface Voie {
@@ -1182,6 +1184,8 @@ namespace PixelForge
         public int attaque;
         public int chute;
         public int paliers;
+        /// <summary>Un WAV importe, en base64. Vide : le son se synthetise.</summary>
+        public string wav;
     }
 
     /// <summary>Une voie d'une musique : un timbre et ses notes.</summary>
@@ -2266,6 +2270,9 @@ pub struct Son {
     pub chute: i64,
     #[serde(default)]
     pub paliers: i32,
+    /// Un WAV importe, en base64. Vide : le son se synthetise.
+    #[serde(default)]
+    pub wav: String,
 }
 
 /// Une voie d'une musique : un timbre du catalogue et ses notes.
