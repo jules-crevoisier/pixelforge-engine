@@ -10,18 +10,18 @@
 ╰─────────────────────────────────────────────────────────────────
 
 LES ÉPREUVES
-  vert   build                    —  4.2 s
+  vert   build                    —  3.9 s
   vert   banc                 83/83  0.3 s
   vert   banc:plateforme      68/68  0.3 s
-  vert   banc:mondes        439/439  1.7 s
+  vert   banc:mondes        461/461  1.7 s
   vert   banc:langages      100/100  1.7 s
-  vert   banc:reseau          33/33  0.4 s
+  vert   banc:reseau          33/33  0.5 s
   vert   banc:habillage     112/112  0.3 s
-  vert   banc:charge          17/17  1.7 s
+  vert   banc:charge          17/17  1.6 s
   vert   banc:image           30/30  0.2 s
-  vert   banc:deploiement       9/9  7.0 s
-  vert   fumee              132/132  95.9 s
-  1023 vérifications au total, 0 rouge(s)
+  vert   banc:deploiement       9/9  6.7 s
+  vert   fumee              145/145  103.5 s
+  1058 vérifications au total, 0 rouge(s)
 
 CE QUE LE PROJET SAIT FAIRE
   Un critère n’est tenu que s’il existe des vérifications qui tomberaient
@@ -47,7 +47,7 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Plan d’étage reproductible depuis une graine         5 preuves
     ✓ Rôles de salle : départ, boss, trésor, boutique      3 preuves
     ✓ Aucune salle injoignable, vérifié case par case      2 preuves
-    ✓ Salles écrites à la main, tirées et retournées       7 preuves
+    ✓ Salles écrites à la main, tirées et retournées       12 preuves
     ✓ Caméra verrouillée sur la salle                      42 preuves
     ✓ Tirs, projectiles et ennemis qui annoncent           6 preuves
     ✓ Ramassages et soin                                   4 preuves
@@ -60,19 +60,22 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Pesanteur pour les créatures, en vue de côté         4 preuves
     ✓ Armes et portée réglées, pas devinées                18 preuves
 
-  Faire un jeu sans lire le moteur — 14/14
+  Faire un jeu sans lire le moteur — 17/17
     ✓ Partir d’un projet vide                              6 preuves
     ✓ Redimensionner la carte, gérer les calques           24 preuves
-    ✓ Créer une espèce sans écrire de code                 28 preuves
-    ✓ Poser et déplacer une entité à la souris             13 preuves
-    ✓ Défaire et refaire, y compris sur les entités        13 preuves
-    ✓ Un projet se ferme, se rouvre, se joue               40 preuves
+    ✓ Créer une espèce sans écrire de code                 29 preuves
+    ✓ Poser et déplacer une entité à la souris             17 preuves
+    ✓ Défaire et refaire, y compris sur les entités        14 preuves
+    ✓ Un projet se ferme, se rouvre, se joue               42 preuves
     ✓ Une aide qui dit dans quel ordre s’y prendre         4 preuves
     ✓ Export vers un moteur du commerce                    20 preuves
     ✓ Le comportement d’une espèce peut être un script à soi 5 preuves
     ✓ La physique du contrôleur se règle par espèce, et ça se mesure 3 preuves
     ✓ L’épée, les cœurs, la réapparition et les pointes se débrayent 4 preuves
     ✓ Les fichiers se voient, s’ouvrent et se déposent, comme dans un moteur 4 preuves
+    ✓ Les niveaux de Tiled et de LDtk entrent, jouables    5 preuves
+    ✓ L’arbre de scène : retrouver, renommer, cacher, réordonner, retirer 9 preuves
+    ✓ Les assemblages : un prefab qui se pose depuis la palette 6 preuves
     ✓ L’audio enregistré entre aussi : un .wav devient un son du projet 5 preuves
     ✓ La feuille blanche : partir sans un seul asset de démonstration 10 preuves
 
@@ -105,11 +108,11 @@ CE QUE LE PROJET SAIT FAIRE
     ✓ Le hit-stop : un coup qui porte au lieu de traverser 6 preuves
     ✓ Une secousse de caméra entière et reproductible      2 preuves
     ✓ Manette, tactile et touches remappables              4 preuves
-    ✓ L’art dessiné ailleurs entre dans le projet          13 preuves
+    ✓ L’art dessiné ailleurs entre dans le projet          14 preuves
     ✓ Des déclencheurs : les événements du niveau en données 24 preuves
     ✓ Un script peut tout ce qu’un jeu fait                2 preuves
-    ✓ Plusieurs cartes, un déroulé : un projet devient un jeu 16 preuves
-    ✓ Une lumière fidèle à la palette, au prix mesuré      31 preuves
+    ✓ Plusieurs cartes, un déroulé : un projet devient un jeu 17 preuves
+    ✓ Une lumière fidèle à la palette, au prix mesuré      32 preuves
     ✓ Un jeu-témoin complet, joué par les bancs            13 preuves
     ✓ Un projet relu meurt et REVIENT, comme un vrai jeu   18 preuves
     ✓ Salles et lumière par carte : la carte partout       8 preuves
@@ -121,7 +124,7 @@ CE QUE LE PROJET SAIT FAIRE
 
   Ce qu’un jeu a en plus de son gameplay — 14/14
     ✓ Une fonte de pixels, accents français compris        5 preuves
-    ✓ Son : décrit en données, attaché aux événements d’animation 90 preuves
+    ✓ Son : décrit en données, attaché aux événements d’animation 93 preuves
     ✓ Et un son ne se rejoue pas quand le réseau rembobine 6 preuves
     ✓ Particules et effets                                 8 preuves
     ✓ Dialogue : frappe, coupure, choix                    19 preuves
@@ -140,15 +143,17 @@ CE QU’IL RESTE À FAIRE, DANS L’ORDRE
   une grille entièrement verte ne mesure plus rien.
 
 CE QUI A BOUGÉ
-  ↑ 9 vérification(s) de plus
-      l'encodeur d'export et le dechiffreur parlent le meme WAV
-      le base64 fait l'aller-retour octet pour octet
-      un son importe se REND depuis le fichier, pas depuis la synthese
-      et le volume s'y applique encore
-      le reechantillonnage suit le taux demande
-      un wav illisible retombe sur la synthese au lieu de se taire
-  + critère nouveau : L’audio enregistré entre aussi : un .wav devient un son du projet
+  ↑ 35 vérification(s) de plus
+      un noeud se renomme et se deplace par son identifiant
+      et rien d'autre n'a bouge : l'identifiant reste, les enfants restent
+      un noeud se cache, et la relecture le lit cache
+      l'ordre des freres se decale
+      un noeud se retire avec tout ce qu'il porte
+      et une scene sans heros se relit sans casser
+  + critère nouveau : Les niveaux de Tiled et de LDtk entrent, jouables
+  + critère nouveau : L’arbre de scène : retrouver, renommer, cacher, réordonner, retirer
+  + critère nouveau : Les assemblages : un prefab qui se pose depuis la palette
 
-VERDICT : tout est vert · 90/90 critères tenus · 1023 vérifications
+VERDICT : tout est vert · 93/93 critères tenus · 1058 vérifications
 
 ```

@@ -178,8 +178,8 @@
     {
       "nom": "banc:mondes",
       "code": 0,
-      "reussies": 439,
-      "total": 439,
+      "reussies": 461,
+      "total": 461,
       "noms": [
         "redemander le clip en cours ne le recommence pas",
         "et le forcer, lui, fige bien l'animation",
@@ -619,7 +619,29 @@
         "le reechantillonnage suit le taux demande",
         "un wav illisible retombe sur la synthese au lieu de se taire",
         "un son sans wav se synthetise comme avant",
-        "le wav traverse l'enregistrement, nomme d'apres son fichier"
+        "le wav traverse l'enregistrement, nomme d'apres son fichier",
+        "un noeud se renomme et se deplace par son identifiant",
+        "et rien d'autre n'a bouge : l'identifiant reste, les enfants restent",
+        "un noeud se cache, et la relecture le lit cache",
+        "l'ordre des freres se decale",
+        "un noeud se retire avec tout ce qu'il porte",
+        "et une scene sans heros se relit sans casser",
+        "la racine, elle, ne se retire pas",
+        "un noeud se duplique : identifiants neufs, enfants compris, une case a cote",
+        "et dupliquer deux fois ne fabrique jamais le meme identifiant",
+        "un niveau Tiled devient une carte du projet, nommee d'apres son fichier",
+        "ses tuiles et ses solides ont survecu a la traversee",
+        "et sa scene appariee arrive avec le heros dedans",
+        "un deuxieme import du meme fichier ne l'ecrase pas",
+        "le projet a trois cartes se relit et se construit entier",
+        "un nom de fichier vide recoit un nom quand meme",
+        "un noeud devient un assemblage nomme, enfants compris",
+        "le modele est une COPIE : retoucher la scene ne le change pas",
+        "deux modeles ne partagent pas un nom",
+        "les assemblages traversent l'enregistrement, en version 18",
+        "un projet relu GARDE ses assemblages",
+        "et un modele se retire sans toucher aux copies posees",
+        "un fichier d'avant la version 18 se relit : pas d'assemblages, pas de faute"
       ]
     },
     {
@@ -974,8 +996,8 @@
     {
       "nom": "fumee",
       "code": 0,
-      "reussies": 132,
-      "total": 132,
+      "reussies": 145,
+      "total": 145,
       "noms": [
         "donjon : le heros bouge",
         "donjon : l'arret le repose au depart",
@@ -1108,11 +1130,24 @@
         "cliquer une planche du panneau Fichiers ouvre l’atelier de dessin DESSUS",
         "déposer une image sur la page en fait une planche, et le voile se retire",
         "déposer un .json ouvre le projet, comme « Ouvrir » l’aurait fait",
-        "déposer un .wav en fait un son du projet"
+        "déposer un .wav en fait un son du projet",
+        "l’onglet Scène montre l’arbre : le décor, le héros et son corps, les créatures",
+        "renommer un nœud depuis l’arbre renomme la vraie entité",
+        "la cacher depuis l’arbre la cache vraiment",
+        "la retirer depuis l’arbre la retire",
+        "« voir » depuis l’arbre centre la vue d’édition sur le nœud",
+        "« dupliquer » depuis l’arbre double la créature, une case à côté",
+        "saisir une entité dans la vue la surligne dans l’arbre",
+        "un niveau Tiled déposé devient une carte du projet, sous le pinceau",
+        "et un projet LDtk déposé apporte ses niveaux, nommés comme dans LDtk",
+        "l’étoile de l’arbre fait d’un nœud un assemblage nommé",
+        "la palette propose le modèle à côté des espèces",
+        "un clic pose une copie du modèle",
+        "et Ctrl+Z reprend la copie, comme toute entité posée"
       ]
     }
   ],
-  "verifications": 1023,
+  "verifications": 1058,
   "bilan": [
     {
       "jeu": "Celeste — plateforme de précision",
@@ -1214,7 +1249,7 @@
         {
           "nom": "Salles écrites à la main, tirées et retournées",
           "tenu": true,
-          "preuves": 7
+          "preuves": 12
         },
         {
           "nom": "Caméra verrouillée sur la salle",
@@ -1272,8 +1307,8 @@
     },
     {
       "jeu": "Faire un jeu sans lire le moteur",
-      "tenus": 14,
-      "total": 14,
+      "tenus": 17,
+      "total": 17,
       "criteres": [
         {
           "nom": "Partir d’un projet vide",
@@ -1288,22 +1323,22 @@
         {
           "nom": "Créer une espèce sans écrire de code",
           "tenu": true,
-          "preuves": 28
+          "preuves": 29
         },
         {
           "nom": "Poser et déplacer une entité à la souris",
           "tenu": true,
-          "preuves": 13
+          "preuves": 17
         },
         {
           "nom": "Défaire et refaire, y compris sur les entités",
           "tenu": true,
-          "preuves": 13
+          "preuves": 14
         },
         {
           "nom": "Un projet se ferme, se rouvre, se joue",
           "tenu": true,
-          "preuves": 40
+          "preuves": 42
         },
         {
           "nom": "Une aide qui dit dans quel ordre s’y prendre",
@@ -1334,6 +1369,21 @@
           "nom": "Les fichiers se voient, s’ouvrent et se déposent, comme dans un moteur",
           "tenu": true,
           "preuves": 4
+        },
+        {
+          "nom": "Les niveaux de Tiled et de LDtk entrent, jouables",
+          "tenu": true,
+          "preuves": 5
+        },
+        {
+          "nom": "L’arbre de scène : retrouver, renommer, cacher, réordonner, retirer",
+          "tenu": true,
+          "preuves": 9
+        },
+        {
+          "nom": "Les assemblages : un prefab qui se pose depuis la palette",
+          "tenu": true,
+          "preuves": 6
         },
         {
           "nom": "L’audio enregistré entre aussi : un .wav devient un son du projet",
@@ -1486,7 +1536,7 @@
         {
           "nom": "L’art dessiné ailleurs entre dans le projet",
           "tenu": true,
-          "preuves": 13
+          "preuves": 14
         },
         {
           "nom": "Des déclencheurs : les événements du niveau en données",
@@ -1501,12 +1551,12 @@
         {
           "nom": "Plusieurs cartes, un déroulé : un projet devient un jeu",
           "tenu": true,
-          "preuves": 16
+          "preuves": 17
         },
         {
           "nom": "Une lumière fidèle à la palette, au prix mesuré",
           "tenu": true,
-          "preuves": 31
+          "preuves": 32
         },
         {
           "nom": "Un jeu-témoin complet, joué par les bancs",
@@ -1563,7 +1613,7 @@
         {
           "nom": "Son : décrit en données, attaché aux événements d’animation",
           "tenu": true,
-          "preuves": 90
+          "preuves": 93
         },
         {
           "nom": "Et un son ne se rejoue pas quand le réseau rembobine",
@@ -1771,6 +1821,7 @@
     "deux exécutions des mêmes touches donnent exactement la même suite",
     "deux lampes ne s'additionnent pas : la plus forte gagne",
     "deux matières différentes ne s’écrivent jamais pareil",
+    "deux modeles ne partagent pas un nom",
     "deux parties identiques donnent les mêmes positions, au pixel près",
     "deux personnages, deux jeux de touches : ils partent en sens opposés",
     "deux rectangles jointifs ne se chevauchent pas",
@@ -1818,6 +1869,7 @@
     "en sortir par le côté fait entrer dans la suivante",
     "enregistrer garde TOUTES les cartes, pas seulement l'affichee",
     "entre les deux, elle decroit",
+    "et Ctrl+Z reprend la copie, comme toute entité posée",
     "et Jouer rend le cadre du jeu",
     "et PAS une seconde fois tant qu'on y reste",
     "et Python repond pareil a « quels declencheurs contiennent ce point »",
@@ -1843,6 +1895,7 @@
     "et deux salles qui se touchent seulement, non",
     "et deux étages ne reçoivent pas la même suite de salles",
     "et deux états identiques la même",
+    "et dupliquer deux fois ne fabrique jamais le meme identifiant",
     "et elle a bien disparu ensuite",
     "et elle bouge vraiment",
     "et elle compte comme un appui récent",
@@ -1969,6 +2022,7 @@
     "et rejouer depuis le debut le rearme",
     "et rend a la premiere son dessin d'origine",
     "et retiree de la scene, elle en sort",
+    "et rien d'autre n'a bouge : l'identifiant reste, les enfants restent",
     "et rien ne manque à la langue de référence elle-même",
     "et rien n’est encore écrit",
     "et sa chute y est freinee",
@@ -1976,6 +2030,7 @@
     "et sa collision aussi",
     "et sa duree suit",
     "et sa place dans le monde",
+    "et sa scene appariee arrive avec le heros dedans",
     "et sa scene avec",
     "et sa vitesse de chute est remise à zéro tant qu’elle est posée",
     "et sans entrées séparées, ils partaient du même côté",
@@ -1996,8 +2051,10 @@
     "et un caractere illisible ne fait pas tomber la lecture",
     "et un découpage où tout se touche ne l’est pas",
     "et un fichier illisible est refusé avec la raison, sans rien casser",
+    "et un modele se retire sans toucher aux copies posees",
     "et un mort ne se fait plus toucher",
     "et un plan remappé prend effet",
+    "et un projet LDtk déposé apporte ses niveaux, nommés comme dans LDtk",
     "et un projet d'avant la version 13 se relit en plein jour",
     "et un projet peut se telecharger",
     "et un reglage vide laisse l'usine",
@@ -2009,6 +2066,7 @@
     "et une musique se retire",
     "et une musique y est en NOTES, pas en echantillons",
     "et une patrouille sans vigilance ne remarque jamais rien",
+    "et une scene sans heros se relit sans casser",
     "et « + Animation » son premier clip",
     "et « + Planche » une planche à soi, née d’une case vide",
     "et « Retirer » le retire",
@@ -2061,12 +2119,14 @@
     "l'historique est borne",
     "l'image fait la taille annoncee",
     "l'instantane se prend et le tir a eu lieu",
+    "l'ordre des freres se decale",
     "l'ordre par defaut est celui des cartes",
     "l'étage engendré emploie vraiment les salles dessinées",
     "la boite du monde orthogonal est celle de la grille",
     "la boite isometrique commence a GAUCHE de l'origine",
     "la boite orthogonale, elle, part de l'origine",
     "la boîte connaît sa hauteur avant d’être dessinée",
+    "la cacher depuis l’arbre la cache vraiment",
     "la caméra a bougé, sinon la mesure ne veut rien dire",
     "la carte d'essai est assez haute pour le saut regle",
     "la carte d'une salle et l'ambiante d'une carte traversent l'enregistrement",
@@ -2106,6 +2166,7 @@
     "la palette de tuiles montre la planche",
     "la palette la propose, et elle se pose à la souris",
     "la palette montre les espèces du projet",
+    "la palette propose le modèle à côté des espèces",
     "la part hors palette est comptee sur les pixels opaques",
     "la planche du héros survit à l’aller-retour pixels, au pixel près",
     "la planche neutre a les 47 murs et le sol, dans l'ordre des masques",
@@ -2115,11 +2176,13 @@
     "la portée borne vraiment le calcul",
     "la presence du terrain aussi",
     "la présence d’un calque sans terrain revient de l’enregistrement",
+    "la racine, elle, ne se retire pas",
     "la redemander ne la relance PAS",
     "la regle du voisinage unique donne des branches et des culs-de-sac",
     "la regle sait accuser une planche irreguliere",
     "la relâcher l’arrête",
     "la repasser ne la compte pas deux fois",
+    "la retirer depuis l’arbre la retire",
     "la salle courante se remet comme elle était après un rembobinage",
     "la secousse décale la caméra de pixels ENTIERS",
     "la sonde de sante existe des deux cotes",
@@ -2185,6 +2248,7 @@
     "le lecteur et la fonction pure rendent la meme image",
     "le masque plein est au dernier index",
     "le masque vide est a l'index zero",
+    "le modele est une COPIE : retoucher la scene ne le change pas",
     "le modulo alterne strictement, les bits de poids fort non",
     "le nettoyage garde les retours a la ligne",
     "le niveau porte sa place dans le monde",
@@ -2201,6 +2265,7 @@
     "le plan des pentes est bien rectangulaire",
     "le plancher principal comporte bien des fosses a franchir",
     "le premier lancement s’ouvre sur l’accueil : deux départs, ouvrir, et un jeu fini à voir",
+    "le projet a trois cartes se relit et se construit entier",
     "le projet sort en JSON indente, donc diffable",
     "le puits se remonte en sautant d'une paroi a l'autre",
     "le rebond du pietinement atteint la hauteur demandee",
@@ -2228,6 +2293,7 @@
     "le vrai jeu joué deux fois donne la même partie",
     "le vrai moteur, à deux, sur un lien qui retarde et qui perd",
     "le wav traverse l'enregistrement, nomme d'apres son fichier",
+    "les assemblages traversent l'enregistrement, en version 18",
     "les bornes d’une salle sont en pixels",
     "les calques se fondent de bas en haut",
     "les cases s'ecrivent une rangee par ligne",
@@ -2266,9 +2332,11 @@
     "l’atelier de dessin montre une case de planche",
     "l’atelier de sons liste les sons du projet",
     "l’etape de construction copie quelque chose",
+    "l’onglet Scène montre l’arbre : le décor, le héros et son corps, les créatures",
     "l’opacité d’un calque se fond au lieu d’être ignorée",
     "l’outil « Salle » pose un tableau en tirant un rectangle",
     "l’outil « salle » pose un tableau en tirant un rectangle",
+    "l’étoile de l’arbre fait d’un nœud un assemblage nommé",
     "mais deux sources différentes au même pas sonnent bien deux fois",
     "mais devant celui de la case au nord-ouest",
     "mais elle ne touche pas ce qui est derriere",
@@ -2363,6 +2431,7 @@
     "remplacer les entrées garde la sélection",
     "remplir avec ce qui est déjà là ne laisse rien dans l’historique",
     "rendre la main au clavier efface l’état imposé",
+    "renommer un nœud depuis l’arbre renomme la vraie entité",
     "renommer une carte renomme sa scene, son decor et le deroule",
     "reposer le même identifiant modifie au lieu de dupliquer",
     "ressortir puis revenir tire a nouveau",
@@ -2374,6 +2443,7 @@
     "réimporter la même image rend la même planche, lettre pour lettre",
     "sa moitié haute reprend là où la basse s’arrête, sans marche",
     "sa taille annoncée est sa taille réelle",
+    "saisir une entité dans la vue la surligne dans l’arbre",
     "sans avertissement sur un cas simple",
     "sans avertissement sur un cas simple",
     "sans carte voulue, la premiere",
@@ -2399,6 +2469,7 @@
     "sauter sans appuyer vers le bas ne fait pas traverser",
     "sauter sur une tete tue la creature",
     "ses morceaux sont dans l'ordre et leurs CRC tombent juste",
+    "ses tuiles et ses solides ont survecu a la traversee",
     "son decor la designe, et son heros est une copie jouable",
     "son enveloppe part de zéro et y revient",
     "sortir de la carte est bloque",
@@ -2435,6 +2506,7 @@
     "un champ partagé vaut trois cents recherches évitées",
     "un chemin relie le depart a la sortie",
     "un clic droit la retire",
+    "un clic pose une copie du modèle",
     "un clic pose une entité",
     "un clip a deux images n'a rien a inverser",
     "un clip unique declenche ses evenements en route",
@@ -2455,6 +2527,7 @@
     "un declencheur neuf recoit un nom libre",
     "un declencheur qui nomme une carte ne tire pas ailleurs",
     "un declencheur traverse l'enregistrement, champ par champ",
+    "un deuxieme import du meme fichier ne l'ecrase pas",
     "un deuxième appui passe à la suivante",
     "un dialogue neuf recoit un nom libre et une premiere replique",
     "un dialogue s’écrit au panneau et devient une donnée du monde",
@@ -2463,6 +2536,7 @@
     "un etage enregistre emporte ses creatures",
     "un export ×2 est détecté",
     "un fichier d'avant la version 15 se relit en lumiere de projet",
+    "un fichier d'avant la version 18 se relit : pas d'assemblages, pas de faute",
     "un fichier d’avant la version 9 se relit sans une ligne de migration",
     "un fichier qui n’est pas un projet de sprites est refusé",
     "un fichier écrit avant se relit sans une ligne de migration",
@@ -2480,9 +2554,17 @@
     "un mot plus long que la ligne est coupé plutôt que de déborder",
     "un mur n’a pas de distance",
     "un mur, lui, arrête toujours",
+    "un niveau Tiled devient une carte du projet, nommee d'apres son fichier",
+    "un niveau Tiled déposé devient une carte du projet, sous le pinceau",
     "un niveau exporte puis reimporte garde ses tuiles",
+    "un noeud devient un assemblage nomme, enfants compris",
     "un noeud ephemere reste hors du fichier",
     "un noeud garde ses proprietes propres a son type",
+    "un noeud se cache, et la relecture le lit cache",
+    "un noeud se duplique : identifiants neufs, enfants compris, une case a cote",
+    "un noeud se renomme et se deplace par son identifiant",
+    "un noeud se retire avec tout ce qu'il porte",
+    "un nom de fichier vide recoit un nom quand meme",
     "un nom de planche déjà pris est numéroté au lieu d’écraser",
     "un nom déjà pris est numéroté au lieu d’écraser",
     "un pas de temps long ne perd aucun evenement",
@@ -2497,6 +2579,7 @@
     "un projet neuf traverse l’enregistrement sans rien perdre",
     "un projet parti de rien se joue vraiment",
     "un projet porte sa lumiere jusqu'au monde relu",
+    "un projet relu GARDE ses assemblages",
     "un projet sans niveau est signale",
     "un rectangle ne pose RIEN tant qu’on ne lâche pas",
     "un rectangle tiré à la souris change plusieurs cases d’un geste",
@@ -2638,6 +2721,7 @@
     "« docker-compose.yml » existe",
     "« docker/default.conf » existe",
     "« docker/security-headers.conf » existe",
+    "« dupliquer » depuis l’arbre double la créature, une case à côté",
     "« frame-ancestors » reste ferme",
     "« musiques » survit a enregistrer, relire, reenregistrer",
     "« node_modules » et « dist » restent hors du contexte",
@@ -2650,6 +2734,7 @@
     "« textes » survit a enregistrer, relire, reenregistrer",
     "« tsconfig.json » est copie",
     "« une fois » s'eteint apres le premier tir",
+    "« voir » depuis l’arbre centre la vue d’édition sur le nœud",
     "« Éditer » change la carte sous le pinceau, et en revient",
     "Échap ouvre la pause"
   ]
