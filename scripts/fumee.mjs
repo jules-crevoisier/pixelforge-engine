@@ -1488,7 +1488,84 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('et « + Planche » une planche à soi, née d’une case vide',
     plancheNee.noms === 'carte,heros,planche' && plancheNee.cases === 1,
     `planches : « ${plancheNee.noms} »`)
+
+  /*
+   * LA CREATURE A SOI, DE ZERO : le bout-a-bout que toute la liberte promet.
+   * On dessine sur la planche neuve, on cree une espece a l'intention
+   * « script », on la pose a la souris, on joue — et c'est LE SCRIPT qui la
+   * fait bouger. Si un maillon casse — le dessin, le formulaire, la palette,
+   * la compilation, le peuplement — c'est ici que ca se voit.
+   */
+  const toile = await p.$('#projetCorps .toile')
+  const rt = await toile.boundingBox()
+  await p.mouse.move(rt.x + rt.width * 0.3, rt.y + rt.height * 0.5)
+  await p.mouse.down()
+  for (let i = 0; i <= 8; i++) {
+    await p.mouse.move(rt.x + rt.width * (0.3 + i * 0.05), rt.y + rt.height * 0.5)
+  }
+  await p.mouse.up()
+  await p.waitForTimeout(200)
+  const pixels = await p.evaluate(() => {
+    const q = window.pfe.monde.planches
+    return q[q.length - 1].dessins[0].join('').replace(/\./g, '').length
+  })
+  ok('on dessine sur la planche neuve, pixel par pixel', pixels >= 4, `${pixels} pixels posés`)
+
+  await p.getByRole('button', { name: 'Espèces', exact: true }).click()
+  await p.waitForTimeout(250)
+  await p.evaluate(() => {
+    const blocs = [...document.querySelectorAll('#projetCorps .bloc')]
+    const bloc = blocs.find((b2) => b2.querySelector('h3')?.textContent === 'Espèces')
+    const de = (etiquette) => [...bloc.querySelectorAll('label')]
+      .find((l) => l.textContent === etiquette)?.nextElementSibling
+    const poser = (etiquette, valeur) => {
+      const e = de(etiquette)
+      e.value = valeur
+      e.dispatchEvent(new Event('change'))
+    }
+    poser('Identifiant', 'gardien')
+    poser('Planche', 'planche')
+    poser('Clip', '')
+    poser('Camp', 'neutre')
+    poser('Intention', 'script')
+    const textarea = bloc.querySelector('textarea')
+    textarea.value = 'n.x += 30 * c.dt'
+    textarea.dispatchEvent(new Event('input'))
+    ;[...bloc.querySelectorAll('button')].find((b2) => b2.textContent === 'Créer l’espèce').click()
+  })
+  await p.waitForTimeout(300)
+  const auCatalogue = await p.evaluate(() => {
+    const e = window.pfe.monde.especes.find((q) => q.id === 'gardien')
+    return e ? `${e.planche}/${e.comportement}/${e.script}` : 'absente'
+  })
+  ok('le formulaire crée l’espèce scriptée, sur la planche à soi',
+    auCatalogue === 'planche/script/n.x += 30 * c.dt', auCatalogue)
   await p.click('#fermerProjet')
+
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(250)
+  await p.evaluate(() => {
+    ;[...document.querySelectorAll('#paletteGrille button')]
+      .find((b2) => b2.title.includes('gardien'))?.click()
+  })
+  await p.waitForTimeout(150)
+  const cadre2 = await p.$eval('#vue', (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height] })
+  await p.mouse.click(cadre2[0] + cadre2[2] * 0.3, cadre2[1] + cadre2[3] * 0.5)
+  await p.waitForTimeout(200)
+  const ouGardien = () => p.evaluate(() => {
+    const f = (n) => (n.espece === 'gardien' ? n : n.enfants.map(f).find(Boolean))
+    const g2 = f(window.pfe.monde.racine)
+    return g2 ? Math.round(g2.x) : null
+  })
+  const poseA = await ouGardien()
+  ok('la palette la propose, et elle se pose à la souris', poseA !== null, `posée en x=${poseA}`)
+  await p.click('#jouer')
+  await p.waitForTimeout(700)
+  const jouee = await ouGardien()
+  ok('en jeu, c’est SON script qui la fait bouger — la créature à soi, de zéro',
+    poseA !== null && jouee !== null && jouee > poseA,
+    `x=${poseA} → ${jouee} : n.x += 30·dt, écrit dans le panneau, compilé par l’atelier`)
+  await p.click('#arreter')
 }
 
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')

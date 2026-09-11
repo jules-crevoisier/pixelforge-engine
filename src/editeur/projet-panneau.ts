@@ -871,8 +871,18 @@ export class PanneauProjet {
     id.placeholder = 'sans espace'
     const nom = champ(g, 'Nom', source?.nom ?? '')
     const planche = choix(g, 'Planche', planches, source?.planche ?? planches[0]?.valeur ?? '')
-    const clip = choix(g, 'Clip', clips.length ? clips : [{ valeur: '', nom: '(aucun)' }],
-      source?.clip ?? clips[0]?.valeur ?? '')
+    /*
+     * « (aucun) » d'abord, TOUJOURS : une espece sans clip est legitime — son
+     * dessin unique sert tel quel. Et le clip de la source est ajoute s'il ne
+     * figure pas dans la liste : « marche » du heros est un PREFIXE que
+     * clipsDiriges resout, pas un clip nomme — sans cette ligne, ouvrir le
+     * heros puis enregistrer lui volait sa marche en silence.
+     */
+    const optionsClip = [{ valeur: '', nom: '(aucun)' }, ...clips]
+    if (source?.clip && !clips.some((c) => c.valeur === source.clip)) {
+      optionsClip.push({ valeur: source.clip, nom: `${source.clip} (préfixe)` })
+    }
+    const clip = choix(g, 'Clip', optionsClip, source?.clip ?? '')
     const camp = choix(g, 'Camp', [
       { valeur: 'heros', nom: 'héros' }, { valeur: 'ennemi', nom: 'ennemi' },
       { valeur: 'neutre', nom: 'neutre' }, { valeur: 'decor', nom: 'décor' },
