@@ -2348,6 +2348,11 @@ le <b>dock de gauche</b> — un chiffre par outil, de <kbd>1</kbd> à
 <b>Dossier…</b> choisit où le projet s’enregistre ; sans dossier,
 <b>Enregistrer</b> télécharge le fichier.</p>
 
+<p>L’éditeur garde de lui-même un <b>brouillon</b> toutes les 45 secondes, dès
+que vous avez fait quelque chose : si l’onglet se ferme, l’accueil proposera de
+le reprendre. Ce n’est <i>pas</i> un enregistrement — il vit dans ce navigateur
+seulement, et vider les données du site l’emporte.</p>
+
 <h4>Dessiner</h4>
 <p><b>Mur</b> peint du terrain : on dit « ici il y a du mur » et la bonne tuile
 parmi 47 se déduit du voisinage. <b>Gomme</b> efface. <b>Tuile</b> pose une
@@ -2394,12 +2399,27 @@ personne ne demande.</p>
 
 <h4>Découper en tableaux</h4>
 <p><b>Salle</b> pose un tableau en tirant un rectangle, et le retire au clic
-droit. Une salle borne la caméra — elle ne montre jamais le tableau d’à côté —
+droit. Tirer son <b>intérieur</b> la déplace, tirer un de ses <b>bords ou
+coins</b> la retaille — <kbd>Maj</kbd> force la création d’une nouvelle salle
+par-dessus une autre. Une salle borne la caméra — elle ne montre jamais le tableau d’à côté —
 et sert de point de reprise : mourir y renvoie, pas au départ du niveau. C’est
 le découpage de Celeste. Sans aucune salle, le monde reste continu et la caméra
 suit le héros partout. Deux salles qui se recouvrent sont signalées dans la
-barre d’état : la caméra ne saurait pas laquelle choisir. Leurs quatre nombres
-et leur nom se règlent dans <b>Projet</b>.</p>
+barre d’état : la caméra ne saurait pas laquelle choisir. Leur nom et leurs
+quatre nombres se règlent aussi dans <b>Projet</b>, au pixel près.</p>
+
+<h4>Ranger la scène</h4>
+<p>L’onglet <b>Scène</b> du panneau Projet montre l’arbre entier. Cliquer un nom
+choisit le nœud ; <b>glisser une ligne sur une autre</b> lui donne ce nœud pour
+enfant — c’est ainsi qu’on attache un corps à un sprite, ou qu’on range douze
+pièges sous un nœud « pièges », créé avec <b>+ Nœud</b>. <b>☆</b> fait d’un nœud
+un <b>assemblage</b> : un modèle nommé que la palette de l’outil Entité propose,
+et dont chaque clic pose une copie.</p>
+
+<p><b>Renommer</b> une espèce ou une planche <i>suit les références</i> : les
+entités déjà posées, les espèces qui piochent dans la planche, tout change de
+nom en même temps. Ce que le renommage ne sait pas suivre — un script qui écrit
+<code>c.poser('gelee', x, y)</code> — il le dit.</p>
 
 <h4>Changer la structure</h4>
 <p><b>Projet</b> ouvre ce que le pinceau ne sait pas faire : redimensionner la

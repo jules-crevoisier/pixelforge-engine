@@ -384,6 +384,88 @@ console.log('\n--- la lumiere : ce que la nuit coute vraiment ---')
     `${rgb.length} couleurs, niveau le plus sombre`)
 }
 
+console.log('\n--- le prix d\'un geste de structure ---')
+
+/*
+ * CE QU'UN GESTE DU PANNEAU COUTE VRAIMENT.
+ *
+ * Chaque geste de structure — redimensionner, regler une propriete dans
+ * l'inspecteur, ajouter un calque — transforme le projet SERIALISE et le
+ * relit. Depuis que le journal garde deux photographies par geste, il
+ * serialise aussi le projet en texte, deux fois.
+ *
+ * C'est un choix assume (voir `gesteStructure`) et c'est exactement le genre
+ * de choix qu'il faut MESURER : si un geste coute une demi-seconde sur un
+ * projet de vraie taille, l'inspecteur devient inutilisable — on tape un
+ * nombre, et l'editeur se fige.
+ */
+{
+  const { projetNeuf, redimensionnerProjet, reglerNoeudProjet, ajouterCalqueProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+  const { versTexte, serialiserProjet } = await import('../src/export/format.ts')
+  const { mondeDepuisProjet } = await import('../src/editeur/monde-projet.ts')
+
+  // Un projet de VRAIE taille : une carte de 120x80 — presque cinq fois le
+  // depart —, trois calques, et deux cents entites posees.
+  let gros = redimensionnerProjet(projetNeuf({ nom: 'gros', projection: 'cote' }), 120, 80)
+  gros = ajouterCalqueProjet(gros, 'plafond', false)
+  const racine = gros.scenes[0].racine
+  const modele = racine.enfants.find((n) => n.espece)
+  const creatures = []
+  for (let i = 0; i < 200; i++) {
+    creatures.push({
+      ...structuredClone(modele),
+      id: `bete-${i}`,
+      nom: `bete-${i}`,
+      x: (i % 40) * 16 + 8,
+      y: Math.floor(i / 40) * 16 + 16,
+    })
+  }
+  gros = {
+    ...gros,
+    scenes: [{ ...gros.scenes[0], racine: { ...racine, enfants: [...racine.enfants, ...creatures] } }],
+  }
+  const texte = versTexte(gros)
+  check('le projet d\'epreuve a bien la taille d\'un vrai jeu',
+    gros.cartes[0].largeur === 120 && gros.cartes[0].hauteur === 80
+    && gros.cartes[0].calques.length === 3,
+    `${gros.cartes[0].largeur}×${gros.cartes[0].hauteur}, ${gros.cartes[0].calques.length} calques, `
+    + `200 entités, ${Math.round(texte.length / 1024)} Ko de projet`)
+
+  const photo = mesurer('photographie', () => versTexte(gros), 20, 5)
+  check('photographier le projet entier coute moins qu\'un dixieme de seconde',
+    photo.ms < 100, `${photo.ms.toFixed(1)} ms — le journal en prend DEUX par geste`)
+
+  // La relecture : c'est elle qui reconstruit le monde apres chaque geste.
+  const relire = mesurer('relecture', () => mondeDepuisProjet(gros, 'gros'), 10, 3)
+  check('relire le projet et reconstruire le monde tient dans un cinquieme de seconde',
+    relire.ms < 200, `${relire.ms.toFixed(1)} ms`)
+
+  // Le geste lui-meme : transformer.
+  const noeud = creatures[0]
+  const geste = mesurer('transformer',
+    () => reglerNoeudProjet(gros, gros.scenes[0].nom, noeud.id, { x: 42 }), 50, 10)
+  check('la transformation elle-meme ne coute presque rien',
+    geste.ms < 50, `${geste.ms.toFixed(1)} ms`)
+
+  const total = photo.ms * 2 + relire.ms + geste.ms
+  check('un geste de structure complet reste sous le tiers de seconde',
+    total < 330,
+    `${total.toFixed(0)} ms sur un projet de ${Math.round(texte.length / 1024)} Ko — `
+    + 'deux photographies, une transformation, une reconstruction')
+
+  // La serialisation seule, sans le texte : c'est ce que `projetCourant` fait
+  // a chaque geste, et aussi a chaque affichage du panneau.
+  const monde = mondeDepuisProjet(gros, 'gros')
+  const ser = mesurer('serialiser', () => serialiserProjet(
+    'gros', monde.vue, { nom: 'p', taille: 8, couleurs: [] },
+    monde.cartes, monde.scenes, monde.animations, monde.planches, monde.projection,
+    monde.especes, [], [], {}, [], {}, [], [], undefined, undefined, undefined, []), 30, 5)
+  check('serialiser le projet vivant reste sous les cinquante millisecondes',
+    ser.ms < 50,
+    `${ser.ms.toFixed(1)} ms — le panneau le refait a chaque affichage`)
+}
+
 const rates = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - rates.length}/${bilan.length} verifications reussies`)
 process.exit(rates.length ? 1 : 0)

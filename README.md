@@ -367,6 +367,25 @@ Le banc de fumée fait le parcours entier dans un vrai navigateur : peindre,
 redimensionner, Ctrl+Z, puis **Ctrl+Z encore** — c'est le deuxième qui ne
 marchait pas.
 
+### Ce que ce choix coûte, mesuré
+
+Chaque geste de structure transforme le projet sérialisé, le relit, et en prend
+deux photographies. C'est cher *en apparence*, et c'est exactement le genre
+d'affirmation qui mérite un chiffre plutôt qu'une intuition. Sur un projet de
+**392 Ko** — une carte de 120×80, trois calques, deux cents entités posées, soit
+cinq fois le départ :
+
+| | |
+| --- | --- |
+| photographier le projet entier | **1,9 ms** (le journal en prend deux) |
+| transformer (le geste lui-même) | **0,1 ms** |
+| relire et reconstruire le monde | **5,1 ms** |
+| **un geste complet** | **9 ms** |
+
+Neuf millisecondes pour un geste qu'on fait quelques fois par minute, contre une
+classe entière de bogues supprimée par construction. Le banc de charge le
+mesure à chaque passage : si un jour cela dérive, il le dira.
+
 ## Partir de rien
 
 ![Un projet parti de zéro : la carte, les calques, les espèces](docs/projet.png)
