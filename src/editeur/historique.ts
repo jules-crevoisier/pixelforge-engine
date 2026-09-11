@@ -66,6 +66,16 @@ export class Historique {
   get nomDefaire(): string | null { return this.passe[this.passe.length - 1]?.nom ?? null }
   get nomRefaire(): string | null { return this.futur[this.futur.length - 1]?.nom ?? null }
   get taille(): number { return this.passe.length }
+  /**
+   * Le dernier geste pose, ou null.
+   *
+   * Il sert a FUSIONNER : trente pressions sur une fleche sont un seul
+   * deplacement, pas trente. L'appelant compare l'identite du dernier geste a
+   * celle du sien — si un autre geste s'est intercale, il n'a plus le droit de
+   * prolonger le precedent.
+   */
+  get dernier(): Geste | null { return this.passe[this.passe.length - 1] ?? null }
+
   /** Ce que le passe pese, photographies comprises. */
   get poids(): number { return this.passe.reduce((t, g) => t + (g.poids ?? 0), 0) }
 

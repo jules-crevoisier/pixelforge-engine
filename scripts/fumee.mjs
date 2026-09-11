@@ -2348,6 +2348,100 @@ ok('Enregistrer telecharge le projet faute de dossier',
   await p.screenshot({ path: 'docs/inspecteur.png' })
 }
 
+/*
+ * LE CLAVIER SUR LE NOEUD CHOISI.
+ *
+ * Les quatre gestes que la main a appris ailleurs : les fleches, Suppr,
+ * Ctrl+D, F. Ils n'existaient pas — deplacer une entite d'un pixel demandait
+ * de la viser a la souris, la retirer un clic droit bien place.
+ */
+{
+  const entites = () => p.evaluate(() => {
+    let n = 0
+    const f = (x) => { if (x.espece) n++; x.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return n
+  })
+  const ouEst = () => p.evaluate(() => {
+    const f = (n) => (n.nom === 'heros' ? [n.x, n.y] : n.enfants.map(f).find(Boolean))
+    return f(window.pfe.monde.racine)
+  })
+  // Le heros est deja choisi par le bloc precedent ; on s'en assure.
+  const choisi = () => p.evaluate(() => {
+    const l = [...document.querySelectorAll('#projetCorps .bloc h3')]
+    return l.map((e) => e.textContent).find((t) => t.startsWith('Inspecteur ·')) ?? ''
+  })
+  ok('le nœud choisi est celui que l’inspecteur montre', (await choisi()).includes('heros'), await choisi())
+
+  const avant = await ouEst()
+  await p.click('#vue', { position: { x: 5, y: 5 }, button: 'middle' }).catch(() => {})
+  await p.evaluate(() => document.body.focus())
+  await p.keyboard.press('ArrowRight')
+  await p.waitForTimeout(200)
+  const apres = await ouEst()
+  ok('une flèche déplace le nœud choisi d’une case',
+    apres[0] === avant[0] + 16 && apres[1] === avant[1], `${avant} → ${apres}`)
+
+  await p.keyboard.press('Shift+ArrowDown')
+  await p.waitForTimeout(200)
+  const fin = await ouEst()
+  ok('et Maj+flèche, d’un pixel : on cadre à la case, on ajuste au pixel',
+    fin[1] === apres[1] + 1, `${apres} → ${fin}`)
+
+  // La FUSION : dix pressions, un seul Ctrl+Z.
+  for (let i = 0; i < 6; i++) { await p.keyboard.press('ArrowRight') }
+  await p.waitForTimeout(250)
+  const loin = await ouEst()
+  ok('six pressions de plus éloignent le nœud', loin[0] === fin[0] + 6 * 16, `${loin}`)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(300)
+  const revenu = await ouEst()
+  ok('UN Ctrl+Z rend tout le déplacement au clavier : les pressions fusionnent',
+    String(revenu) === String(avant),
+    `${loin} → ${revenu} — huit gestes séparés auraient demandé huit Ctrl+Z`)
+
+  // Ctrl+D duplique, et CHOISIT la copie.
+  const ent0 = await entites()
+  await p.keyboard.press('Control+d')
+  await p.waitForTimeout(500)
+  ok('Ctrl+D duplique le nœud choisi', (await entites()) === ent0 + 1,
+    `${ent0} → ${await entites()}`)
+  ok('et c’est la COPIE qui est choisie : on vient de la faire naître',
+    (await choisi()).includes('heros'), await choisi())
+
+  // Suppr retire — sans confirmation, puisque ça se défait.
+  await p.keyboard.press('Delete')
+  await p.waitForTimeout(500)
+  ok('Suppr retire le nœud choisi, sans demander : ça se défait',
+    (await entites()) === ent0, `${await entites()} entités`)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(500)
+  ok('et Ctrl+Z le remet', (await entites()) === ent0 + 1, `${await entites()} entités`)
+  ok('et le remet CHOISI : le choix est un identifiant, pas un objet',
+    (await choisi()).includes('heros'), await choisi())
+
+  // F centre la vue sur lui.
+  await p.evaluate(() => { window.pfe.jeu.camera.x = 0; window.pfe.jeu.camera.y = 0 })
+  await p.keyboard.press('f')
+  await p.waitForTimeout(250)
+  const cam = await p.evaluate(() => [window.pfe.jeu.camera.x, window.pfe.jeu.camera.y])
+  ok('F centre la vue sur le nœud choisi', cam[0] !== 0 || cam[1] !== 0, `caméra en ${cam}`)
+
+  // Echap desélectionne : l'inspecteur redevient vide.
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(300)
+  ok('Échap le désélectionne — le clavier rend la main',
+    !(await choisi()).includes('·'), `« ${await choisi()} »`)
+
+  // Sans selection, les fleches deplacent la VUE.
+  const camA = await p.evaluate(() => [window.pfe.jeu.camera.x, window.pfe.jeu.camera.y])
+  await p.keyboard.press('ArrowRight')
+  await p.waitForTimeout(200)
+  const camB = await p.evaluate(() => [window.pfe.jeu.camera.x, window.pfe.jeu.camera.y])
+  ok('et sans rien de choisi, les flèches déplacent la vue',
+    camB[0] === camA[0] + 16, `${camA} → ${camB}`)
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

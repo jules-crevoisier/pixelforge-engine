@@ -5,6 +5,7 @@ import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil, type Trace } from './edition.ts'
 import { Historique, type TableauCarte, type Geste } from './historique.ts'
 import { positionMonde, type Noeud } from '../scene/noeud.ts'
+import type { Point } from '../noyau/pixel.ts'
 import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud, serialiserNoeud } from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
@@ -15,7 +16,10 @@ import { Atelier } from './atelier-panneau.ts'
 import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
-import { projetNeuf, ajouterSonImporteProjet, ajouterCarteImporteeProjet } from './projet-neuf.ts'
+import {
+  projetNeuf, ajouterSonImporteProjet, ajouterCarteImporteeProjet,
+  retirerNoeudProjet, dupliquerNoeudProjet,
+} from './projet-neuf.ts'
 import { scriptsVersFichiers, appliquerFichiersScripts } from './scripts-dossier.ts'
 import { depuisTiled, estDuTiled } from '../export/tiled.ts'
 import { depuisLdtk, estDuLdtk } from '../export/ldtk.ts'
@@ -1332,6 +1336,182 @@ window.addEventListener('keydown', (e) => {
   else defaire()
 })
 
+/* ------------------------------------------------------------------ */
+/* Le noeud choisi, au clavier                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ce que la main sait deja faire, venue d'ailleurs.
+ *
+ * Un editeur de scene se juge a ce qu'on peut faire SANS quitter la vue.
+ * Jusqu'ici, deplacer une entite d'un pixel demandait de la saisir a la
+ * souris — donc de viser — ou d'ouvrir un panneau et de taper un nombre ; la
+ * retirer demandait un clic droit bien vise ; la dupliquer, d'aller chercher
+ * un bouton dans l'arbre. Ce sont les quatre gestes que tout le monde a dans
+ * les doigts : les fleches, Suppr, Ctrl+D, F.
+ *
+ * Ils agissent sur le noeud CHOISI, celui que l'inspecteur montre et que la
+ * vue entoure. Sans selection visible, une touche qui agit sur « quelque
+ * chose » est une touche qu'on n'ose pas presser.
+ */
+
+/** Le noeud choisi, vivant dans la scene — ou null. */
+function noeudChoisi(): Noeud | null {
+  return noeudDesigne ? trouverEntite(monde.racine, noeudDesigne) : null
+}
+
+/**
+ * Le deplacement au clavier, FUSIONNE.
+ *
+ * Trente pressions sur une fleche sont un seul deplacement. Poser un geste
+ * par pression remplirait le journal de trente lignes et demanderait trente
+ * Ctrl+Z pour revenir — ce qui revient a ne pas pouvoir revenir. Tant que
+ * personne d'autre n'a pose de geste entre-temps, on prolonge donc le
+ * precedent au lieu d'en poser un neuf.
+ */
+let fusionDeplacement: { id: string; geste: Geste; etat: { depart: Point; arrivee: Point } } | null = null
+
+function deplacerChoisi(dx: number, dy: number): void {
+  const n = noeudChoisi()
+  if (!n) {
+    // Sans selection, les fleches deplacent la VUE : c'est ce qu'elles font
+    // dans tout editeur de carte, et ne rien faire du tout donnerait
+    // l'impression d'un clavier mort.
+    //
+    // `dx` est deja en PIXELS — le pas a ete choisi par l'appelant. Le
+    // remultiplier par la taille de tuile faisait bondir la vue de seize
+    // cases par pression : c'est le banc qui l'a vu, en comparant le
+    // deplacement attendu a celui qu'il mesurait.
+    jeu.camera.x += dx
+    jeu.camera.y += dy
+    jeu.dessiner()
+    redessinerEdition()
+    return
+  }
+  const scene = sceneActive()
+  const id = n.id
+  const poser = (ou: Point): void => {
+    const racine = racineDeScene(scene)
+    const cible = trouverEntite(racine, id)
+    if (!cible) return
+    cible.x = ou.x
+    cible.y = ou.y
+    monde.retenirDepart?.(cible, parentDe(racine, cible) ?? racine)
+    if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+    panneauProjet.designerNoeud(id)
+  }
+  const prolonge = fusionDeplacement?.id === id && journal.dernier === fusionDeplacement.geste
+  const arrivee = { x: n.x + dx, y: n.y + dy }
+  if (prolonge && fusionDeplacement) {
+    fusionDeplacement.etat.arrivee = arrivee
+  } else {
+    const etat = { depart: { x: n.x, y: n.y }, arrivee }
+    const geste: Geste = {
+      nom: 'entité déplacée (clavier)',
+      defaire: () => poser(etat.depart),
+      refaire: () => poser(etat.arrivee),
+    }
+    fusionDeplacement = { id, geste, etat }
+    journal.poser(geste)
+    majHistorique()
+  }
+  poser(arrivee)
+  verdict.textContent = `« ${n.nom} » en ${arrivee.x},${arrivee.y}`
+}
+
+/** Retire le noeud choisi. Sans confirmation : il se remet au Ctrl+Z. */
+function retirerChoisi(): void {
+  const n = noeudChoisi()
+  if (!n) return
+  if (n === monde.racine) { verdict.textContent = 'La racine de la scène ne se retire pas.'; return }
+  const nom = n.nom
+  gesteStructure(`Nœud « ${nom} » retiré`,
+    retirerNoeudProjet(projetCourant(), sceneActive(), n.id), monde.carteActive ?? '')
+  /*
+   * Le choix n'est PAS efface.
+   *
+   * Il ne designe pas un objet mais un identifiant : le noeud retire, plus
+   * rien ne repond a cet identifiant — l'inspecteur dit « aucun noeud choisi »
+   * et la vue n'entoure rien, ce qui est exact. Et au Ctrl+Z, le noeud revient
+   * avec le meme identifiant : il est de nouveau choisi, tout seul. L'effacer
+   * ici demanderait de le retrouver a la main apres chaque annulation.
+   */
+  verdict.textContent = `« ${nom} » retiré — Ctrl+Z le remet`
+}
+
+/** Duplique le noeud choisi, et CHOISIT la copie : on vient de la faire naitre. */
+function dupliquerChoisi(): void {
+  const n = noeudChoisi()
+  if (!n || n === monde.racine) return
+  const scene = sceneActive()
+  const avant = new Set<string>()
+  const ramasser = (q: Noeud): void => { avant.add(q.id); q.enfants.forEach(ramasser) }
+  ramasser(racineDeScene(scene))
+  gesteStructure(`« ${n.nom} » dupliqué, une case à côté`,
+    dupliquerNoeudProjet(projetCourant(), scene, n.id), monde.carteActive ?? '')
+  // La copie est le noeud qui n'existait pas avant. La retrouver ainsi evite
+  // de dupliquer la regle de nommage des identifiants, qui vit dans le geste.
+  let copie: Noeud | null = null
+  const chercher = (q: Noeud): void => {
+    if (!avant.has(q.id) && !copie) copie = q
+    q.enfants.forEach(chercher)
+  }
+  chercher(racineDeScene(scene))
+  if (copie) {
+    noeudDesigne = (copie as Noeud).id
+    panneauProjet.designerNoeud(noeudDesigne)
+    if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  // Pendant que le jeu tourne, les fleches appartiennent au JOUEUR.
+  if (jeu?.tourne) return
+  const cible = e.target as HTMLElement | null
+  if (cible?.tagName === 'TEXTAREA' || cible?.tagName === 'INPUT' || cible?.tagName === 'SELECT') return
+  const pas = e.shiftKey ? 1 : (monde?.carte.tuile ?? 16)
+  const fleches: Record<string, [number, number]> = {
+    ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+  }
+  const f = fleches[e.key]
+  if (f && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault()
+    // Une case par defaut, un PIXEL avec Maj : on cadre a la case neuf fois
+    // sur dix, et l'on ajuste au pixel la dixieme.
+    deplacerChoisi(f[0] * pas, f[1] * pas)
+    return
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && noeudDesigne) {
+    e.preventDefault()
+    retirerChoisi()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && noeudDesigne) {
+    e.preventDefault()
+    dupliquerChoisi()
+    return
+  }
+  if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && noeudDesigne) {
+    const n = noeudChoisi()
+    const ou = n ? positionMonde(monde.racine, n.id) : null
+    if (ou) {
+      e.preventDefault()
+      jeu.camera.x = Math.round(ou.x - jeu.ecran.vue.largeur / 2)
+      jeu.camera.y = Math.round(ou.y - jeu.ecran.vue.hauteur / 2)
+      jeu.dessiner()
+      redessinerEdition()
+      verdict.textContent = `vue centrée sur « ${n?.nom ?? ''} »`
+    }
+    return
+  }
+  if (e.key === 'Escape' && noeudDesigne && accueil.hidden) {
+    noeudDesigne = ''
+    panneauProjet.designerNoeud('')
+    jeu.dessiner()
+    redessinerEdition()
+  }
+})
+
 /**
  * La grille de collision, par-dessus le decor.
  *
@@ -1574,6 +1754,15 @@ ou la zone au lieu de la remplir.</p>
 la <b>déplace en la faisant glisser</b>. Poser une entité, c’est ajouter un
 nœud à la scène : elle part dans le fichier avec le reste.</p>
 
+<p>Saisir une entité la <b>choisit</b> : la vue l’entoure de quatre angles, et
+l’onglet <b>Scène</b> ouvre dessous l’<b>inspecteur</b> — sa position, son
+espèce, sa boîte, tout ce qu’elle porte. Une fois un nœud choisi, le clavier
+suffit : <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> le déplacent d’une
+case (<kbd>Maj</kbd> : d’un pixel), <kbd>Suppr</kbd> le retire,
+<kbd>Ctrl</kbd>+<kbd>D</kbd> le duplique, <kbd>F</kbd> centre la vue dessus,
+<kbd>Échap</kbd> le désélectionne. Sans rien de choisi, les flèches déplacent
+la vue.</p>
+
 <h4>Découper en tableaux</h4>
 <p><b>Salle</b> pose un tableau en tirant un rectangle, et le retire au clic
 droit. Une salle borne la caméra — elle ne montre jamais le tableau d’à côté —
@@ -1609,7 +1798,9 @@ joue. Un script ne parle qu’à <code>c</code>, le contexte de jeu, et
 enregistrer · <kbd>Ctrl</kbd>+<kbd>Z</kbd> défaire <i>n'importe quel geste</i> ·
 <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> refaire · <kbd>+</kbd> /
 <kbd>−</kbd> ou la <b>molette</b> pour le cadre d’édition · molette du milieu
-ou outil <b>Main</b> pour déplacer la vue.</p>
+ou outil <b>Main</b> pour déplacer la vue · sur le nœud choisi :
+<b>flèches</b>, <kbd>Suppr</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd>, <kbd>F</kbd>,
+<kbd>Échap</kbd>.</p>
 `
 
 {

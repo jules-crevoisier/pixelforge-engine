@@ -602,6 +602,30 @@ champ qui ne saurait pas le relire.
 dans une liste de quinze noms. Et chaque valeur réglée ici est un geste de
 structure comme un autre : **Ctrl+Z la reprend**.
 
+### Le clavier, sur le nœud choisi
+
+Un éditeur de scène se juge à ce qu'on peut faire **sans quitter la vue**.
+Déplacer une entité d'un pixel demandait de la saisir à la souris — donc de
+viser ; la retirer, un clic droit bien placé ; la dupliquer, un bouton à
+trouver dans l'arbre. Une fois un nœud choisi :
+
+| | |
+| --- | --- |
+| **← → ↑ ↓** | le déplacent d'une case — **Maj** : d'un pixel |
+| **Suppr** | le retire, sans demander : ça se défait |
+| **Ctrl+D** | le duplique, et **choisit la copie** — on vient de la faire naître |
+| **F** | centre la vue dessus |
+| **Échap** | le désélectionne ; les flèches déplacent alors la vue |
+
+Les pressions de flèche **fusionnent** : trente pressions sont un seul
+déplacement, et **un** Ctrl+Z les rend toutes. Poser un geste par pression
+remplirait le journal de trente lignes et demanderait trente Ctrl+Z pour
+revenir — ce qui revient à ne pas pouvoir revenir.
+
+Et le choix est un **identifiant**, pas un objet : retirer un nœud puis le
+remettre au Ctrl+Z le remet **choisi**, parce qu'il revient avec le même
+identifiant. C'est la même propriété qui fait tenir le journal.
+
 Tout passe par les mêmes gestes de structure que le reste : transformer le
 projet sérialisé, relire. Le banc vérifie qu'un nœud renommé garde son
 identifiant, ses enfants et son espèce, qu'une scène sans héros se relit
