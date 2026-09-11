@@ -14,6 +14,7 @@ import { mondeDepuisProjet } from './monde-projet.ts'
 import { Palette as PalettePanneau } from './palette-panneau.ts'
 import { PanneauProjet } from './projet-panneau.ts'
 import { projetNeuf, ajouterSonImporteProjet, ajouterCarteImporteeProjet } from './projet-neuf.ts'
+import { scriptsVersFichiers, appliquerFichiersScripts } from './scripts-dossier.ts'
 import { depuisTiled, estDuTiled } from '../export/tiled.ts'
 import { depuisLdtk, estDuLdtk } from '../export/ldtk.ts'
 import { PanneauFichiers, genreDe } from './fichiers-panneau.ts'
@@ -200,6 +201,7 @@ function installer(nouveau: Monde): void {
         // On passe par la scene si `tuer` ne connait pas l'entite : elle peut
         // n'avoir jamais ete adoptee — posee pendant que le jeu est arrete.
         if (!peuplement.tuer(n.id)) retirerDe(monde.racine, n)
+        monde.oublierDepart?.(n)
         edition.historique.poser(gesteEntite('retrait d’entité', parent, n))
       }
       majEtat()
@@ -238,6 +240,7 @@ function installer(nouveau: Monde): void {
       copie.y = cy * t + t
       const noeud = relireNoeud(copie)
       monde.racine.enfants.push(noeud)
+      monde.retenirDepart?.(noeud, monde.racine)
       edition.historique.poser(gesteEntite('assemblage posé', monde.racine, noeud, true))
       verdict.textContent = `« ${modele.nom} » posé — des identifiants neufs, le modèle intact`
       majEtat()
@@ -248,7 +251,10 @@ function installer(nouveau: Monde): void {
     // Les pieds au bas de la case : c'est la convention d'ancrage de tout le
     // moteur, et c'est ce qui aligne l'entite sur le sol qu'elle foule.
     const pose = peuplement.poser(edition.etat.espece, cx * t + t / 2, cy * t + t)
-    if (pose) edition.historique.poser(gesteEntite('entité posée', monde.racine, pose, true))
+    if (pose) {
+      monde.retenirDepart?.(pose, monde.racine)
+      edition.historique.poser(gesteEntite('entité posée', monde.racine, pose, true))
+    }
     majEtat()
     majHistorique()
   }
@@ -289,10 +295,16 @@ function installer(nouveau: Monde): void {
       const apres = { x: n.x, y: n.y }
       depart = null
       if (avant.x === apres.x && avant.y === apres.y) return
+      // Le depart SUIT l'entite deplacee — sinon le premier arret la
+      // renverrait la ou elle etait avant le geste.
+      const retenirIci = (): void => {
+        monde.retenirDepart?.(n, parentDe(monde.racine, n) ?? monde.racine)
+      }
+      retenirIci()
       edition.historique.poser({
         nom: 'entité déplacée',
-        defaire: () => { n.x = avant.x; n.y = avant.y; jeu.dessiner() },
-        refaire: () => { n.x = apres.x; n.y = apres.y; jeu.dessiner() },
+        defaire: () => { n.x = avant.x; n.y = avant.y; retenirIci(); jeu.dessiner() },
+        refaire: () => { n.x = apres.x; n.y = apres.y; retenirIci(); jeu.dessiner() },
       })
       majHistorique()
       verdict.textContent = `entité déplacée en ${apres.x},${apres.y}`
@@ -394,7 +406,16 @@ async function enregistrer(): Promise<void> {
   if (travail) {
     try {
       await dossier.ecrire(travail, nom, texte)
+      /*
+       * Les scripts, en VRAIS fichiers a cote : scripts/espece-*.js,
+       * scripts/declencheur-*.js. C'est la qu'on les edite avec son propre
+       * editeur — et « Jouer » les relira. Voir scripts-dossier.ts.
+       */
+      const fichiers = scriptsVersFichiers(p)
+      for (const f of fichiers) await dossier.ecrireSous(travail, 'scripts', f.nom, f.contenu)
+      const combien = Math.max(0, fichiers.length - 1)
       verdict.textContent = `Enregistré : ${travail.name}/${nom} (${Math.round(texte.length / 1024)} Ko)`
+        + (combien ? ` · scripts/ : ${combien} fichier(s) à éditer avec votre éditeur` : '')
       return
     } catch (e) {
       verdict.textContent = e instanceof Error ? e.message : String(e)
@@ -1167,8 +1188,17 @@ function majEtat(): void {
  * pointerait dans le vide.
  */
 function gesteEntite(nom: string, parent: Noeud, n: Noeud, pose = false) {
-  const ajouter = (): void => { if (!parent.enfants.includes(n)) parent.enfants.push(n) }
-  const oter = (): void => { retirerDe(monde.racine, n) }
+  // Chaque sens du geste tient les DEPARTS a jour : un arret raccroche les
+  // departs, donc un noeud present sans depart disparait au premier arret,
+  // et un depart sans noeud fait une revenante. Voir monde-projet.
+  const ajouter = (): void => {
+    if (!parent.enfants.includes(n)) parent.enfants.push(n)
+    monde.retenirDepart?.(n, parent)
+  }
+  const oter = (): void => {
+    retirerDe(monde.racine, n)
+    monde.oublierDepart?.(n)
+  }
   return {
     nom,
     defaire: () => { if (pose) oter(); else ajouter() },
@@ -1361,7 +1391,34 @@ window.addEventListener('keydown', (e) => {
   }
 })
 
-boutonJouer.addEventListener('click', () => {
+boutonJouer.addEventListener('click', () => { void jouerMaintenant() })
+async function jouerMaintenant(): Promise<void> {
+  /*
+   * La boucle de l'editeur EXTERNE : avant de jouer, relire les scripts du
+   * dossier de travail. Celui qui edite espece-gardien.js dans VS Code
+   * appuie sur Jouer ici, et c'est SA version qui court — a ce moment-la,
+   * le fichier a raison, puisqu'il vient d'etre modifie dehors.
+   */
+  if (travail) {
+    try {
+      const noms = await dossier.listerSous(travail, 'scripts', '.js')
+      const fichiers: { nom: string; contenu: string }[] = []
+      for (const n of noms) {
+        const t = await dossier.lireSous(travail, 'scripts', n)
+        if (t !== null) fichiers.push({ nom: n, contenu: t })
+      }
+      if (fichiers.length) {
+        const r = appliquerFichiersScripts(projetCourant(), fichiers)
+        if (r.adoptes.length) {
+          installerProjet(r.projet,
+            monde.id.startsWith('projet:') ? monde.id.slice(7) : monde.id,
+            monde.carteActive ?? '')
+          verdict.textContent = `Relu du dossier : ${r.adoptes.join(', ')}`
+            + (r.notes.length ? ` · ${r.notes.join(' · ')}` : '')
+        }
+      }
+    } catch { /* un dossier debranche n'empeche pas de jouer */ }
+  }
   // Le cadre du jeu, et rien d'autre : on joue ce que le joueur verra.
   jeu.ecran.redimensionner(monde.vue)
   jeu.cadrer()
@@ -1370,7 +1427,7 @@ boutonJouer.addEventListener('click', () => {
   boutonArreter.disabled = false
   canevas.classList.add('jeu')
   canevas.focus()
-})
+}
 
 function arreter(): void {
   jeu.arreter()

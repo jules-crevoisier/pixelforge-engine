@@ -94,6 +94,10 @@ export interface Monde {
   readonly musiques?: MusiqueJeu[]
   /** Les assemblages — modeles d'editeur. Ils repassent a l'enregistrement. */
   readonly assemblages?: { nom: string; racine: import('../export/format.ts').NoeudSerialise }[]
+  /** Un geste d'edition retient ce depart : l'entite survivra aux arrets. */
+  retenirDepart?(n: Noeud, parent: Noeud): void
+  /** Et le retrait d'une entite oublie le sien — sinon elle reviendrait. */
+  oublierDepart?(n: Noeud): void
   /**
    * Le decoupage du niveau en salles, quand il en a un.
    *

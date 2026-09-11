@@ -866,6 +866,35 @@ corrections du runtime, en silence. La fumée ne vérifie pas que le fichier
 se télécharge : elle l'**ouvre depuis le disque** dans une page neuve et
 mesure que le jeu tourne.
 
+## Votre code, dans votre éditeur
+
+Un textarea n'est pas un éditeur de code. Avec un dossier de travail choisi,
+**Enregistrer** écrit les scripts du projet en vrais fichiers —
+`scripts/espece-<id>.js`, `scripts/declencheur-<nom>.js`, plus un LISEZMOI
+qui rappelle le contrat (`c`, `n`, pas de DOM) — et **Jouer relit le
+dossier** : ce que vous venez de changer dans VS Code est la version qui
+court, et l'éditeur dit ce qu'il a adopté. Le contenu part **verbatim** —
+rien n'est ajouté à l'écriture, donc rien à retirer à la lecture — et un
+fichier qui ne correspond à rien est *noté*, pas jeté en silence : la faute
+de frappe qui ne ferait rien du tout serait introuvable autrement.
+
+Et pour écrire le **jeu entier dans votre langage** : c'est le rôle des
+paquets et des chargeurs. Le paquet Godot vous met en GDScript ou C# avec
+les exports natifs de Godot (Linux, Windows, macOS, mobile) ; les six
+chargeurs (TypeScript, C#, Rust, Lua, Python, GDScript) lisent le projet
+dans votre programme à vous. Le runtime embarqué, lui, exécute du
+JavaScript — c'est lui qui fait tourner « Jouer » et le jeu web exporté.
+
+### Ce banc a trouvé la disparue de l'arrêt
+
+En écrivant la boucle « éditer dehors, Jouer ici », le banc a cherché sa
+créature — et elle n'y était plus : une entité **posée puis testée
+disparaissait au premier « Arrêter »**. L'aventure vide ce qu'elle a adopté
+et raccroche les *départs* ; une entité posée après la construction n'avait
+pas de départ. Les gestes d'édition — poser, déplacer, retirer, défaire —
+tiennent maintenant la liste des départs à jour, dans les deux sens : la
+posée survit à l'arrêt, la retirée ne revient pas en revenante.
+
 ## Le projet, sur votre disque
 
 **Dossier…** choisit le dossier de travail, **Enregistrer** (ou Ctrl+S) y écrit

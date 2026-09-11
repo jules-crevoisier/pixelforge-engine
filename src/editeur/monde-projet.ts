@@ -570,6 +570,29 @@ export function mondeDepuisProjet(
         }
       }
     },
+    /*
+     * Les gestes d'EDITION tiennent la liste des departs a jour. Sans cela,
+     * une entite posee puis testee disparaissait au premier « Arreter » :
+     * l'aventure vide ce qu'elle a adopte, et seuls les departs sont
+     * raccroches. C'est un banc — la boucle « editer dehors, Jouer ici » —
+     * qui a deterre la perte, en cherchant une creature qui n'y etait plus.
+     */
+    retenirDepart(n: NoeudSprite, parent: Noeud) {
+      const deja = departs.find((d) => d.n === n)
+      if (deja) {
+        deja.x = n.x
+        deja.y = n.y
+        deja.parent = parent
+      } else {
+        departs.push({ n, parent, x: n.x, y: n.y })
+      }
+    },
+    oublierDepart(n: Noeud) {
+      const i = departs.findIndex((d) => d.n === n)
+      // Sans l'oubli, une entite RETIREE en edition serait raccrochee au
+      // prochain arret — la revenante, le miroir exact de la disparue.
+      if (i >= 0) departs.splice(i, 1)
+    },
     reinitialiser() {
       // Toutes les entites reprennent leur place, pas seulement le heros : une
       // creature laissee ou elle etait tombee fausserait le deuxieme essai.

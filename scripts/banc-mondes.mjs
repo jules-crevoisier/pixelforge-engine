@@ -4938,6 +4938,63 @@ console.log('\n--- les assemblages ---')
       .assemblages.length === 0)
 }
 
+/*
+ * LE CODE DANS LE DOSSIER : les scripts en vrais fichiers, edites dehors.
+ *
+ * Un textarea n'est pas un editeur de code. A l'enregistrement, les scripts
+ * partent en scripts/*.js ; a chaque « Jouer », l'editeur les relit et ce
+ * qui a change ENTRE dans le projet. On verifie ici l'aller-retour pur —
+ * verbatim, idempotent — et que rien ne se perd ni ne s'invente.
+ */
+console.log('\n--- le code dans le dossier ---')
+{
+  const { scriptsVersFichiers, appliquerFichiersScripts } =
+    await import('../src/editeur/scripts-dossier.ts')
+  const { projetNeuf, poserEspeceProjet, ajouterDeclencheurProjet, reglerDeclencheurProjet } =
+    await import('../src/editeur/projet-neuf.ts')
+
+  let pj = poserEspeceProjet(projetNeuf({ depart: 'vierge' }), 'gardien', {
+    comportement: 'script', script: 'n.x += 30 * c.dt',
+  })
+  pj = reglerDeclencheurProjet(ajouterDeclencheurProjet(pj), 'declencheur1',
+    { script: "c.dire('accueil')" })
+
+  const fichiers = scriptsVersFichiers(pj)
+  check('chaque script devient un fichier, plus un LISEZMOI jamais relu',
+    fichiers.length === 3
+    && fichiers.some((f) => f.nom === 'espece-gardien.js' && f.contenu === 'n.x += 30 * c.dt')
+    && fichiers.some((f) => f.nom === 'declencheur-declencheur1.js')
+    && fichiers.some((f) => f.nom === 'LISEZMOI.txt'),
+    fichiers.map((f) => f.nom).join(', '))
+  check('le contenu part VERBATIM — rien a ajouter, donc rien a retirer',
+    fichiers.find((f) => f.nom === 'espece-gardien.js').contenu === 'n.x += 30 * c.dt')
+
+  const pareil = appliquerFichiersScripts(pj, fichiers)
+  check('relire ses propres fichiers ne change rien : l\'aller-retour est idempotent',
+    pareil.adoptes.length === 0 && pareil.notes.length === 0
+    && pareil.projet === pj)
+
+  const modifie = appliquerFichiersScripts(pj, [
+    { nom: 'espece-gardien.js', contenu: 'n.x -= 60 * c.dt' },
+  ])
+  check('un fichier modifie dehors ENTRE dans le projet, et c\'est dit',
+    modifie.adoptes.join(',') === 'espèce gardien'
+    && modifie.projet.especes.find((e) => e.id === 'gardien').script === 'n.x -= 60 * c.dt',
+    'la boucle : editer dans VS Code, appuyer sur Jouer ici')
+  check('sans toucher au reste du projet',
+    modifie.projet.declencheurs[0].script === pj.declencheurs[0].script
+    && modifie.projet.especes.length === pj.especes.length)
+
+  const perdu = appliquerFichiersScripts(pj, [
+    { nom: 'espece-gardein.js', contenu: 'n.x = 0' },
+    { nom: 'notes.md', contenu: 'des idees' },
+  ])
+  check('un fichier qui ne correspond a rien est NOTE, pas jete en silence',
+    perdu.adoptes.length === 0 && perdu.notes.length === 2
+    && perdu.notes[0].includes('gardein'),
+    'la faute de frappe qui ne ferait rien du tout serait introuvable autrement')
+}
+
 const echecs = bilan.filter((b) => !b.ok)
 console.log(`\n${bilan.length - echecs.length}/${bilan.length} verifications reussies`)
 if (echecs.length) {

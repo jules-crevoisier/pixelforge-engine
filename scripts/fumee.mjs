@@ -1566,6 +1566,81 @@ ok('Enregistrer telecharge le projet faute de dossier',
     poseA !== null && jouee !== null && jouee > poseA,
     `x=${poseA} → ${jouee} : n.x += 30·dt, écrit dans le panneau, compilé par l’atelier`)
   await p.click('#arreter')
+  await p.waitForTimeout(250)
+  // La régression que ce banc a DÉTERRÉE : une entité posée puis testée
+  // disparaissait au premier « Arrêter » — l'aventure vidait ce qu'elle
+  // avait adopté, et seuls les départs d'origine étaient raccrochés.
+  ok('et elle SURVIT à l’arrêt : poser, tester, arrêter ne perd rien',
+    (await ouGardien()) !== null,
+    'la disparue de l’arrêt — trouvée parce qu’un banc cherchait sa créature')
+
+  /*
+   * LE CODE DANS LE DOSSIER, de bout en bout : un faux dossier en memoire
+   * joue le disque — l'API du navigateur ne s'ouvre pas sans un geste
+   * humain. Enregistrer ecrit scripts/espece-gardien.js ; on le MODIFIE
+   * comme VS Code l'aurait fait ; Jouer le relit, et c'est la version du
+   * fichier qui court. Si cette boucle casse, « editez dehors » est un
+   * mensonge.
+   */
+  await p.evaluate(() => {
+    const disque = new Map()
+    const fichierDe = (chemin) => ({
+      createWritable: async () => ({
+        write: async (d) => {
+          disque.set(chemin, typeof d === 'string' ? d : new TextDecoder().decode(d))
+        },
+        close: async () => {},
+      }),
+      getFile: async () => new File([disque.get(chemin) ?? ''], chemin.split('/').pop()),
+    })
+    const dossierDe = (prefixe) => ({
+      name: 'banc',
+      queryPermission: async () => 'granted',
+      getFileHandle: async (nom, o) => {
+        const chemin = prefixe + nom
+        if (!disque.has(chemin) && !o?.create) throw new Error('absent')
+        if (!disque.has(chemin)) disque.set(chemin, '')
+        return fichierDe(chemin)
+      },
+      getDirectoryHandle: async (nom) => dossierDe(`${prefixe}${nom}/`),
+      values: async function* () {
+        for (const chemin of disque.keys()) {
+          const reste = chemin.slice(prefixe.length)
+          if (chemin.startsWith(prefixe) && !reste.includes('/')) yield { kind: 'file', name: reste }
+        }
+      },
+    })
+    window.__disque = disque
+    window.showDirectoryPicker = async () => dossierDe('')
+  })
+  await p.click('#dossier')
+  await p.waitForTimeout(300)
+  await p.click('#enregistrer')
+  await p.waitForTimeout(400)
+  const surDisque = await p.evaluate(() => [...window.__disque.keys()].sort().join(','))
+  const scriptEcrit = await p.evaluate(() => window.__disque.get('scripts/espece-gardien.js'))
+  ok('Enregistrer écrit le projet ET les scripts en vrais fichiers',
+    surDisque.includes('mon-jeu.json') && surDisque.includes('scripts/espece-gardien.js')
+    && surDisque.includes('scripts/LISEZMOI.txt') && scriptEcrit === 'n.x += 30 * c.dt',
+    surDisque)
+
+  // « VS Code » retourne la marche du gardien, puis on appuie sur Jouer.
+  await p.evaluate(() => window.__disque.set('scripts/espece-gardien.js', 'n.x -= 60 * c.dt'))
+  const ouEst = () => p.evaluate(() => {
+    const f = (n) => (n.espece === 'gardien' ? n : n.enfants.map(f).find(Boolean))
+    const g2 = f(window.pfe.monde.racine)
+    return g2 ? Math.round(g2.x) : null
+  })
+  await p.click('#jouer')
+  await p.waitForTimeout(200)
+  const avantDossier = await ouEst()
+  await p.waitForTimeout(700)
+  const apresDossier = await ouEst()
+  await p.click('#arreter')
+  await p.waitForTimeout(200)
+  ok('Jouer relit le fichier : la version éditée DEHORS est celle qui court',
+    avantDossier !== null && apresDossier !== null && apresDossier < avantDossier,
+    `x=${avantDossier} → ${apresDossier} : le fichier disait n.x -= 60·dt, et il a raison`)
 }
 
 /*
@@ -1976,22 +2051,21 @@ ok('Enregistrer telecharge le projet faute de dossier',
  */
 {
   await p.selectOption('#cible', 'paquet:web')
-  const attente = p.waitForEvent('download')
   await p.click('#exporter')
-  const fichier = await attente
-  // Le fichier temporaire de Playwright n'a pas d'extension, et un
-  // navigateur ne rend pas du HTML sans elle en file:// — on le repose
-  // sous son vrai nom avant de l'ouvrir, comme un joueur l'aurait.
-  const { readFileSync, mkdtempSync } = await import('node:fs')
+  await p.waitForTimeout(600)
+  // Le dossier de travail est le faux disque du bloc « code dans le
+  // dossier » : l'export y ECRIT au lieu de telecharger — et c'est la voie
+  // qu'on veut eprouver, celle d'un vrai dossier de projet.
+  const page = await p.evaluate(() => window.__disque.get('gouffre-depose.html') ?? '')
+  ok('l’export « Jeu web » écrit UN fichier autoporteur dans le dossier de travail',
+    page.includes('<canvas') && page.includes('"version"')
+    && !page.includes('src="./assets') && page.length > 100000,
+    `gouffre-depose.html — ${Math.round(page.length / 1024)} Ko, aucune référence externe`)
+  const { writeFileSync, mkdtempSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const chemin = join(mkdtempSync(join(tmpdir(), 'pfe-jeu-')), 'jeu.html')
-  await fichier.saveAs(chemin)
-  const page = readFileSync(chemin, 'utf8')
-  ok('l’export « Jeu web » rend UN fichier autoporteur, projet inline',
-    page.includes('<canvas') && page.includes('"version"')
-    && !page.includes('src="./assets') && page.length > 100000,
-    `${fichier.suggestedFilename()} — ${Math.round(page.length / 1024)} Ko, aucune référence externe`)
+  writeFileSync(chemin, page)
 
   const enJeu = await b.newPage({ viewport: { width: 800, height: 500 } })
   const fautesJeu = []

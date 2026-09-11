@@ -38,6 +38,7 @@ interface PoigneeFichier {
 export interface PoigneeDossier {
   name: string
   getFileHandle(nom: string, opts?: { create?: boolean }): Promise<PoigneeFichier>
+  getDirectoryHandle?(nom: string, opts?: { create?: boolean }): Promise<PoigneeDossier>
   values(): AsyncIterable<{ kind: string; name: string }>
   queryPermission?(o: { mode: string }): Promise<string>
   requestPermission?(o: { mode: string }): Promise<string>
@@ -119,6 +120,46 @@ export async function lister(d: PoigneeDossier, suffixe = '.json'): Promise<stri
   return noms.sort()
 }
 
+/**
+ * Le sous-dossier nomme — cree au besoin quand on va y ecrire. Null quand
+ * l'API manque ou que le sous-dossier n'existe pas et qu'on ne le cree pas.
+ */
+async function sousDossier(
+  d: PoigneeDossier, nom: string, creer: boolean,
+): Promise<PoigneeDossier | null> {
+  if (!d.getDirectoryHandle) return null
+  try {
+    return await d.getDirectoryHandle(nom, { create: creer })
+  } catch {
+    return null
+  }
+}
+
+/** Ecrit `sous/nom` — le sous-dossier nait au besoin. */
+export async function ecrireSous(
+  d: PoigneeDossier, sous: string, nom: string, contenu: string,
+): Promise<void> {
+  const dedans = await sousDossier(d, sous, true)
+  if (!dedans) throw new Error(`« ${d.name}/${sous} » est hors d'atteinte.`)
+  await ecrire(dedans, nom, contenu)
+}
+
+/** Les fichiers de `sous/`, ou rien si le sous-dossier n'existe pas. */
+export async function listerSous(
+  d: PoigneeDossier, sous: string, suffixe = '',
+): Promise<string[]> {
+  const dedans = await sousDossier(d, sous, false)
+  return dedans ? lister(dedans, suffixe) : []
+}
+
+/** Le texte de `sous/nom`, ou null. */
+export async function lireSous(
+  d: PoigneeDossier, sous: string, nom: string,
+): Promise<string | null> {
+  const dedans = await sousDossier(d, sous, false)
+  return dedans ? lire(dedans, nom) : null
+}
+
 /* ------------------------------------------------------------------ */
 /* Se souvenir du dossier d'une session a l'autre                      */
 /* ------------------------------------------------------------------ */
@@ -144,14 +185,19 @@ function ouvrirBase(): Promise<IDBDatabase> {
  * elle suffit.
  */
 export async function memoriser(d: PoigneeDossier): Promise<void> {
-  const base = await ouvrirBase()
-  await new Promise<void>((resoudre, rejeter) => {
-    const t = base.transaction(MAGASIN, 'readwrite')
-    t.objectStore(MAGASIN).put(d, CLEF)
-    t.oncomplete = () => resoudre()
-    t.onerror = () => rejeter(t.error)
-  })
-  base.close()
+  // Ne jamais casser le CHOIX du dossier parce que le souvenir echoue : une
+  // poignee qui ne se clone pas (un faux dossier de banc, un navigateur
+  // restrictif) donne un dossier qui marche cette session-ci, sans plus.
+  try {
+    const base = await ouvrirBase()
+    await new Promise<void>((resoudre, rejeter) => {
+      const t = base.transaction(MAGASIN, 'readwrite')
+      t.objectStore(MAGASIN).put(d, CLEF)
+      t.oncomplete = () => resoudre()
+      t.onerror = () => rejeter(t.error)
+    })
+    base.close()
+  } catch { /* la session vivra sans souvenir */ }
 }
 
 export async function rappeler(): Promise<PoigneeDossier | null> {
