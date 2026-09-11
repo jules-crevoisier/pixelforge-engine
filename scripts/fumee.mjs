@@ -3267,6 +3267,98 @@ ok('Enregistrer telecharge le projet faute de dossier',
 }
 
 /*
+ * LE DESSIN ENTRE AU JOURNAL — ET NE SE PERD PLUS.
+ *
+ * Signale a l'usage : « l'ajout de détail est cassé et ne marche plus ». Il
+ * l'etait : le pinceau de sprite modifie la planche VIVANTE et n'entrait dans
+ * aucun historique, tandis qu'un geste de structure photographie le projet
+ * entier, planches comprises. Peindre du detail puis appuyer sur Ctrl+Z
+ * ramenait donc la photographie d'avant — le detail disparaissait sans un mot.
+ */
+{
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(800)
+  await p.click('#accueilPlateforme')
+  await p.waitForTimeout(900)
+
+  const dessins = () => p.evaluate(() => JSON.stringify(window.pfe.monde.planches.map((q) => q.dessins)))
+  const peindre = async (y = 100, n = 6) => {
+    const toile = await p.$('#projetCorps canvas.toile')
+    const r = await toile.boundingBox()
+    await p.mouse.move(r.x + 20, r.y + y)
+    await p.mouse.down()
+    for (let i = 0; i < n; i++) { await p.mouse.move(r.x + 20 + i * 16, r.y + y); await p.waitForTimeout(30) }
+    await p.mouse.up()
+    await p.waitForTimeout(150)
+  }
+
+  // UN GESTE DE STRUCTURE D'ABORD : c'est lui qui met une photographie du
+  // projet — planches comprises — dans le journal.
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(300)
+  const champs = await p.$$(
+    'xpath=//div[@id="projetCorps"]//div[contains(@class,"bloc")][h3[text()="Carte"]]//input')
+  await champs[0].fill('44')
+  await p.getByRole('button', { name: 'Redimensionner' }).click()
+  await p.waitForTimeout(600)
+
+  await p.getByRole('button', { name: 'Dessin', exact: true }).click()
+  await p.waitForTimeout(400)
+  const vierge = await dessins()
+  await peindre()
+  const peinte = await dessins()
+  ok('on ajoute du détail au pinceau de sprite', vierge !== peinte)
+
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(500)
+  ok('Ctrl+Z défait LE TRAIT — et pas le redimensionnement d’avant',
+    (await dessins()) === vierge
+    && (await p.evaluate(() => window.pfe.monde.carte.largeur)) === 44,
+    'c’est le détail qui disparaissait : un trait absent du journal se faisait '
+    + 'emporter par la photographie du geste précédent')
+  await p.keyboard.press('Control+Shift+z')
+  await p.waitForTimeout(500)
+  ok('et refaire le remet', (await dessins()) === peinte)
+
+  await p.keyboard.press('Control+z')
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(700)
+  ok('deux Ctrl+Z défont le trait PUIS le redimensionnement, dans cet ordre',
+    (await dessins()) === vierge
+    && (await p.evaluate(() => window.pfe.monde.carte.largeur)) === 40,
+    `${await p.evaluate(() => window.pfe.monde.carte.largeur)} cases de large`)
+
+  // Et le detail SURVIT a un geste de structure fait apres lui.
+  await p.getByRole('button', { name: 'Dessin', exact: true }).click()
+  await p.waitForTimeout(300)
+  await peindre(140, 5)
+  const detail = await dessins()
+  await p.getByRole('button', { name: 'Carte', exact: true }).click()
+  await p.waitForTimeout(300)
+  const champs2 = await p.$$(
+    'xpath=//div[@id="projetCorps"]//div[contains(@class,"bloc")][h3[text()="Carte"]]//input')
+  await champs2[0].fill('46')
+  await p.getByRole('button', { name: 'Redimensionner' }).click()
+  await p.waitForTimeout(700)
+  ok('un geste de structure fait APRÈS le dessin le garde',
+    (await dessins()) === detail,
+    'la photographie du geste contient les planches telles qu’elles sont')
+
+  // « + Case » et « + Couleur » se défont aussi.
+  await p.getByRole('button', { name: 'Dessin', exact: true }).click()
+  await p.waitForTimeout(300)
+  const combien = () => p.evaluate(() => window.pfe.monde.planches[0].dessins.length)
+  const avantCase = await combien()
+  await p.getByRole('button', { name: '+ Case' }).click()
+  await p.waitForTimeout(400)
+  ok('« + Case » ajoute une case', (await combien()) === avantCase + 1)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(400)
+  ok('et Ctrl+Z la reprend', (await combien()) === avantCase, `${await combien()} cases`)
+}
+
+/*
  * LES CAPTURES DE LA VITRINE.
  *
  * Le README montre des images de l'editeur, et ce sont elles qu'on regarde

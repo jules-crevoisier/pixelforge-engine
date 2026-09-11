@@ -90,6 +90,21 @@ export interface CrochetsProjet {
    * lire les coordonnees pour le savoir.
    */
   surChoixNoeud(id: string, ajouter: boolean): void
+  /**
+   * Pose un geste dans le journal de la seance.
+   *
+   * Le panneau s'en sert pour ce qu'il modifie EN PLACE et non par
+   * transformation du projet : le dessin d'une planche, une couleur ajoutee,
+   * une case de plus. Ces gestes-la ne reconstruisent rien — on peint un pixel
+   * soixante fois par seconde, et reconstruire le monde a chaque pixel serait
+   * inutilisable — mais ils doivent EXISTER dans le journal.
+   *
+   * Sans cela, un geste de structure, qui photographie le projet entier
+   * PLANCHES COMPRISES, ramene en le defaisant un dessin d'avant : le detail
+   * qu'on venait d'ajouter disparaissait, sans un mot. C'est exactement ce qui
+   * a ete signale, et c'etait le prix cache du journal unifie.
+   */
+  poserGeste(g: { nom: string; defaire(): void; refaire(): void }): void
 }
 
 const bouton = (texte: string, titre: string, action: () => void): HTMLButtonElement => {
@@ -1764,6 +1779,41 @@ export class PanneauProjet {
     repeindre()
 
     let peint = false
+    /*
+     * L'etat de la case AVANT le trait. On compare au relachement : un trait
+     * est un geste, pas soixante — sinon defaire un trait de vingt pixels
+     * demanderait vingt Ctrl+Z.
+     */
+    let avantTrait: string[] | null = null
+    const nomPlanche = planche.nom
+    const rangCase = this.caseEditee
+    /** La case d'aujourd'hui, retrouvee par son ADRESSE. Voir le journal. */
+    const caseVivante = (): string[] | null => {
+      const t = this.crochets.planches().find((q) => q.nom === nomPlanche)
+      return t?.dessins[rangCase] ?? null
+    }
+    const remettre = (etat: string[]) => (): void => {
+      const vive = caseVivante()
+      if (!vive) return
+      // On ecrit DANS le tableau et non a sa place : la planche vivante est
+      // partagee avec l'atlas et le panneau, et la remplacer laisserait les
+      // deux autres sur l'ancienne.
+      for (let i = 0; i < etat.length; i++) vive[i] = etat[i]
+      this.crochets.planchesChangees()
+      if (this.ouvert && this.onglet === 'dessin') this.montrer()
+    }
+    const finirTrait = (): void => {
+      if (!avantTrait) return
+      const avant = avantTrait
+      avantTrait = null
+      const apres = [...dessin]
+      if (avant.join('') === apres.join('')) return
+      this.crochets.poserGeste({
+        nom: `dessin · ${nomPlanche} case ${rangCase}`,
+        defaire: remettre(avant),
+        refaire: remettre(apres),
+      })
+    }
     const viser = (e: PointerEvent): void => {
       const b = toile.getBoundingClientRect()
       const x = Math.floor(((e.clientX - b.left) / b.width) * largeur)
@@ -1779,11 +1829,15 @@ export class PanneauProjet {
     toile.addEventListener('contextmenu', (e) => e.preventDefault())
     toile.addEventListener('pointerdown', (e) => {
       peint = true
+      avantTrait = [...dessin]
       toile.setPointerCapture(e.pointerId)
       viser(e)
     })
     toile.addEventListener('pointermove', (e) => { if (peint) viser(e) })
-    toile.addEventListener('pointerup', () => { peint = false })
+    toile.addEventListener('pointerup', () => { peint = false; finirTrait() })
+    // La souris relachee HORS de la toile finit le trait quand meme : sans
+    // cela, le geste reste ouvert et le suivant l'avale.
+    toile.addEventListener('pointercancel', () => { peint = false; finirTrait() })
     d.appendChild(toile)
 
     const note = document.createElement('p')
@@ -1809,17 +1863,43 @@ export class PanneauProjet {
         const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
         const libre = [...alphabet].find((c) => !prises.has(c))
         if (!libre) { this.dire('Cette planche n’a plus de lettre libre.'); return }
-        planche.cle[libre] = teinte.value
+        const nom = planche.nom
+        const valeur = teinte.value
+        const mettre = (v: string | null) => (): void => {
+          const vive = this.crochets.planches().find((q) => q.nom === nom)
+          if (!vive) return
+          if (v === null) delete vive.cle[libre]
+          else vive.cle[libre] = v
+          this.crochets.planchesChangees()
+          if (this.ouvert) this.montrer()
+        }
+        mettre(valeur)()
         this.lettreEditee = libre
-        this.crochets.planchesChangees()
-        this.montrer()
-        this.dire(`Couleur « ${libre} » ajoutée : ${teinte.value}`)
+        this.crochets.poserGeste({
+          nom: `couleur « ${libre} » sur ${nom}`,
+          defaire: mettre(null),
+          refaire: mettre(valeur),
+        })
+        this.dire(`Couleur « ${libre} » ajoutée : ${valeur}`)
       }),
       bouton('+ Case', 'Ajoute une case vide à la fin de la planche', () => {
-        planche.dessins.push(Array.from({ length: hauteur }, () => '.'.repeat(largeur)))
-        this.caseEditee = planche.dessins.length - 1
-        this.crochets.planchesChangees()
-        this.montrer()
+        const nom = planche.nom
+        const vide = Array.from({ length: hauteur }, () => '.'.repeat(largeur))
+        const poser = (ajouter: boolean) => (): void => {
+          const vive = this.crochets.planches().find((q) => q.nom === nom)
+          if (!vive) return
+          if (ajouter) vive.dessins.push([...vide])
+          else vive.dessins.pop()
+          this.caseEditee = Math.max(0, vive.dessins.length - 1)
+          this.crochets.planchesChangees()
+          if (this.ouvert) this.montrer()
+        }
+        poser(true)()
+        this.crochets.poserGeste({
+          nom: `case ajoutée à ${nom}`,
+          defaire: poser(false),
+          refaire: poser(true),
+        })
       }),
     )
     d.appendChild(actions)

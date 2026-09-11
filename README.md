@@ -367,6 +367,28 @@ Le banc de fumée fait le parcours entier dans un vrai navigateur : peindre,
 redimensionner, Ctrl+Z, puis **Ctrl+Z encore** — c'est le deuxième qui ne
 marchait pas.
 
+### Ce que le pinceau de sprite a coûté — et le défaut qu'il a révélé
+
+Le journal unifié a eu un prix caché, signalé à l'usage : « l'ajout de détail
+est cassé ». Il l'était.
+
+Le pinceau de sprite ne reconstruit rien — on peint un pixel soixante fois par
+seconde, reconstruire le monde à chaque pixel serait inutilisable — et il
+n'entrait donc dans aucun historique. Or un geste de structure photographie le
+projet **entier, planches comprises**. Peindre du détail après un
+redimensionnement, puis appuyer sur Ctrl+Z, ramenait la photographie d'avant :
+le détail disparaissait, sans un mot.
+
+Le trait entre maintenant au journal, comme tout le reste — et par **adresse**,
+là encore : « la case 3 de la planche *héros* », retrouvée dans le projet
+d'aujourd'hui. Un trait de vingt pixels est **un** geste et non vingt : c'est le
+relâchement qui le clôt, pas chaque pixel. « + Case » et « + Couleur » s'y
+rangent aussi.
+
+Le banc de fumée rejoue la séquence exacte qui cassait : redimensionner,
+peindre, Ctrl+Z — et vérifie que c'est le *trait* qui se défait, la carte
+restant à sa nouvelle taille.
+
 ### Ce que ce choix coûte, mesuré
 
 Chaque geste de structure transforme le projet sérialisé, le relit, et en prend

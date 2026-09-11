@@ -895,6 +895,14 @@ const panneauProjet = new PanneauProjet(
       if (!atelier.ouvert) atelier.basculer(true)
       atelier.viser(nom)
     },
+    /*
+     * Ce que le panneau modifie EN PLACE entre aussi au journal : le dessin
+     * d'une planche, une couleur, une case. Voir `poserGeste`.
+     */
+    poserGeste: (g) => {
+      journal.poser(g)
+      majHistorique()
+    },
     surChoixNoeud: (id, ajouter) => {
       if (ajouter) basculerChoix(id)
       else choisirSeul(id)
