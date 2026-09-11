@@ -2973,6 +2973,153 @@ ok('Enregistrer telecharge le projet faute de dossier',
   ok('Échap referme', !(await p.isVisible('#trouverChamp')))
 }
 
+/*
+ * PLUSIEURS NOEUDS A LA FOIS.
+ *
+ * Deplacer six plateformes de deux cases, retirer une rangee de pointes : des
+ * gestes ordinaires de level design qu'il fallait faire un par un.
+ */
+{
+  await p.goto(`http://127.0.0.1:${PORT}/`)
+  await p.waitForTimeout(800)
+  await p.click('#accueilGouffre')
+  await p.waitForTimeout(1200)
+
+  const entites = () => p.evaluate(() => {
+    const out = []
+    const f = (n) => { if (n.espece) out.push({ id: n.id, nom: n.nom, x: n.x, y: n.y }); n.enfants.forEach(f) }
+    f(window.pfe.monde.racine)
+    return out
+  })
+  const choisis = () => p.evaluate(() => {
+    const t = document.querySelectorAll('#projetCorps .ligne.actif')
+    return t.length
+  })
+
+  // Deux crans de recul : la carte fait soixante cases et la vue en montre
+  // quinze. Un rectangle tire sur ce qu'on ne voit pas ne prouve rien.
+  await p.click('#zoomMoins')
+  await p.click('#zoomMoins')
+  await p.waitForTimeout(300)
+  await p.click('[data-outil="entite"]')
+  await p.waitForTimeout(200)
+  if (!(await p.isVisible('#projetCorps'))) await p.click('#basculeProjet')
+  await p.getByRole('button', { name: 'Scène', exact: true }).click()
+  await p.waitForTimeout(300)
+
+  const avant = await entites()
+  ok('la scène a de quoi choisir', avant.length >= 3, `${avant.length} entités`)
+
+  /*
+   * MAJ + GLISSER : un rectangle qui choisit.
+   *
+   * Les coins se calculent depuis le MONDE et non depuis le canevas : la
+   * carte est dessinee au milieu d'un canevas plus grand, et un glisser parti
+   * du coin de l'ecran commence HORS de la carte — l'editeur refuse alors le
+   * geste, a juste titre, et le banc mesurait ce refus sans le comprendre.
+   */
+  const coins = await p.evaluate(() => {
+    const j = window.pfe.jeu
+    const r = document.getElementById('vue').getBoundingClientRect()
+    const dpr = Math.min(3, window.devicePixelRatio || 1)
+    const k = j.ecran.echelleCourante ?? j.ecran.echelle
+    const versPage = (wx, wy) => [
+      r.left + ((wx - Math.round(j.camera.x)) * k + (j.ecran.decalageX ?? 0)) / dpr,
+      r.top + ((wy - Math.round(j.camera.y)) * k + (j.ecran.decalageY ?? 0)) / dpr,
+    ]
+    const tous = []
+    const f = (n, ax, ay) => {
+      const x = ax + n.x
+      const y = ay + n.y
+      if (n.espece) tous.push([x, y])
+      n.enfants.forEach((e) => f(e, x, y))
+    }
+    f(window.pfe.monde.racine, 0, 0)
+    // Seulement ce qui est VISIBLE : la souris ne peut pas sortir de la
+    // fenetre, et un coin calcule hors de l'ecran se fait rabattre sur son
+    // bord — le rectangle obtenu n'est alors pas celui qu'on voulait.
+    const v = j.ecran.vue
+    const out = tous.filter((q) => q[0] > j.camera.x + 8 && q[0] < j.camera.x + v.largeur - 8
+      && q[1] > j.camera.y + 8 && q[1] < j.camera.y + v.hauteur - 8)
+    const xs = out.map((q) => q[0])
+    const ys = out.map((q) => q[1])
+    return {
+      debut: versPage(Math.min(...xs) - 24, Math.min(...ys) - 24),
+      fin: versPage(Math.max(...xs) + 24, Math.max(...ys) + 8),
+      combien: out.length,
+    }
+  })
+  await p.keyboard.down('Shift')
+  await p.mouse.move(coins.debut[0], coins.debut[1])
+  await p.mouse.down()
+  for (let i = 1; i <= 10; i++) {
+    await p.mouse.move(
+      coins.debut[0] + (coins.fin[0] - coins.debut[0]) * i / 10,
+      coins.debut[1] + (coins.fin[1] - coins.debut[1]) * i / 10)
+  }
+  await p.mouse.up()
+  await p.keyboard.up('Shift')
+  await p.waitForTimeout(400)
+  const combien = await choisis()
+  const quels = await p.evaluate(() => window.pfe.selection())
+  ok('Maj+glisser choisit tout ce que le rectangle couvre',
+    combien >= 2 && quels.length === combien,
+    `${quels.join(', ')} — ${combien} lignes surlignées dans l’arbre`)
+  ok('et la vue les entoure toutes',
+    await p.evaluate(() => document.querySelectorAll('#projetCorps .ligne.actif.second').length >= 1),
+    'le principal est plus vif que les autres')
+
+  // LES FLECHES DEPLACENT TOUT LE MONDE, d'un coup.
+  const avantPos = await entites()
+  await p.keyboard.press('ArrowRight')
+  await p.waitForTimeout(300)
+  const apresPos = await entites()
+  const bouges = apresPos.filter((n, i) => n.x !== avantPos[i].x).length
+  ok('une flèche déplace TOUS les nœuds choisis, du même pas',
+    bouges >= 2, `${bouges} entités déplacées d’un coup`)
+
+  // ET UN SEUL CTRL+Z LES REND.
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(400)
+  ok('un seul Ctrl+Z les rend toutes',
+    JSON.stringify((await entites()).map((n) => n.x)) === JSON.stringify(avantPos.map((n) => n.x)),
+    'six gestes séparés auraient demandé six Ctrl+Z')
+
+  // SUPPRIMER : un seul geste pour les N.
+  const nChoisis = await p.evaluate(() => document.querySelectorAll('#projetCorps .ligne.actif').length)
+  await p.keyboard.press('Delete')
+  await p.waitForTimeout(600)
+  const restants = (await entites()).length
+  ok('Suppr retire tous les nœuds choisis',
+    restants < avant.length, `${avant.length} → ${restants} entités (${nChoisis} choisis)`)
+  await p.keyboard.press('Control+z')
+  await p.waitForTimeout(600)
+  ok('et un seul Ctrl+Z les remet tous',
+    (await entites()).length === avant.length,
+    `${restants} → ${(await entites()).length} entités`)
+
+  // CTRL+CLIC dans l'arbre : ajouter et retirer un noeud de la sélection.
+  await p.evaluate(() => {
+    const l = [...document.querySelectorAll('#projetCorps .ligne .nom.choisissable')]
+    l[1].click()
+  })
+  await p.waitForTimeout(300)
+  ok('un clic simple ne choisit qu’un nœud', (await choisis()) === 1, `${await choisis()}`)
+  await p.evaluate(() => {
+    const l = [...document.querySelectorAll('#projetCorps .ligne .nom.choisissable')]
+    l[2].dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }))
+  })
+  await p.waitForTimeout(300)
+  ok('Ctrl+clic en ajoute un deuxième', (await choisis()) === 2, `${await choisis()}`)
+  await p.evaluate(() => {
+    const l = [...document.querySelectorAll('#projetCorps .ligne .nom.choisissable')]
+    l[2].dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }))
+  })
+  await p.waitForTimeout(300)
+  ok('et Ctrl+clic sur le même le retire', (await choisis()) === 1, `${await choisis()}`)
+  await p.screenshot({ path: 'docs/selection.png' })
+}
+
 console.log('\nerreurs de page:', err.length ? err.join('\n') : 'aucune')
 const echecs = bilan.filter(x => !x.v).length
 console.log(`${bilan.length - echecs}/${bilan.length} verifications`)

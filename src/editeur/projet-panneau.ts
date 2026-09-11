@@ -89,7 +89,7 @@ export interface CrochetsProjet {
    * l'inspecteur sans jamais dire DE QUI l'on parle a l'ecran, et il faudrait
    * lire les coordonnees pour le savoir.
    */
-  surChoixNoeud(id: string): void
+  surChoixNoeud(id: string, ajouter: boolean): void
 }
 
 const bouton = (texte: string, titre: string, action: () => void): HTMLButtonElement => {
@@ -187,7 +187,8 @@ export class PanneauProjet {
   /** La scene ouverte dans l'onglet Scene. Vide : celle de la carte active. */
   private sceneEditee = ''
   /** Le noeud que la vue vient de designer — surligne dans l'arbre. */
-  private noeudDesigne = ''
+  /** Les noeuds choisis. Le dernier est le principal — voir main.ts. */
+  private choisis: string[] = []
   /** Le dernier noeud que l'inspecteur a MONTRE : voir `blocInspecteur`. */
   private noeudInspecte = ''
   /** Le type que « + Nœud » creera. Il se garde d'un affichage a l'autre. */
@@ -938,7 +939,9 @@ export class PanneauProjet {
     liste.className = 'liste'
     const ligneDe = (n: NoeudSerialise, profondeur: number, racine: boolean): void => {
       const ligne = document.createElement('div')
-      ligne.className = `ligne${n.id === this.noeudDesigne ? ' actif' : ''}`
+      const choisi = this.choisis.includes(n.id)
+      ligne.className = `ligne${choisi ? ' actif' : ''}`
+        + (choisi && n.id !== this.choisis[this.choisis.length - 1] ? ' second' : '')
       ligne.style.paddingLeft = `${profondeur * 14}px`
       /*
        * GLISSER UN NOEUD SUR UN AUTRE LE LUI DONNE POUR PARENT.
@@ -995,8 +998,9 @@ export class PanneauProjet {
       // vit sur le nom et non sur la ligne entiere, sinon chaque bouton de
       // la ligne choisirait aussi en passant.
       nom.className = 'nom choisissable'
-      nom.title = 'Choisir ce nœud — l’inspecteur montre ce qu’il porte'
-      nom.addEventListener('click', () => this.choisir(n.id))
+      nom.title = 'Choisir ce nœud — l’inspecteur montre ce qu’il porte. '
+        + 'Ctrl+clic pour en choisir plusieurs.'
+      nom.addEventListener('click', (e) => this.choisir(n.id, e.ctrlKey || e.metaKey))
       const ou = document.createElement('span')
       ou.className = 'menu'
       ou.textContent = `${Math.round(n.x)},${Math.round(n.y)}`
@@ -1071,13 +1075,14 @@ export class PanneauProjet {
     const nomNeuf = document.createElement('input')
     nomNeuf.placeholder = 'nom du nœud'
     nomNeuf.className = 'nom'
-    const sous = this.noeudDesigne
-      ? (trouverNoeud(scene.racine, this.noeudDesigne)?.nom ?? scene.racine.nom)
+    const principalId = this.choisis[this.choisis.length - 1] ?? ''
+    const sous = principalId
+      ? (trouverNoeud(scene.racine, principalId)?.nom ?? scene.racine.nom)
       : scene.racine.nom
     neuf.append(type, nomNeuf,
       bouton('+ Nœud', `Ajouter sous « ${sous} » — le nœud choisi, ou la racine`, () => {
-        const cible = this.noeudDesigne && trouverNoeud(scene.racine, this.noeudDesigne)
-          ? this.noeudDesigne : scene.racine.id
+        const cible = principalId && trouverNoeud(scene.racine, principalId)
+          ? principalId : scene.racine.id
         this.appliquer(
           ajouterNoeudProjet(this.frais(), nomScene, cible, type.value,
             nomNeuf.value || type.value),
@@ -1150,8 +1155,11 @@ export class PanneauProjet {
    * defait au Ctrl+Z comme le reste — voir le journal.
    */
   private blocInspecteur(p: ProjetSerialise, nomScene: string, racine: NoeudSerialise): void {
-    const n = this.noeudDesigne ? trouverNoeud(racine, this.noeudDesigne) : null
-    const d = bloc(this.corps, n ? `Inspecteur · ${n.nom}` : 'Inspecteur')
+    const principal = this.choisis[this.choisis.length - 1] ?? ''
+    const n = principal ? trouverNoeud(racine, principal) : null
+    const d = bloc(this.corps, n
+      ? `Inspecteur · ${n.nom}${this.choisis.length > 1 ? ` (+${this.choisis.length - 1})` : ''}`
+      : 'Inspecteur')
     if (!n) {
       const vide = document.createElement('p')
       vide.className = 'ligne menu'
@@ -1164,6 +1172,13 @@ export class PanneauProjet {
       changements: Parameters<typeof reglerNoeudProjet>[3], dit: string,
     ): void => {
       this.appliquer(reglerNoeudProjet(this.frais(), nomScene, n.id, changements), dit)
+    }
+    if (this.choisis.length > 1) {
+      const combien = document.createElement('p')
+      combien.className = 'ligne menu'
+      combien.textContent = `${this.choisis.length} nœuds choisis. Les touches — flèches, `
+        + 'Suppr, Ctrl+D, Ctrl+C — agissent sur tous ; l’inspecteur règle le dernier.'
+      d.appendChild(combien)
     }
 
     const g = document.createElement('div')
@@ -1587,14 +1602,22 @@ export class PanneauProjet {
    * l'autre moitie est le bouton « viser » de chaque ligne.
    */
   designerNoeud(id: string): void {
-    this.noeudDesigne = id
+    this.designerNoeuds(id ? [id] : [])
+  }
+
+  /** La vue vient de choisir : l'arbre et l'inspecteur suivent. */
+  designerNoeuds(ids: string[]): void {
+    this.choisis = ids
     if (this.ouvert && this.onglet === 'scene') this.montrer()
   }
 
-  /** Choisir depuis l'arbre : la vue doit le savoir aussi. */
-  private choisir(id: string): void {
-    this.noeudDesigne = id
-    this.crochets.surChoixNoeud(id)
+  /**
+   * Choisir depuis l'arbre : la vue doit le savoir aussi.
+   *
+   * `ajouter` vient du Ctrl+clic — la convention de toutes les listes.
+   */
+  private choisir(id: string, ajouter = false): void {
+    this.crochets.surChoixNoeud(id, ajouter)
     this.montrer()
   }
 

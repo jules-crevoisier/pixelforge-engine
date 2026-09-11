@@ -130,6 +130,16 @@ export class Edition {
   } | null = null
 
   /**
+   * Ce que l'edition fait d'un rectangle tire pour CHOISIR.
+   *
+   * L'edition ne connait pas les entites : elle sait qu'on a tire un
+   * rectangle en tenant Maj. C'est l'editeur qui decide ce que cela designe.
+   */
+  surSelectionRect: ((cx0: number, cy0: number, cx1: number, cy1: number) => void) | null = null
+  /** Le rectangle en cours designe au lieu de peindre. */
+  private rectangleChoisit = false
+
+  /**
    * Ce qu'on peut defaire. Partage avec l'editeur, qui y pose ses gestes.
    *
    * Il vient du DEHORS depuis que l'editeur reconstruit le monde a chaque
@@ -258,13 +268,27 @@ export class Edition {
       nom, changements, () => this.redessiner(), this.resoudre, this.nomCarte))
   }
 
-  commencer(pageX: number, pageY: number, bouton: number): void {
+  commencer(pageX: number, pageY: number, bouton: number, modificateur = false): void {
     if (this.etat.outil === 'main' || bouton === 1) {
       this.glisseCamera = { x: pageX, y: pageY, camX: this.jeu.camera.x, camY: this.jeu.camera.y }
       return
     }
     const c = this.caseSous(pageX, pageY)
     if (!c) return
+    /*
+     * MAJ + GLISSER avec l'outil Entite : un rectangle qui CHOISIT.
+     *
+     * Le meme geste sans Maj saisit et deplace l'entite sous le curseur —
+     * c'est le geste courant, et il garde la priorite. Le modificateur dit
+     * « cette fois je designe, je ne traine pas », comme partout ailleurs
+     * dans les logiciels qui ont une selection.
+     */
+    if (this.etat.outil === 'entite' && bouton === 0 && modificateur && this.surSelectionRect) {
+      this.rectangleChoisit = true
+      this.rectangle = { x0: c.cx, y0: c.cy, x1: c.cx, y1: c.cy }
+      this.peint = true
+      return
+    }
     // Saisir une entite deja posee, au clic gauche, avant toute autre chose.
     // Sans ce test, poser et deplacer se disputeraient le meme geste, et l'on
     // empilerait une creature sur celle qu'on voulait bouger.
@@ -446,6 +470,17 @@ export class Edition {
   }
 
   finir(): void {
+    if (this.rectangleChoisit && this.rectangle) {
+      const r = this.rectangle
+      this.rectangle = null
+      this.rectangleChoisit = false
+      this.peint = false
+      this.surSelectionRect?.(
+        Math.min(r.x0, r.x1), Math.min(r.y0, r.y1),
+        Math.max(r.x0, r.x1), Math.max(r.y0, r.y1))
+      this.jeu.dessiner()
+      return
+    }
     if (this.glisseEntite) {
       // Un clic qui n'a pas bouge n'est pas un deplacement : c'est un clic sur
       // une entite, et il ne doit rien laisser dans l'historique. Sans cette

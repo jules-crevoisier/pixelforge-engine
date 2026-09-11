@@ -625,6 +625,38 @@ champ qui ne saurait pas le relire.
 dans une liste de quinze noms. Et chaque valeur réglée ici est un geste de
 structure comme un autre : **Ctrl+Z la reprend**.
 
+### Plusieurs nœuds à la fois
+
+![Une sélection multiple, et les touches qui agissent sur tous](docs/selection.png)
+
+Déplacer six plateformes de deux cases, retirer une rangée de pointes,
+dupliquer un groupe de trois lanternes : des gestes ordinaires de level design
+qu'il fallait faire **un par un**, en espérant ne pas se tromper d'une case
+entre deux.
+
+<kbd>Maj</kbd>+glisser dans la vue avec l'outil Entité tire un rectangle qui
+choisit tout ce qu'il couvre ; <kbd>Ctrl</kbd>+clic sur un nom de l'arbre
+ajoute ou retire ce nœud de la sélection. Les flèches, <kbd>Suppr</kbd>,
+<kbd>Ctrl</kbd>+<kbd>D</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> agissent alors sur
+**tous** — et en **un seul geste du journal** : un Ctrl+Z remet les six, au lieu
+d'en demander six.
+
+Le **dernier** choisi est le principal : c'est lui que l'inspecteur règle, et la
+vue l'entoure plus vivement que les autres. C'est la convention de tous les
+éditeurs — le dernier clic décide de ce qu'on regarde.
+
+Deux fautes trouvées au banc, toutes deux invisibles à la lecture :
+
+- le rectangle interrogeait le **peuplement**, la liste des entités que le jeu
+  a adoptées — vide tant qu'on n'a pas joué. Un rectangle tiré sur une carte
+  fraîchement ouverte ne choisissait donc rien du tout. Il parcourt maintenant
+  la scène ;
+- la duplication trouvait « les copies » en comparant les deux arbres
+  **vivants** — et la scène vivante porte des nœuds éphémères, comme la
+  taillade de l'épée, que la sérialisation laisse dehors. L'éditeur
+  sélectionnait fièrement une taillade à la place de la copie. La comparaison
+  se fait sur le projet sérialisé.
+
 ### Copier-coller, d'une scène à l'autre
 
 <kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>X</kbd>,

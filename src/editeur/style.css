@@ -292,6 +292,10 @@ button.lien:hover { color: var(--accent); }
 .ligne .nom.choisissable { cursor: pointer; }
 .ligne .nom.choisissable:hover { color: var(--accent); }
 .ligne.actif .nom { color: var(--accent); }
+/* Choisi, mais pas le principal : l'inspecteur montre le DERNIER choisi, et
+   confondre les deux ferait regler la mauvaise creature. */
+.ligne.actif.second { border-color: rgba(127, 212, 168, .45); }
+.ligne.actif.second .nom { color: var(--texte); }
 .champs input[type="checkbox"] { width: 14px; height: 14px; justify-self: start; }
 .champs input:disabled { color: var(--dim); background: transparent; }
 

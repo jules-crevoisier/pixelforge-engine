@@ -5,8 +5,10 @@ import { contourDeCase } from '../noyau/projection.ts'
 import { Edition, type Outil, type Trace } from './edition.ts'
 import { Historique, type TableauCarte, type Geste } from './historique.ts'
 import { positionMonde, type Noeud } from '../scene/noeud.ts'
-import type { Point } from '../noyau/pixel.ts'
-import { serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud, serialiserNoeud } from '../export/format.ts'
+import {
+  serialiserProjet, versTexte, VERSION_FORMAT, relireNoeud, serialiserNoeud,
+  type NoeudSerialise as NoeudSerialiseType,
+} from '../export/format.ts'
 import { chargeur, CIBLES, type Cible } from '../export/chargeurs.ts'
 import { paquetGodot, paquetUnity, PAQUETS } from '../export/moteurs.ts'
 import { pageDeJeu, paquetBureau } from '../export/jeu-web.ts'
@@ -440,8 +442,7 @@ function installer(nouveau: Monde): void {
       depart = { x: n.x, y: n.y }
       // La moitie vue→arbre du dialogue : l'arbre surligne qui l'on tient,
       // l'inspecteur montre ce qu'il porte, et la vue l'entoure.
-      noeudDesigne = n.id
-      panneauProjet.designerNoeud(n.id)
+      choisirSeul(n.id)
       return n.id
     },
     poser: (id, cx, cy) => {
@@ -484,6 +485,42 @@ function installer(nouveau: Monde): void {
     },
   }
 
+  /*
+   * Maj + glisser : un rectangle qui CHOISIT tout ce qu'il couvre.
+   *
+   * On parcourt la SCENE et non le peuplement. Le peuplement est la liste des
+   * entites que le jeu a adoptees, et il est vide tant qu'on n'a pas joue :
+   * un rectangle tire sur une carte fraichement ouverte n'aurait rien choisi
+   * du tout — c'est le banc qui l'a montre, en tirant sur six creatures
+   * visibles a l'ecran et en n'en obtenant aucune.
+   *
+   * La CASE de l'entite decide, comme partout ailleurs : l'editeur pose les
+   * entites par les pieds, au bas d'une case, et c'est cette case qu'on vise
+   * en cliquant.
+   */
+  edition.surSelectionRect = (cx0, cy0, cx1, cy1) => {
+    const t = monde.carte.tuile
+    const pris: string[] = []
+    const parcourir = (n: Noeud, ax: number, ay: number): void => {
+      const x = ax + n.x
+      const y = ay + n.y
+      if ((n as unknown as { espece?: string }).espece) {
+        const cx = Math.floor(x / t)
+        const cy = Math.floor((y - 1) / t)
+        if (cx >= cx0 && cx <= cx1 && cy >= cy0 && cy <= cy1) pris.push(n.id)
+      }
+      for (const e of n.enfants) parcourir(e, x, y)
+    }
+    parcourir(monde.racine, 0, 0)
+    selection = pris
+    panneauProjet.designerNoeuds(selection)
+    jeu.dessiner()
+    redessinerEdition()
+    verdict.textContent = selection.length
+      ? `${selection.length} nœud(s) choisi(s) — flèches, Suppr, Ctrl+D, Ctrl+C agissent sur tous`
+      : 'Rien dans ce rectangle.'
+  }
+
   choisirOutil(outilPrecedent)
   majHistorique()
 
@@ -511,6 +548,9 @@ function installer(nouveau: Monde): void {
   panneauProjet?.montrer()
   ;(window as unknown as { pfe: unknown }).pfe = {
     jeu, monde, palette, edition, journal, console: consolePanneau,
+    // Ce qui est choisi : le banc le lit, et c'est le seul moyen de verifier
+    // qu'un rectangle a designe ce qu'il recouvrait.
+    selection: () => [...selection],
     // Le banc a besoin de declencher un brouillon sans attendre 45 secondes.
     brouillon: () => deposerBrouillon(),
   }
@@ -803,9 +843,9 @@ const panneauProjet = new PanneauProjet(
       if (!atelier.ouvert) atelier.basculer(true)
       atelier.viser(nom)
     },
-    surChoixNoeud: (id) => {
-      noeudDesigne = id
-      if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+    surChoixNoeud: (id, ajouter) => {
+      if (ajouter) basculerChoix(id)
+      else choisirSeul(id)
     },
   },
 )
@@ -1236,7 +1276,7 @@ const AIDE_OUTILS: Record<string, string> = {
   gomme: 'Gomme — efface le dessin et la collision de la case',
   collision: 'Collision — peint ce que la case FAIT (solide, pointe, échelle…) sans toucher au dessin',
   tuile: 'Tuile — choisissez une case de la planche à gauche, puis peignez-la',
-  entite: 'Entité — choisissez une créature à gauche, clic pour poser, clic droit pour retirer, tirer pour déplacer',
+  entite: 'Entité — clic : poser · clic droit : retirer · tirer : déplacer · Maj+tirer : choisir un rectangle',
   salle: 'Salle — tirez un rectangle : la caméra s’y bornera, on y réapparaîtra',
   main: 'Main — tirez pour déplacer la vue',
 }
@@ -1314,7 +1354,7 @@ canevas.addEventListener('wheel', (e) => {
 canevas.addEventListener('pointerdown', (e) => {
   if (jeu.tourne) return
   canevas.setPointerCapture(e.pointerId)
-  edition.commencer(e.clientX, e.clientY, e.button)
+  edition.commencer(e.clientX, e.clientY, e.button, e.shiftKey)
   redessinerEdition()
   majEtat()
 })
@@ -1356,13 +1396,49 @@ canevas.addEventListener('pointerup', () => {
  */
 let caseSurvolee: { cx: number; cy: number } | null = null
 /**
- * Le noeud CHOISI, celui que l'inspecteur montre.
+ * LES NOEUDS CHOISIS.
  *
- * Il vit ici et non dans le panneau parce que la vue doit l'entourer : choisir
- * dans l'arbre sans que rien ne bouge a l'ecran laisse chercher lequel des
- * quatre gardiens on vient de choisir.
+ * ## Pourquoi une liste et non un identifiant
+ *
+ * Deplacer six plateformes de deux cases, retirer une rangee de pointes,
+ * dupliquer un groupe de trois lanternes : ce sont des gestes ordinaires de
+ * level design, et il fallait les faire un par un — six fois le meme
+ * mouvement, en esperant ne pas se tromper d'une case entre deux.
+ *
+ * Le DERNIER choisi est le principal : c'est lui que l'inspecteur montre, et
+ * c'est la convention de tous les editeurs — le dernier clic decide de ce
+ * qu'on regarde. Les touches, elles, agissent sur toute la liste.
+ *
+ * Elle vit ici et non dans le panneau parce que la vue doit les entourer :
+ * choisir dans l'arbre sans que rien ne bouge a l'ecran laisse chercher
+ * lequel des quatre gardiens on vient de choisir.
  */
-let noeudDesigne = ''
+let selection: string[] = []
+
+/** Le noeud principal : le dernier choisi. Vide si rien n'est choisi. */
+function noeudDesigneId(): string { return selection[selection.length - 1] ?? '' }
+
+/** Choisit UN noeud, et lui seul. Le geste ordinaire : un clic. */
+function choisirSeul(id: string): void {
+  selection = id ? [id] : []
+  panneauProjet.designerNoeuds(selection)
+  if (!jeu.tourne || jeu.enPause) { jeu.dessiner(); redessinerEdition() }
+}
+
+/**
+ * Ajoute ou retire un noeud de la liste — le Ctrl+clic.
+ *
+ * Le remettre le fait passer EN TETE plutot que de le retirer quand il est
+ * deja la mais n'etait pas le principal : sans cela, Ctrl+cliquer un noeud
+ * deja choisi pour en faire celui qu'on inspecte le deselectionnerait.
+ */
+function basculerChoix(id: string): void {
+  if (!id) return
+  if (selection[selection.length - 1] === id) selection = selection.filter((q) => q !== id)
+  else selection = [...selection.filter((q) => q !== id), id]
+  panneauProjet.designerNoeuds(selection)
+  if (!jeu.tourne || jeu.enPause) { jeu.dessiner(); redessinerEdition() }
+}
 function dessinerCadreEdition(): void {
   if (jeu.tourne && !jeu.enPause) return
   const ctx = jeu.ecran.ctx
@@ -1414,8 +1490,18 @@ function dessinerCadreEdition(): void {
  * traits pour trois choses differentes.
  */
 function dessinerSelection(): void {
-  if ((jeu.tourne && !jeu.enPause) || !noeudDesigne) return
-  const n = trouverEntite(monde.racine, noeudDesigne)
+  if (jeu.tourne && !jeu.enPause) return
+  for (const id of selection) entourer(id, id === noeudDesigneId())
+  jeu.ecran.presenter()
+}
+
+/**
+ * Entoure un noeud choisi. Le PRINCIPAL est plus vif que les autres : c'est
+ * lui que l'inspecteur montre, et savoir lequel evite de regler la mauvaise
+ * creature.
+ */
+function entourer(id: string, principal: boolean): void {
+  const n = trouverEntite(monde.racine, id)
   if (!n) return
   const ou = positionMonde(monde.racine, n.id)
   if (!ou) return
@@ -1424,7 +1510,7 @@ function dessinerSelection(): void {
   const x = Math.round(ou.x - t / 2 - Math.round(jeu.camera.x))
   const y = Math.round(ou.y - t - Math.round(jeu.camera.y))
   const c = Math.max(3, Math.round(t / 3))
-  ctx.strokeStyle = '#ffd479'
+  ctx.strokeStyle = principal ? '#ffd479' : 'rgba(255, 212, 121, 0.55)'
   ctx.lineWidth = 1
   // Le demi-pixel : un trait d'un pixel pose sur un entier deborde des deux
   // cotes et se dessine sur deux pixels gris. C'est la meme regle que partout
@@ -1439,7 +1525,6 @@ function dessinerSelection(): void {
   ctx.moveTo(x0, y1 - c); ctx.lineTo(x0, y1); ctx.lineTo(x0 + c, y1)
   ctx.moveTo(x1 - c, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1 - c)
   ctx.stroke()
-  jeu.ecran.presenter()
 }
 
 /** Les surcouches de l'editeur, dans l'ordre ou elles se posent. */
@@ -1534,9 +1619,17 @@ window.addEventListener('keydown', (e) => {
  * chose » est une touche qu'on n'ose pas presser.
  */
 
-/** Le noeud choisi, vivant dans la scene — ou null. */
+/** Le noeud principal, vivant dans la scene — ou null. */
 function noeudChoisi(): Noeud | null {
-  return noeudDesigne ? trouverEntite(monde.racine, noeudDesigne) : null
+  const id = noeudDesigneId()
+  return id ? trouverEntite(monde.racine, id) : null
+}
+
+/** Tous les noeuds choisis, vivants. Ceux qui ont disparu sont ignores. */
+function noeudsChoisis(): Noeud[] {
+  return selection
+    .map((id) => trouverEntite(monde.racine, id))
+    .filter((n): n is Noeud => !!n)
 }
 
 /**
@@ -1545,14 +1638,22 @@ function noeudChoisi(): Noeud | null {
  * Trente pressions sur une fleche sont un seul deplacement. Poser un geste
  * par pression remplirait le journal de trente lignes et demanderait trente
  * Ctrl+Z pour revenir — ce qui revient a ne pas pouvoir revenir. Tant que
- * personne d'autre n'a pose de geste entre-temps, on prolonge donc le
- * precedent au lieu d'en poser un neuf.
+ * personne d'autre n'a pose de geste entre-temps ET que la selection n'a pas
+ * change, on prolonge donc le precedent au lieu d'en poser un neuf.
+ *
+ * Le geste garde les positions de DEPART et un ecart cumule, jamais les
+ * noeuds : le projet peut etre reconstruit entre-temps, et l'ecart se rejoue
+ * alors sur les noeuds d'aujourd'hui, retrouves par leur identifiant.
  */
-let fusionDeplacement: { id: string; geste: Geste; etat: { depart: Point; arrivee: Point } } | null = null
+let fusionDeplacement: {
+  cle: string
+  geste: Geste
+  etat: { scene: string; departs: { id: string; x: number; y: number }[]; delta: { x: number; y: number } }
+} | null = null
 
 function deplacerChoisi(dx: number, dy: number): void {
-  const n = noeudChoisi()
-  if (!n) {
+  const noeuds = noeudsChoisis()
+  if (!noeuds.length) {
     // Sans selection, les fleches deplacent la VUE : c'est ce qu'elles font
     // dans tout editeur de carte, et ne rien faire du tout donnerait
     // l'impression d'un clavier mort.
@@ -1567,78 +1668,114 @@ function deplacerChoisi(dx: number, dy: number): void {
     redessinerEdition()
     return
   }
-  const scene = sceneActive()
-  const id = n.id
-  const poser = (ou: Point): void => {
-    const racine = racineDeScene(scene)
-    const cible = trouverEntite(racine, id)
-    if (!cible) return
-    cible.x = ou.x
-    cible.y = ou.y
-    monde.retenirDepart?.(cible, parentDe(racine, cible) ?? racine)
-    if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
-    panneauProjet.designerNoeud(id)
-  }
-  const prolonge = fusionDeplacement?.id === id && journal.dernier === fusionDeplacement.geste
-  const arrivee = { x: n.x + dx, y: n.y + dy }
-  if (prolonge && fusionDeplacement) {
-    fusionDeplacement.etat.arrivee = arrivee
-  } else {
-    const etat = { depart: { x: n.x, y: n.y }, arrivee }
-    const geste: Geste = {
-      nom: 'entité déplacée (clavier)',
-      defaire: () => poser(etat.depart),
-      refaire: () => poser(etat.arrivee),
+  const cle = selection.join(',')
+  const prolonge = fusionDeplacement?.cle === cle
+    && journal.dernier === fusionDeplacement.geste
+  const etat = prolonge && fusionDeplacement
+    ? fusionDeplacement.etat
+    : {
+      scene: sceneActive(),
+      departs: noeuds.map((n) => ({ id: n.id, x: n.x, y: n.y })),
+      delta: { x: 0, y: 0 },
     }
-    fusionDeplacement = { id, geste, etat }
+  const appliquer = (ecart: { x: number; y: number }) => (): void => {
+    const racine = racineDeScene(etat.scene)
+    for (const d of etat.departs) {
+      const cible = trouverEntite(racine, d.id)
+      if (!cible) continue
+      cible.x = d.x + ecart.x
+      cible.y = d.y + ecart.y
+      monde.retenirDepart?.(cible, parentDe(racine, cible) ?? racine)
+    }
+    if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
+    panneauProjet.designerNoeuds(selection)
+  }
+  etat.delta.x += dx
+  etat.delta.y += dy
+  appliquer(etat.delta)()
+  if (!prolonge) {
+    const geste: Geste = {
+      nom: noeuds.length > 1 ? `${noeuds.length} nœuds déplacés` : 'entité déplacée (clavier)',
+      defaire: appliquer({ x: 0, y: 0 }),
+      // L'ecart est LU au moment de refaire : la fusion le fait grandir
+      // apres que le geste a ete pose.
+      refaire: () => appliquer(etat.delta)(),
+    }
+    fusionDeplacement = { cle, geste, etat }
     journal.poser(geste)
     majHistorique()
   }
-  poser(arrivee)
-  verdict.textContent = `« ${n.nom} » en ${arrivee.x},${arrivee.y}`
+  verdict.textContent = noeuds.length > 1
+    ? `${noeuds.length} nœuds déplacés de ${etat.delta.x},${etat.delta.y}`
+    : `« ${noeuds[0].nom} » en ${noeuds[0].x},${noeuds[0].y}`
 }
 
-/** Retire le noeud choisi. Sans confirmation : il se remet au Ctrl+Z. */
+/** Retire les noeuds choisis. Sans confirmation : ils se remettent au Ctrl+Z. */
 function retirerChoisi(): void {
-  const n = noeudChoisi()
-  if (!n) return
-  if (n === monde.racine) { verdict.textContent = 'La racine de la scène ne se retire pas.'; return }
-  const nom = n.nom
-  gesteStructure(`Nœud « ${nom} » retiré`,
-    retirerNoeudProjet(projetCourant(), sceneActive(), n.id), monde.carteActive ?? '')
+  const noeuds = noeudsChoisis().filter((n) => n !== monde.racine)
+  if (!noeuds.length) return
+  const scene = sceneActive()
+  // UN SEUL geste pour les N : sinon retirer six pointes demanderait six
+  // Ctrl+Z, et l'on s'arreterait au troisieme en se demandant ce qui reste.
+  let p2 = projetCourant()
+  for (const n of noeuds) p2 = retirerNoeudProjet(p2, scene, n.id)
+  const quoi = noeuds.length > 1
+    ? `${noeuds.length} nœuds retirés`
+    : `Nœud « ${noeuds[0].nom} » retiré`
+  gesteStructure(quoi, p2, monde.carteActive ?? '')
   /*
    * Le choix n'est PAS efface.
    *
-   * Il ne designe pas un objet mais un identifiant : le noeud retire, plus
-   * rien ne repond a cet identifiant — l'inspecteur dit « aucun noeud choisi »
-   * et la vue n'entoure rien, ce qui est exact. Et au Ctrl+Z, le noeud revient
-   * avec le meme identifiant : il est de nouveau choisi, tout seul. L'effacer
-   * ici demanderait de le retrouver a la main apres chaque annulation.
+   * Il ne designe pas des objets mais des identifiants : les noeuds retires,
+   * plus rien ne repond — l'inspecteur dit « aucun noeud choisi » et la vue
+   * n'entoure rien, ce qui est exact. Et au Ctrl+Z, ils reviennent avec les
+   * memes identifiants : ils sont de nouveau choisis, tout seuls.
    */
-  verdict.textContent = `« ${nom} » retiré — Ctrl+Z le remet`
+  verdict.textContent = `${quoi} — Ctrl+Z les remet`
 }
 
-/** Duplique le noeud choisi, et CHOISIT la copie : on vient de la faire naitre. */
+/** Duplique les noeuds choisis, et CHOISIT les copies : on vient de les faire naitre. */
 function dupliquerChoisi(): void {
-  const n = noeudChoisi()
-  if (!n || n === monde.racine) return
+  const noeuds = noeudsChoisis().filter((n) => n !== monde.racine)
+  if (!noeuds.length) return
   const scene = sceneActive()
+  /*
+   * Les copies se trouvent en comparant le projet SERIALISE d'avant a celui
+   * d'apres, et non les deux arbres vivants.
+   *
+   * La scene vivante porte des noeuds EPHEMERES — la taillade de l'epee, par
+   * exemple — que la serialisation laisse dehors parce qu'ils appartiennent a
+   * l'execution. Comparer les arbres vivants les comptait donc comme des
+   * nouveautes, et l'editeur choisissait fierement une taillade a la place de
+   * la copie qu'on venait de faire. C'est le banc qui l'a vu, en demandant a
+   * l'inspecteur ce qu'il montrait.
+   */
+  const p1 = projetCourant()
   const avant = new Set<string>()
-  const ramasser = (q: Noeud): void => { avant.add(q.id); q.enfants.forEach(ramasser) }
-  ramasser(racineDeScene(scene))
-  gesteStructure(`« ${n.nom} » dupliqué, une case à côté`,
-    dupliquerNoeudProjet(projetCourant(), scene, n.id), monde.carteActive ?? '')
-  // La copie est le noeud qui n'existait pas avant. La retrouver ainsi evite
-  // de dupliquer la regle de nommage des identifiants, qui vit dans le geste.
-  let copie: Noeud | null = null
-  const chercher = (q: Noeud): void => {
-    if (!avant.has(q.id) && !copie) copie = q
-    q.enfants.forEach(chercher)
+  const ramasser = (n: NoeudSerialiseType): void => {
+    avant.add(n.id)
+    n.enfants.forEach(ramasser)
   }
-  chercher(racineDeScene(scene))
-  if (copie) {
-    noeudDesigne = (copie as Noeud).id
-    panneauProjet.designerNoeud(noeudDesigne)
+  const sceneAvant = p1.scenes.find((q) => q.nom === scene) ?? p1.scenes[0]
+  if (sceneAvant) ramasser(sceneAvant.racine)
+  let p2 = p1
+  for (const n of noeuds) p2 = dupliquerNoeudProjet(p2, scene, n.id)
+  // Les RACINES des copies : un noeud neuf dont le parent, lui, existait
+  // deja. Les enfants des copies sont neufs aussi, et les choisir tous
+  // designerait des corps de collision au lieu des creatures.
+  const racinesCopies: string[] = []
+  const sceneApres = p2.scenes.find((q) => q.nom === scene) ?? p2.scenes[0]
+  const chercher = (n: NoeudSerialiseType, parentConnu: boolean): void => {
+    if (!avant.has(n.id) && parentConnu) racinesCopies.push(n.id)
+    n.enfants.forEach((e) => chercher(e, avant.has(n.id)))
+  }
+  if (sceneApres) chercher(sceneApres.racine, false)
+  gesteStructure(noeuds.length > 1
+    ? `${noeuds.length} nœuds dupliqués, une case à côté`
+    : `« ${noeuds[0].nom} » dupliqué, une case à côté`, p2, monde.carteActive ?? '')
+  if (racinesCopies.length) {
+    selection = racinesCopies
+    panneauProjet.designerNoeuds(selection)
     if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
   }
 }
@@ -1651,11 +1788,11 @@ function dupliquerChoisi(): void {
  * Le presse-papiers du navigateur ne rend son contenu qu'apres une permission
  * et un geste de l'usager, et ce qu'on y met est du TEXTE : on y ecrirait du
  * JSON, qu'un collage dans un traitement de texte transformerait en pate
- * illisible. Celui-ci vit dans l'onglet, garde une DESCRIPTION de noeud, et
+ * illisible. Celui-ci vit dans l'onglet, garde des DESCRIPTIONS de noeuds, et
  * traverse ce qui compte : d'une scene a l'autre, d'une carte a l'autre, tant
  * que l'editeur est ouvert.
  */
-let pressePapiers: ReturnType<typeof serialiserNoeud> | null = null
+let pressePapiers: ReturnType<typeof serialiserNoeud>[] = []
 
 /**
  * Ou colle-t-on ?
@@ -1667,7 +1804,7 @@ let pressePapiers: ReturnType<typeof serialiserNoeud> | null = null
  * la chose EST decide, pas un reglage.
  */
 function collerIci(): void {
-  if (!pressePapiers) { verdict.textContent = 'Rien à coller.'; return }
+  if (!pressePapiers.length) { verdict.textContent = 'Rien à coller.'; return }
   const scene = sceneActive()
   const racine = racineDeScene(scene)
   const choisi = noeudChoisi()
@@ -1676,17 +1813,26 @@ function collerIci(): void {
   const parent = !choisi ? racine
     : (structurel ? choisi : (parentDe(racine, choisi) ?? racine))
   const t = monde.carte.tuile
-  // Une case a cote : une copie exactement dessous se confond avec
-  // l'original, et l'on croit que le geste n'a rien fait.
-  const description = { ...pressePapiers, x: pressePapiers.x + (structurel ? 0 : t) }
-  const r = collerNoeudProjet(projetCourant(), scene, parent.id, description)
-  if (!r.id) return
-  gesteStructure(`« ${description.nom} » collé sous « ${parent.nom} »`,
-    r.projet, monde.carteActive ?? '')
-  noeudDesigne = r.id
-  panneauProjet.designerNoeud(r.id)
+  let p2 = projetCourant()
+  const neufs: string[] = []
+  for (const modele of pressePapiers) {
+    // Une case a cote : une copie exactement dessous se confond avec
+    // l'original, et l'on croit que le geste n'a rien fait.
+    const description = { ...modele, x: modele.x + (structurel ? 0 : t) }
+    const r = collerNoeudProjet(p2, scene, parent.id, description)
+    if (!r.id) continue
+    p2 = r.projet
+    neufs.push(r.id)
+  }
+  if (!neufs.length) return
+  const quoi = neufs.length > 1
+    ? `${neufs.length} nœuds collés sous « ${parent.nom} »`
+    : `« ${pressePapiers[0].nom} » collé sous « ${parent.nom} »`
+  gesteStructure(quoi, p2, monde.carteActive ?? '')
+  selection = neufs
+  panneauProjet.designerNoeuds(selection)
   if (!jeu.tourne) { jeu.dessiner(); redessinerEdition() }
-  verdict.textContent = `« ${description.nom} » collé sous « ${parent.nom} » — Ctrl+Z le reprend`
+  verdict.textContent = `${quoi} — Ctrl+Z les reprend`
 }
 
 window.addEventListener('keydown', (e) => {
@@ -1706,34 +1852,36 @@ window.addEventListener('keydown', (e) => {
     deplacerChoisi(f[0] * pas, f[1] * pas)
     return
   }
-  if ((e.key === 'Delete' || e.key === 'Backspace') && noeudDesigne) {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) {
     e.preventDefault()
     retirerChoisi()
     return
   }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && noeudDesigne) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && selection.length) {
     e.preventDefault()
     dupliquerChoisi()
     return
   }
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x')
-    && noeudDesigne) {
-    const n = noeudChoisi()
-    if (!n) return
+    && selection.length) {
+    const noeuds = noeudsChoisis()
+    if (!noeuds.length) return
     e.preventDefault()
-    pressePapiers = serialiserNoeud(n)
+    pressePapiers = noeuds.map(serialiserNoeud)
     const coupe = e.key.toLowerCase() === 'x'
     if (coupe) retirerChoisi()
-    verdict.textContent = `« ${n.nom} »${coupe ? ' coupé' : ' copié'}`
-      + ' — Ctrl+V le colle, ici ou dans une autre scène'
+    verdict.textContent = (noeuds.length > 1
+      ? `${noeuds.length} nœuds${coupe ? ' coupés' : ' copiés'}`
+      : `« ${noeuds[0].nom} »${coupe ? ' coupé' : ' copié'}`)
+      + ' — Ctrl+V les colle, ici ou dans une autre scène'
     return
   }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && pressePapiers) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && pressePapiers.length) {
     e.preventDefault()
     collerIci()
     return
   }
-  if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && noeudDesigne) {
+  if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && selection.length) {
     const n = noeudChoisi()
     const ou = n ? positionMonde(monde.racine, n.id) : null
     if (ou) {
@@ -1746,8 +1894,9 @@ window.addEventListener('keydown', (e) => {
     }
     return
   }
-  if (e.key === 'Escape' && noeudDesigne && accueil.hidden) {
-    noeudDesigne = ''
+  if (e.key === 'Escape' && selection.length && accueil.hidden) {
+    selection = []
+    panneauProjet.designerNoeuds(selection)
     panneauProjet.designerNoeud('')
     jeu.dessiner()
     redessinerEdition()
@@ -2012,8 +2161,8 @@ function compterEntites(n: { enfants: unknown[] }): number {
       editerCarte(t.carte)
     }
     if (t.id) {
-      noeudDesigne = t.id
-      panneauProjet.designerNoeud(t.id)
+      selection = [t.id]
+      panneauProjet.designerNoeuds(selection)
     }
     if (typeof t.x === 'number' && typeof t.y === 'number') {
       jeu.camera.x = Math.round(t.x - jeu.ecran.vue.largeur / 2)
@@ -2156,6 +2305,12 @@ ou la zone au lieu de la remplir.</p>
 <p><b>Entité</b> pose une créature au clic gauche, la retire au clic droit, et
 la <b>déplace en la faisant glisser</b>. Poser une entité, c’est ajouter un
 nœud à la scène : elle part dans le fichier avec le reste.</p>
+
+<p><b>Plusieurs à la fois</b> : <kbd>Maj</kbd>+glisser dans la vue avec l’outil
+Entité tire un rectangle qui choisit tout ce qu’il couvre, et
+<kbd>Ctrl</kbd>+clic sur un nom de l’arbre ajoute ou retire ce nœud de la
+sélection. Les touches agissent alors sur tous ; l’inspecteur, lui, règle le
+<i>dernier</i> choisi — c’est celui que la vue entoure le plus vivement.</p>
 
 <p>Saisir une entité la <b>choisit</b> : la vue l’entoure de quatre angles, et
 l’onglet <b>Scène</b> ouvre dessous l’<b>inspecteur</b> — sa position, son
